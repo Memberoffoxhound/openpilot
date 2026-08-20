@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from typing import Any
 
-from openpilot.system.webrtc.helpers import StreamRequestBody, livestream_network_ok
+from openpilot.system.webrtc.helpers import StreamRequestBody, livestream_network_ok, on_air_block_reason
 from openpilot.system.webrtc.schema import generate_field
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -395,6 +395,8 @@ class StreamSession:
 
 
 class ServerState:
+  RESUME_S = 30.0
+
   def __init__(self):
     self.streams: dict[str, StreamSession] = {}
     self.stream_lock = asyncio.Lock()
@@ -413,6 +415,13 @@ class ServerState:
       ]
     except Exception:
       self._gps_socks = []
+    try:
+      self._ds_sock = messaging.sub_sock("deviceState", conflate=True, timeout=0)
+    except Exception:
+      self._ds_sock = None
+    self.block_reason: str | None = None
+    self._forced_off = False
+    self._resume_deadline = 0.0
     self.trip_t0 = time.monotonic()
     self.trip_last = self.trip_t0
     self.trip_eng = 0.0
@@ -421,9 +430,68 @@ class ServerState:
     self.hud_lock = threading.Lock()
     self.hud_last = 0.0
     threading.Thread(target=self._pump, name="hud-pump", daemon=True).start()
+    threading.Thread(target=self._net_watch, name="onair-net", daemon=True).start()
 
   def touch_hud(self) -> None:
     self.hud_last = time.monotonic()
+
+  def _network_none(self) -> bool:
+    try:
+      if self._ds_sock is None:
+        return False
+      msg = messaging.recv_one_or_none(self._ds_sock)
+      if msg is not None:
+        self._last_nt = msg.deviceState.networkType
+      nt = getattr(self, "_last_nt", None)
+      return nt == log.DeviceState.NetworkType.none
+    except Exception:
+      return False
+
+  def _stop_streams_async(self) -> None:
+    loop = self.loop
+    if loop is None:
+      self.params.put_bool("IsLiveStreaming", False)
+      return
+
+    async def _stop():
+      async with self.stream_lock:
+        for session in list(self.streams.values()):
+          try:
+            ch = session.stream.get_messaging_channel()
+            ch.send(json.dumps({"type": "disconnect", "data": "On-Air network lost."}))
+          except Exception:
+            pass
+          await session.stop()
+        self.streams.clear()
+      self.params.put_bool("IsLiveStreaming", False)
+
+    asyncio.run_coroutine_threadsafe(_stop(), loop)
+
+  def _net_watch(self) -> None:
+    self._last_nt = None
+    while True:
+      try:
+        time.sleep(0.4)
+        none = self._network_none()
+        reason = on_air_block_reason(self.params, network_none=none)
+        self.block_reason = reason
+        on = self.params.get_bool("LivestreamEnabled")
+        now = time.monotonic()
+        if on and reason:
+          self.params.put_bool("LivestreamEnabled", False)
+          self.params.put_bool("IsLiveStreaming", False)
+          self._forced_off = True
+          self._resume_deadline = now + self.RESUME_S
+          self._stop_streams_async()
+        elif self._forced_off and reason is None and now <= self._resume_deadline:
+          self.params.put_bool("LivestreamEnabled", True)
+          self._forced_off = False
+          self._resume_deadline = 0.0
+        elif self._forced_off and now > self._resume_deadline:
+          self._forced_off = False
+          self._resume_deadline = 0.0
+      except Exception:
+        time.sleep(1.0)
 
   def _pump(self) -> None:
     while True:
@@ -625,14 +693,17 @@ def _text_response(text: str, status: int = 200) -> tuple[int, bytes, str]:
 
 
 async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: str) -> tuple[int, bytes, str]:
-  if content_type != "application/json":
+  if content_type and not content_type.startswith("application/json"):
     return _json_response({"error": "unsupported media type"}, status=415)
 
   stream_dict = state.streams
   body = StreamRequestBody(**json.loads(raw_body))
   params = Params()
-  if not livestream_network_ok(params):
-    return _json_response({"error": "wifi_or_byo_sim", "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."})
+  reason = on_air_block_reason(params)
+  if reason:
+    return _json_response({"error": reason, "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."}, status=403)
+  if not params.get_bool("LivestreamEnabled"):
+    return _json_response({"error": "onair", "message": "On-Air is off."}, status=403)
   params.put_bool("IsLiveStreaming", True)
   state.touch_hud()
 
@@ -735,16 +806,8 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     self.params = Params()
     super().__init__(*args, **kwargs)
 
-  def _loopback(self) -> bool:
-    return self.client_address[0] in ("127.0.0.1", "::1")
-
-  def _on_lan(self) -> bool:
-    if self._loopback():
-      return True
-    return livestream_network_ok(self.params) and not self.params.get_bool("NetworkMetered")
-
   def _can_stream(self) -> bool:
-    return self._on_lan() and self.params.get_bool("LivestreamEnabled")
+    return self.params.get_bool("LivestreamEnabled") and self.server.state.block_reason is None
 
   def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
     self.send_response(status)
@@ -797,13 +860,14 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     except Exception:
       pass
     on_air = params.get_bool("LivestreamEnabled")
-    net_ok = livestream_network_ok(params)
-    metered = params.get_bool("NetworkMetered")
-    reason = None
-    if not on_air:
+    reason = self.server.state.block_reason
+    if reason is None and not on_air:
       reason = "onair"
-    elif not net_ok or metered:
-      reason = "network"
+    net_ok = self.server.state.block_reason is None
+    metered = params.get_bool("NetworkMetered")
+    nt = getattr(self.server.state, "_last_nt", None)
+    if nt is not None:
+      ntype = str(nt).split(".")[-1]
     br = params.get("LivestreamEncoderBitrate") or 0
     try:
       kbps = int(br) // 1000

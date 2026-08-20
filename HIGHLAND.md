@@ -78,6 +78,7 @@ Highland On-Air:
 - **Off (gray):** stock Connect. Parked livestream only. Local page refused.
 - **On (red):** `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. HUD / 3D / map on the phone.
 - **Blocked (red slash):** no Wi-Fi and not a BYO SIM. Tap shows a warning; comma Prime LTE cannot enable On-Air.
+- Lose Wi-Fi / land on Prime LTE: On-Air **turns off** (encoder + viewer). If an allowed link is back within **30 s**, it turns back on.
 
 Connect itself is unchanged: Athena `startStream` + WebRTC. On-Air only gates *onroad* and the LAN page.
 

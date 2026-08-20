@@ -349,6 +349,32 @@ async function startRtc() {
   usingRtc = true;
   return true;
 }
+function waitVideo(video, ms) {
+  const t0 = Date.now();
+  return new Promise((res) => {
+    const tick = () => {
+      if (video && video.videoWidth > 0) return res(true);
+      if (Date.now() - t0 >= ms) return res(false);
+      setTimeout(tick, 200);
+    };
+    tick();
+  });
+}
+async function startRtcRetry() {
+  let last = "webrtc failed";
+  for (let i = 0; i < 40; i++) {
+    try {
+      await startRtc();
+      if (await waitVideo(vWide, 6000)) return;
+      last = "no video yet";
+    } catch (e) {
+      last = (e && e.message) || String(e);
+    }
+    status("encoder · " + (i + 1));
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(last);
+}
 function videoLagMs() { return 280; }
 let mode = "live";
 let hudOn = false;
@@ -836,9 +862,35 @@ function show(which) {
   document.body.classList.add(which);
 }
 function offCopy(info) {
-  if (info && info.reason === "network")
-    return "This viewer is Wi-Fi only. Join the same network as the device, then reload.";
+  if (info && info.reason === "offline")
+    return "No internet connection. On-Air is off until Wi-Fi or a BYO SIM is back.";
+  if (info && (info.reason === "prime" || info.reason === "network"))
+    return "comma Prime LTE is not allowed. On-Air is off. Join Wi-Fi or a BYO SIM.";
   return "Enable On-Air on the device — tap the badge on the home screen, or Settings → livestream. Same Wi-Fi. Then reload.";
+}
+function dropLive(info) {
+  try { if (rtcPc) rtcPc.close(); } catch (e) {}
+  rtcPc = null;
+  usingRtc = false;
+  goLive.busy = false;
+  $("offMsg").textContent = offCopy(info || { reason: "onair" });
+  show("off");
+  startOffPoll();
+}
+function startOffPoll() {
+  if (window._offPoll) return;
+  window._offPoll = setInterval(async () => {
+    if (document.body.classList.contains("live")) return;
+    try {
+      const info = await getInfo();
+      paintStats(info);
+      if (info.onAir && !info.reason) {
+        clearInterval(window._offPoll);
+        window._offPoll = null;
+        goLive();
+      }
+    } catch (e) {}
+  }, 1000);
 }
 let recoverAt = 0, recovering = false;
 async function recover(_why) {
@@ -850,7 +902,7 @@ async function recover(_why) {
   status("reconnecting…");
   try {
     await watch();
-    await startRtc();
+    await startRtcRetry();
     status("live · webrtc");
   } catch (e) {
     status("retry");
@@ -867,16 +919,24 @@ async function goLive() {
     status("starting cameras");
     await watch();
     status("connecting webrtc");
-    await startRtc();
+    await startRtcRetry();
     status("live · webrtc");
+    if (window._offPoll) { clearInterval(window._offPoll); window._offPoll = null; }
     vWide.addEventListener("click", () => vWide.play().catch(() => {}));
-    const tick = async () => {
-      try { paintStats(await getInfo()); } catch (e) {}
-    };
-    tick();
-    setInterval(tick, 2000);
-    setInterval(tickHud, 100);
-    setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 8000);
+    if (!window._liveTicks) {
+      window._liveTicks = true;
+      setInterval(async () => {
+        try {
+          const info = await getInfo();
+          paintStats(info);
+          if (document.body.classList.contains("live") && (!info.onAir || info.reason)) dropLive(info);
+        } catch (e) {}
+      }, 2000);
+      setInterval(tickHud, 100);
+      setInterval(() => {
+        if (document.body.classList.contains("live")) fetch("/watch", { method: "POST" }).catch(() => {});
+      }, 8000);
+    }
     if (!window._liveBound) {
       window._liveBound = true;
       document.addEventListener("visibilitychange", () => { if (!document.hidden) recover("visible"); });
@@ -885,7 +945,7 @@ async function goLive() {
     }
   } catch (e) {
     goLive.busy = false;
-    status("error");
+    dropLive({ reason: "onair" });
     showErr(e.message || String(e));
   }
 }
@@ -893,9 +953,10 @@ async function boot() {
   let info = null;
   try { info = await getInfo(); } catch (e) { info = null; }
   if (info) paintStats(info);
-  if (!info || !info.onAir || !info.networkOk || info.metered) {
+  if (!info || info.reason) {
     $("offMsg").textContent = offCopy(info || { reason: "onair" });
     show("off");
+    startOffPoll();
     return;
   }
   show("boot");
