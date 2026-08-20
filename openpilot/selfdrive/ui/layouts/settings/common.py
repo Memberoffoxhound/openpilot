@@ -12,7 +12,7 @@ def restart_needed_callback(_=None):
 
 LANE_COLOR_GREEN = 0
 LANE_COLOR_TESLA = 1
-LANE_COLOR_LABELS = ("stock green", "tesla blue")
+LANE_COLOR_LABELS = ("comma green", "tesla blue")
 
 
 def lane_color_mode(params: Params | None = None) -> int:

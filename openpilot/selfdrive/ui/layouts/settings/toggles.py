@@ -36,7 +36,7 @@ DESCRIPTIONS = {
     "When Tesla BSM sees a vehicle in the blind spot, hold the auto lane change until the spot has been clear for about one second."
   ),
   "LaneColor": tr_noop(
-    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Stock green is default openpilot."
+    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +

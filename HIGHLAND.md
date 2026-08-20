@@ -56,15 +56,15 @@ Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib
 
 ## Theme
 
-**Toggles → theme** (Comma 4: card after BSM delay). Opens a subsection page.
+**Settings → theme** (Comma 4 main menu card, same 64pt title + corner icon as toggles/device). Opens a subsection page with **lane color**.
 
 - **lane color** — engaged lane lines (the two closest lines on the C4 model view).
   - `tesla blue` (default) — Tesla Autopilot visualization blue `#3E8CEB`
-  - `stock green` — stock openpilot `#00FF40`
+  - `comma green` — stock openpilot `#00FF40`
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `LaneColor` | INT | `1` | `0` stock green, `1` Tesla Autopilot blue |
+| `LaneColor` | INT | `1` | `0` comma green, `1` Tesla Autopilot blue |
 
 Live while driving; no restart.
 
