@@ -28,7 +28,7 @@ def post_stream_request(body: StreamRequestBody) -> dict:
     raise Exception("livestream encoder is not up yet. retry in a few seconds.") from e
 
 
-def wait_for_webrtcd(max_retries: float = 10) -> None:
+def wait_for_webrtcd(max_retries: float = 30) -> None:
   attempts = 0
   while attempts < max_retries:
     try:

@@ -233,7 +233,9 @@ class StreamSession:
 
     self.identifier = str(uuid.uuid4())
     self.params = Params()
-    builder = WebRTCAnswerBuilder(body.sdp, bind_address=_default_route_ip())
+    # Highland: don't pin ICE to the current default-route IP. Binding to wifi
+    # makes the peer connection die the instant the device switches to LTE onroad.
+    builder = WebRTCAnswerBuilder(body.sdp, bind_address=None)
 
     self.enabled = body.enabled
     self.video_tracks = []
@@ -397,7 +399,8 @@ def schedule_teardown(state: ServerState):
     if not state.streams:
       Params().put_bool("IsLiveStreaming", False)
 
-  state.teardown = asyncio.get_running_loop().call_later(5.0, clear)
+  # Highland: 60s grace so Connect can reconnect after an ignition/ICE blip
+  state.teardown = asyncio.get_running_loop().call_later(60.0, clear)
 
 
 def _json_response(obj: Any, status: int = 200) -> tuple[int, bytes, str]:

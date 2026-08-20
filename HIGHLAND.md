@@ -70,16 +70,18 @@ Live while driving; no restart.
 
 ## Onroad livestream (1080p)
 
-Stock openpilot only starts WebRTC livestream **offroad**. Highland allows it while driving:
+Stock openpilot kills livestream at **ignition** (`IsLiveStreaming` is `CLEAR_ON_IGNITION_ON`). That is why Connect dies the moment you go onroad.
 
-- `IsLiveStreaming` is no longer cleared on ignition
-- `athenad.startStream` brings up `webrtcd` + `encoderd --stream` onroad
-- Dashcam `encoderd` **pauses** for the session (no dual encode). Route video for that window is missing
-- Stream is **1920×1080 H264** at up to 8 Mbps (steps down to 5 / 2 Mbps if the network drops). H264 so Safari/iPhone can decode it
+Highland:
 
-Watch from an iPhone: Safari → [connect.comma.ai](https://connect.comma.ai) → your device → live view. Use **Safari**, not Chrome (iOS WebRTC). Device needs cellular or a hotspot.
+- `IsLiveStreaming` survives ignition
+- `webrtcd` stays running (not gated offroad)
+- `athenad.startStream` works onroad; 60s encoder grace so Connect reconnect is instant
+- ICE is not pinned to the current wifi IP (wifi→LTE no longer tears the socket)
+- Dashcam `encoderd` **pauses** while watching. Route video for that window is missing
+- Stream is **1920×1080 H264** at up to 8 Mbps (steps down to 5 / 2 Mbps). H264 so Safari/iPhone can decode it
 
-When you close the live view, `webrtcd` clears the flag and dashcam encode resumes.
+Watch: iPhone **Safari** → [connect.comma.ai](https://connect.comma.ai) → device → live view. If the picture blips at ignition, tap reconnect — do not leave the page. Close the live view to resume dashcam.
 
 ## Driving-model picker — not ported
 

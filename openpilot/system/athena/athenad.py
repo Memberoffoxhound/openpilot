@@ -794,7 +794,7 @@ def startStream(sdp: str, enabled: bool) -> dict:
   params = Params()
   bridge_services_in = []
 
-  # stale car params case taken care of by webrtcd being shut off on ignition
+  # webrtcd stays up onroad (Highland); flip IsLiveStreaming so encoderd --stream starts.
   cp_bytes = params.get("CarParamsPersistent")
   if cp_bytes is not None:
     with car.CarParams.from_bytes(cp_bytes) as CP:
