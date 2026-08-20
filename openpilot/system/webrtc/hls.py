@@ -9,8 +9,9 @@ from openpilot.common.params import Params
 
 V4L2_BUF_FLAG_KEYFRAME = 0x8
 TARGET_SEGMENT_S = 1.0
-PLAYLIST_DEPTH = 5
+PLAYLIST_DEPTH = 6
 HZ90 = 90_000
+AUD = b"\x00\x00\x00\x01\x09\xf0"
 
 CAMERAS = {
   "wide": "livestreamWideRoadEncodeData",
@@ -29,7 +30,7 @@ def to_annexb(buf: bytes) -> bytes:
   while i + 4 <= nbuf:
     n = int.from_bytes(buf[i:i + 4], "big")
     i += 4
-    if n < 0 or i + n > nbuf:
+    if n <= 0 or i + n > nbuf:
       break
     out += b"\x00\x00\x00\x01"
     out += buf[i:i + n]
@@ -63,8 +64,9 @@ def _pcr_bytes(pts_90k: int) -> bytes:
 
 def _pes_h264(data: bytes, pts: int) -> bytes:
   pts &= 0x1FFFFFFFF
+  # PTS-only: '0010' + PTS[32:30] + marker
   pts_hdr = bytes([
-    0x20 | 0x10 | (((pts >> 30) & 0x7) << 1) | 1,
+    0x20 | (((pts >> 30) & 0x7) << 1) | 1,
     (pts >> 22) & 0xFF,
     (((pts >> 15) & 0x7F) << 1) | 1,
     (pts >> 7) & 0xFF,
@@ -76,58 +78,50 @@ def _pes_h264(data: bytes, pts: int) -> bytes:
 
 
 def _ts_packets(pid: int, payload: bytes, cc: list[int], *, start: bool, pcr: int | None = None) -> bytes:
-  """Pack payload into 188-byte TS packets. cc is a 1-int list mutated in place."""
   out = bytearray()
   i = 0
+  n = len(payload)
   first = True
-  while i < len(payload) or first:
+  while i < n or first:
     pusi = start and first
-    af_body = bytearray()
+    extra = bytearray()
     if first and pcr is not None:
-      af_body += b"\x10" + _pcr_bytes(pcr)
-    remaining = len(payload) - i
-    # bytes available for payload after 4-byte header and optional adaptation
-    if af_body:
-      # af = [len][body][possible stuffing]; need 184 - remaining stuffing if remaining < room
-      min_af = 1 + len(af_body)  # length byte + body
-      room_for_payload = 184 - min_af
-      if remaining < room_for_payload:
-        af_body += b"\xff" * (room_for_payload - remaining)
-      adapt = bytes([len(af_body)]) + af_body
-      chunk = payload[i:i + 184 - len(adapt)]
-    else:
-      if remaining < 184:
-        # stuffing adaptation: length + (optional flags+stuff)
-        stuff = 184 - remaining  # total adapt bytes including length
-        if stuff == 1:
-          adapt = b"\x00"
-        else:
-          adapt = bytes([stuff - 1]) + (b"\x00" + b"\xff" * (stuff - 2) if stuff > 1 else b"")
-          if stuff == 2:
-            adapt = b"\x01\x00"
-          elif stuff > 2:
-            adapt = bytes([stuff - 1, 0x00]) + (b"\xff" * (stuff - 2))
-        chunk = payload[i:]
+      extra += b"\x10" + _pcr_bytes(pcr)
+    remaining = n - i
+    if extra:
+      min_body = len(extra)
+      if remaining + 1 + min_body >= 184:
+        af = bytes([min_body]) + extra
+        take = 184 - len(af)
       else:
-        adapt = b""
-        chunk = payload[i:i + 184]
-    afc = 0x10
-    if adapt:
-      afc = 0x30 if chunk else 0x20
-    hdr = bytes([
+        stuff = 184 - remaining - 1 - min_body
+        af = bytes([min_body + stuff]) + extra + (b"\xff" * stuff)
+        take = remaining
+    elif remaining >= 184:
+      af = b""
+      take = 184
+    else:
+      stuff_total = 184 - remaining
+      if stuff_total == 1:
+        af = b"\x00"
+      else:
+        af = bytes([stuff_total - 1, 0x00]) + (b"\xff" * (stuff_total - 2))
+      take = remaining
+    chunk = payload[i:i + take]
+    afc = 0x10 if not af else (0x30 if chunk else 0x20)
+    pkt = bytes([
       0x47,
       (0x40 if pusi else 0x00) | ((pid >> 8) & 0x1F),
       pid & 0xFF,
       afc | (cc[0] & 0xF),
-    ])
-    cc[0] = (cc[0] + 1) & 0xF
-    pkt = hdr + adapt + chunk
+    ]) + af + chunk
     if len(pkt) != 188:
-      pkt = (pkt + b"\xff" * 188)[:188]
+      raise RuntimeError(f"bad ts packet {len(pkt)}")
+    cc[0] = (cc[0] + 1) & 0xF
     out += pkt
-    i += len(chunk)
+    i += take
     first = False
-    if not payload:
+    if n == 0:
       break
   return bytes(out)
 
@@ -136,11 +130,13 @@ def mux_h264_segment(frames: list[tuple[bytes, int]], cc: dict[str, list[int]]) 
   def cc_of(pid: int) -> list[int]:
     return cc.setdefault(str(pid), [0])
 
+  # PAT: program 1 → PMT PID 0x1000
   pat_section = bytes([
     0x00, 0xB0, 0x0D, 0x00, 0x01, 0xC1, 0x00, 0x00,
-    0x00, 0x01, 0xF0, 0x00,  # program 1 → PMT PID 0x1000
+    0x00, 0x01, 0xF0, 0x00,
   ])
   pat = bytes([0x00]) + pat_section + struct.pack(">I", _mpeg_crc32(pat_section))
+  # PMT: PCR + H.264 on PID 0x100
   pmt_section = bytes([
     0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00,
     0xE1, 0x00, 0xF0, 0x00,
@@ -151,7 +147,8 @@ def mux_h264_segment(frames: list[tuple[bytes, int]], cc: dict[str, list[int]]) 
   out += _ts_packets(0, pat, cc_of(0), start=True)
   out += _ts_packets(0x1000, pmt, cc_of(0x1000), start=True)
   for data, pts in frames:
-    out += _ts_packets(0x100, _pes_h264(data, pts), cc_of(0x100), start=True, pcr=pts)
+    au = data if data.startswith(AUD) else AUD + data
+    out += _ts_packets(0x100, _pes_h264(au, pts), cc_of(0x100), start=True, pcr=pts)
   return bytes(out)
 
 
@@ -164,16 +161,20 @@ class _CamBuf:
     self.cur_start_pts: int | None = None
     self.cc: dict[str, list[int]] = {}
     self.got_keyframe = False
+    self.frames = 0
 
   def push(self, raw: bytes, pts_90k: int, keyframe: bool):
     if not self.got_keyframe and not keyframe:
       return
     self.got_keyframe = True
     annexb = to_annexb(raw)
+    if not annexb:
+      return
     dur = 0.0 if self.cur_start_pts is None else (pts_90k - self.cur_start_pts) / HZ90
     if self.cur_frames and keyframe and dur >= 0.5:
       self._flush()
     self.cur_frames.append((annexb, pts_90k))
+    self.frames += 1
     if self.cur_start_pts is None:
       self.cur_start_pts = pts_90k
     elif (pts_90k - self.cur_start_pts) / HZ90 >= TARGET_SEGMENT_S * 2:
@@ -206,7 +207,7 @@ class _CamBuf:
     ]
     for seq, dur, _ in segs:
       lines.append(f"#EXTINF:{max(dur, 0.2):.3f},")
-      lines.append(f"/hls/{cam}/{seq}.ts")
+      lines.append(f"{cam}/{seq}.ts")
     return "\n".join(lines) + "\n"
 
   def segment(self, seq: int) -> bytes | None:
@@ -215,6 +216,10 @@ class _CamBuf:
         if s == seq:
           return data
     return None
+
+  def seg_count(self) -> int:
+    with self.lock:
+      return len(self.segments)
 
 
 class HlsHub:
@@ -240,6 +245,12 @@ class HlsHub:
   def client_count(self) -> int:
     now = time.monotonic()
     return sum(1 for t in self.clients.values() if now - t < 30)
+
+  def seg_counts(self) -> dict[str, int]:
+    return {name: cam.seg_count() for name, cam in self.cams.items()}
+
+  def frame_counts(self) -> dict[str, int]:
+    return {name: cam.frames for name, cam in self.cams.items()}
 
   def touch(self):
     self.last_access = time.monotonic()
@@ -270,13 +281,14 @@ class HlsHub:
       self._threads = []
 
   def _reader(self, name: str, sock_name: str):
-    sock = messaging.sub_sock(sock_name, conflate=True)
+    sock = messaging.sub_sock(sock_name, conflate=False)
     buf = self.cams[name]
     t0 = None
+    last_pts = -1
     while not self._stop.is_set():
       msg = messaging.recv_one_or_none(sock)
       if msg is None:
-        time.sleep(0.005)
+        time.sleep(0.002)
         continue
       ev = getattr(msg, msg.which())
       raw = bytes(ev.header) + bytes(ev.data)
@@ -284,7 +296,12 @@ class HlsHub:
       ts = idx.timestampSof or idx.timestampEof or 0
       if t0 is None:
         t0 = ts
-      pts = int((ts - t0) * 9 // 100_000)
+      if ts:
+        pts = int((ts - t0) * 9 // 100_000)
+      else:
+        last_pts = last_pts + HZ90 // 20 if last_pts >= 0 else 0
+        pts = last_pts
+      last_pts = pts
       self._bytes += len(raw)
       now = time.monotonic()
       dt = now - self._bytes_t

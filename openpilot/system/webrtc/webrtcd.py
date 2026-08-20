@@ -568,6 +568,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     self.send_header("Content-Type", content_type)
     self.send_header("Content-Length", str(len(body)))
     self.send_header("Cache-Control", "no-store")
+    self.send_header("Access-Control-Allow-Origin", "*")
     if extra:
       for k, v in extra.items():
         self.send_header(k, v)
@@ -594,7 +595,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         return _json_response({"error": "not found"}, status=404)
       body = hub.cams[cam].playlist(cam)
       if not body:
-        return (404, b"#EXTM3U\n", "application/vnd.apple.mpegurl")
+        return (200, b"#EXTM3U\n#EXT-X-VERSION:3\n", "application/vnd.apple.mpegurl")
       return (200, body.encode(), "application/vnd.apple.mpegurl")
     if len(parts) == 3 and parts[2].endswith(".ts"):
       cam = parts[1]
@@ -663,6 +664,8 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       "memPct": mem,
       "wifiBars": strength,
       "network": ntype,
+      "hlsSegs": hub.seg_counts(),
+      "hlsFrames": hub.frame_counts(),
     }
 
   def _dispatch_request(self) -> None:
