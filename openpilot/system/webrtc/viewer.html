@@ -297,6 +297,7 @@ async function watch() {
   if (!r.ok) throw new Error(await r.text() || r.statusText);
 }
 function attach(video, cam) {
+  video.srcObject = null;
   video.src = "/hls/" + cam + ".m3u8?t=" + Date.now();
   video.muted = true;
   video.playsInline = true;
@@ -308,17 +309,72 @@ function attach(video, cam) {
     video._bound = true;
     video.addEventListener("canplay", play);
     video.addEventListener("loadedmetadata", () => {
-      nudgeLive(video);
+      if (!usingRtc) nudgeLive(video);
       if (video === vWide && video.videoWidth)
         status("live · " + video.videoWidth + "×" + video.videoHeight);
       if (video === vWide) { layoutHud(); layoutDriver(); }
     });
-    video.addEventListener("error", () => { if (video === vWide) recover("error"); });
+    video.addEventListener("error", () => { if (video === vWide && !usingRtc) recover("error"); });
   }
   video.load();
   play();
 }
+let usingRtc = false, rtcPc = null;
+const RTC_CAMS = ["wideRoad", "driver", "road"];
+function waitIce(pc) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((res) => {
+    const t = setTimeout(res, 2500);
+    pc.addEventListener("icegatheringstatechange", () => {
+      if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); }
+    });
+  });
+}
+async function startRtc() {
+  if (rtcPc) { try { rtcPc.close(); } catch (e) {} rtcPc = null; }
+  usingRtc = false;
+  const pc = new RTCPeerConnection({ iceServers: [], bundlePolicy: "max-bundle" });
+  RTC_CAMS.forEach(() => pc.addTransceiver("video", { direction: "recvonly" }));
+  const vids = [vWide, vDriver, vRoad];
+  const taken = new Set();
+  pc.ontrack = (ev) => {
+    const blob = [ev.streams[0] && ev.streams[0].id, ev.track && ev.track.id, ev.track && ev.track.label, ev.transceiver && ev.transceiver.mid].join(" ");
+    let v = /driver|cabin/i.test(blob) ? vDriver : /wide/i.test(blob) ? vWide : /road|narrow/i.test(blob) ? vRoad : null;
+    if (!v || taken.has(v)) v = vids.find((x) => !taken.has(x)) || vWide;
+    taken.add(v);
+    v.muted = true;
+    v.playsInline = true;
+    v.setAttribute("playsinline", "");
+    v.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+    v.play().catch(() => {});
+    if (v === vWide) { status("live · webrtc"); layoutHud(); }
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "failed") recover("rtc");
+  };
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIce(pc);
+  const r = await fetch("/stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sdp: pc.localDescription.sdp,
+      cameras: RTC_CAMS,
+      enabled: true,
+      bridge_services_in: [],
+      bridge_services_out: [],
+    }),
+  });
+  const ans = await r.json();
+  if (!r.ok || !ans.sdp) throw new Error(ans.message || ans.error || "webrtc failed");
+  await pc.setRemoteDescription({ type: ans.type || "answer", sdp: ans.sdp });
+  rtcPc = pc;
+  usingRtc = true;
+  return true;
+}
 function nudgeLive(v) {
+  if (usingRtc) return;
   try {
     const b = v.seekable;
     if (!b.length) return;
@@ -332,6 +388,7 @@ function nudgeLive(v) {
   } catch (e) {}
 }
 function videoLagMs() {
+  if (usingRtc) return 280;
   try {
     const b = vWide.seekable;
     if (!b.length) return 1400;
@@ -939,17 +996,23 @@ let recoverAt = 0, recovering = false;
 async function recover(_why) {
   if (!document.body.classList.contains("live")) return;
   const now = Date.now();
-  if (recovering || now - recoverAt < 1600) return;
+  if (recovering || now - recoverAt < 2000) return;
   recoverAt = now;
   recovering = true;
   status("reconnecting…");
   try {
     await watch();
-    await waitPlaylist("wide", 16);
-    attach(vWide, "wide");
-    attach(vDriver, "driver");
-    attach(vRoad, "road");
-    status("live");
+    try {
+      await startRtc();
+      status("live · webrtc");
+    } catch (e) {
+      usingRtc = false;
+      await waitPlaylist("wide", 16);
+      attach(vWide, "wide");
+      attach(vDriver, "driver");
+      attach(vRoad, "road");
+      status("live · hls");
+    }
   } catch (e) {
     status("retry");
   } finally {
@@ -964,13 +1027,20 @@ async function goLive() {
   try {
     status("starting cameras");
     await watch();
-    status("waiting for encoder");
-    const ok = await waitPlaylist("wide");
-    if (!ok) throw new Error("Encoder did not produce video. Stay on Wi-Fi and retry.");
-    attach(vWide, "wide");
-    attach(vDriver, "driver");
-    attach(vRoad, "road");
-    status("live");
+    status("connecting webrtc");
+    try {
+      await startRtc();
+      status("live · webrtc");
+    } catch (e) {
+      status("webrtc failed · hls");
+      usingRtc = false;
+      const ok = await waitPlaylist("wide");
+      if (!ok) throw new Error("Encoder did not produce video. Stay on Wi-Fi and retry.");
+      attach(vWide, "wide");
+      attach(vDriver, "driver");
+      attach(vRoad, "road");
+      status("live · hls");
+    }
     vWide.addEventListener("click", () => vWide.play().catch(() => {}));
     const tick = async () => {
       try { paintStats(await getInfo()); } catch (e) {}
