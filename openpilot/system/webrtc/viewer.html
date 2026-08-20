@@ -314,8 +314,6 @@ function attach(video, cam) {
       if (video === vWide) { layoutHud(); layoutDriver(); }
     });
     video.addEventListener("error", () => { if (video === vWide) recover("error"); });
-    video.addEventListener("stalled", () => { if (video === vWide) recover("stalled"); });
-    video.addEventListener("emptied", () => { if (video === vWide) recover("emptied"); });
   }
   video.load();
   play();
@@ -326,16 +324,19 @@ function nudgeLive(v) {
     if (!b.length) return;
     const end = b.end(b.length - 1);
     const lag = end - v.currentTime;
-    if (lag > 0.22) v.currentTime = Math.max(0, end - 0.08);
-    v.playbackRate = lag > 0.18 ? 1.5 : 1;
+    const want = 1.4;
+    if (lag > 2.8) v.currentTime = Math.max(0, end - want);
+    else if (lag > 2.2) v.playbackRate = 1.12;
+    else if (lag < 0.7) v.playbackRate = 0.92;
+    else v.playbackRate = 1;
   } catch (e) {}
 }
 function videoLagMs() {
   try {
     const b = vWide.seekable;
-    if (!b.length) return 400;
-    return Math.max(80, (b.end(b.length - 1) - vWide.currentTime) * 1000);
-  } catch (e) { return 400; }
+    if (!b.length) return 1400;
+    return Math.max(800, Math.min(2500, (b.end(b.length - 1) - vWide.currentTime) * 1000));
+  } catch (e) { return 1400; }
 }
 let mode = "live";
 let hudOn = false;
@@ -610,20 +611,50 @@ function rotEuler(r, p, y) {
   ];
 }
 const VFD = [[0,0,1],[1,0,0],[0,1,0]];
-const NATIVE_W = 1928, NATIVE_H = 1208, F = 567;
-function projectPts(pts, hud, vw, vh) {
-  const sx = vw / NATIVE_W, sy = vh / NATIVE_H;
-  const fx = F * sx, fy = F * sy, cx = (NATIVE_W/2)*sx, cy = (NATIVE_H/2)*sy;
+const SRC_W = 1928, SRC_H = 1208, SRC_F = 567;
+function carSpaceT(hud, vw, vh) {
   const Rd = rotEuler(hud.rpy[0]||0, hud.rpy[1]||0, hud.rpy[2]||0);
   const Rw = rotEuler(hud.wideRpy[0]||0, hud.wideRpy[1]||0, hud.wideRpy[2]||0);
-  const V = mul3(VFD, mul3(Rw, Rd));
+  const view = mul3(VFD, mul3(Rw, Rd));
+  const fx = SRC_F * (vw / SRC_W), fy = SRC_F * (vh / SRC_H);
+  const K = [[fx, 0, vw / 2], [0, fy, vh / 2], [0, 0, 1]];
+  return mul3(K, view);
+}
+function xform(T, p) {
+  const x = T[0][0]*p[0] + T[0][1]*p[1] + T[0][2]*p[2];
+  const y = T[1][0]*p[0] + T[1][1]*p[1] + T[1][2]*p[2];
+  const z = T[2][0]*p[0] + T[2][1]*p[1] + T[2][2]*p[2];
+  if (z < 0.2) return null;
+  return [x / z, y / z];
+}
+function mapLine(pts, yOff, zOff, hud, vw, vh, allowInvert) {
+  if (!pts || pts.length < 2) return [];
+  const T = carSpaceT(hud, vw, vh);
+  const left = [], right = [];
+  for (const p of pts) {
+    if (p[0] < 0 || p[0] > 100) continue;
+    const a = xform(T, [p[0], p[1] - yOff, p[2] + zOff]);
+    const b = xform(T, [p[0], p[1] + yOff, p[2] + zOff]);
+    if (!a || !b) continue;
+    if (a[0] < -80 || a[0] > vw + 80 || a[1] < -80 || a[1] > vh + 80) continue;
+    left.push(a); right.push(b);
+  }
+  if (!allowInvert && left.length > 1) {
+    const kl = [], kr = [];
+    let m = Infinity;
+    for (let i = 0; i < left.length; i++) {
+      if (left[i][1] <= m + 1) { m = Math.min(m, left[i][1]); kl.push(left[i]); kr.push(right[i]); }
+    }
+    return kl.concat(kr.reverse());
+  }
+  return left.concat(right.reverse());
+}
+function projectPts(pts, hud, vw, vh) {
+  const T = carSpaceT(hud, vw, vh);
   const out = [];
   for (const p of pts) {
-    const vx = V[0][0]*p[0] + V[0][1]*p[1] + V[0][2]*p[2];
-    const vy = V[1][0]*p[0] + V[1][1]*p[1] + V[1][2]*p[2];
-    const vz = V[2][0]*p[0] + V[2][1]*p[1] + V[2][2]*p[2];
-    if (vz < 0.2) continue;
-    out.push([fx * vx / vz + cx, fy * vy / vz + cy]);
+    const q = xform(T, p);
+    if (q) out.push(q);
   }
   return out;
 }
@@ -669,34 +700,34 @@ function paintHud(hud) {
   ctx.setTransform(dpr * b.w / b.vw, 0, 0, dpr * b.h / b.vh, 0, 0);
   ctx.clearRect(0, 0, b.vw, b.vh);
   const laneHex = hud.laneColor === 0 ? "#00ff40" : "#3e8ceb";
-  const zOff = hud.height || 1.22;
-  function strip(pts, w) {
-    if (!pts || pts.length < 2) return [];
-    const left = pts.map((p) => [p[0], p[1] + w, p[2] + zOff]);
-    const right = pts.map((p) => [p[0], p[1] - w, p[2] + zOff]).reverse();
-    return projectPts(left.concat(right), hud, b.vw, b.vh);
-  }
-  if (hud.enabled && hud.path && hud.path.length) {
-    drawPoly(ctx, strip(hud.path, 0.9), "rgba(13,248,122,0.38)", null, 0);
-  }
+  const zPath = hud.height || 1.22;
   (hud.lanes || []).forEach((ln, i) => {
     const prob = (hud.laneProbs && hud.laneProbs[i]) || 0;
-    if (prob < 0.18) return;
-    const w = (i === 1 || i === 2 ? 0.09 : 0.055) * Math.max(prob, 0.3);
-    ctx.globalAlpha = Math.min(0.95, 0.4 + prob);
-    drawPoly(ctx, strip(ln, w), laneHex, null, 0);
+    if (prob < 0.08) return;
+    const w = (i === 1 || i === 2 ? 0.16 : 0.12) * Math.max(prob, 0.15);
+    ctx.globalAlpha = Math.min(0.85, 0.25 + prob);
+    drawPoly(ctx, mapLine(ln, w, 0, hud, b.vw, b.vh, true), laneHex, null, 0);
     ctx.globalAlpha = 1;
   });
   (hud.edges || []).forEach((ln) => {
-    ctx.globalAlpha = 0.35;
-    drawPoly(ctx, strip(ln, 0.04), "rgba(255,255,255,0.55)", null, 0);
+    ctx.globalAlpha = 0.28;
+    drawPoly(ctx, mapLine(ln, 0.12, 0, hud, b.vw, b.vh, true), "rgba(255,255,255,0.7)", null, 0);
     ctx.globalAlpha = 1;
   });
+  if (hud.enabled && hud.path && hud.path.length) {
+    drawPoly(ctx, mapLine(hud.path, 0.9, zPath, hud, b.vw, b.vh, false), "rgba(13,248,122,0.42)", null, 0);
+  }
   if (hud.lead && hud.enabled) {
-    const pt = projectPts([[hud.lead.d, -hud.lead.y, zOff]], hud, b.vw, b.vh)[0];
+    let z = zPath;
+    if (hud.path && hud.path.length) {
+      let best = hud.path[0];
+      for (const p of hud.path) if (Math.abs(p[0] - hud.lead.d) < Math.abs(best[0] - hud.lead.d)) best = p;
+      z = best[2] + zPath;
+    }
+    const pt = xform(carSpaceT(hud, b.vw, b.vh), [hud.lead.d, -hud.lead.y, z]);
     if (pt) {
-      const sz = Math.max(14, Math.min(34, 700 / (hud.lead.d + 8)));
-      ctx.fillStyle = "rgba(201,34,49,0.85)";
+      const sz = Math.max(14, Math.min(36, 700 / (hud.lead.d + 8)));
+      ctx.fillStyle = "rgba(201,34,49,0.88)";
       ctx.beginPath();
       ctx.moveTo(pt[0], pt[1]);
       ctx.lineTo(pt[0] - sz, pt[1] + sz * 1.15);
@@ -890,7 +921,7 @@ async function waitPlaylist(cam, tries = 50) {
     const t = r.ok ? await r.text() : "";
     const n = (t.match(/#EXTINF/g) || []).length;
     status("encoder · " + n + " segments");
-    if (n >= 1) return true;
+    if (n >= 3) return true;
     await new Promise((res) => setTimeout(res, 400));
   }
   return false;
@@ -947,7 +978,7 @@ async function goLive() {
     };
     tick();
     setInterval(tick, 2000);
-    setInterval(() => { nudgeLive(vWide); nudgeLive(vDriver); nudgeLive(vRoad); }, 120);
+    setInterval(() => { nudgeLive(vWide); nudgeLive(vDriver); nudgeLive(vRoad); }, 800);
     setInterval(tickHud, 100);
     setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 8000);
     if (!window._liveBound) {

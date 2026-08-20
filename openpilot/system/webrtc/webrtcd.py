@@ -462,7 +462,7 @@ class ServerState:
         continue
 
   @staticmethod
-  def _xyz(line, step: int = 4, cap: int = 24) -> list[list[float]]:
+  def _xyz(line, step: int = 2, cap: int = 48) -> list[list[float]]:
     try:
       xs, ys, zs = list(line.x), list(line.y), list(line.z)
     except Exception:
