@@ -10,6 +10,7 @@ from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.webrtc.helpers import notify_discord_on_air
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
@@ -212,6 +213,7 @@ class MiciHomeLayout(Widget):
       if r.x <= mouse_pos.x <= r.x + r.width and r.y <= mouse_pos.y <= r.y + r.height:
         on = not ui_state.params.get_bool("LivestreamEnabled")
         ui_state.params.put_bool("LivestreamEnabled", on, block=True)
+        notify_discord_on_air(on)
         return
       relative_x = mouse_pos.x - self.rect.x
       has_alerts = self._alert_count_callback and self._alert_count_callback() > 0

@@ -3,7 +3,6 @@
 from abc import abstractmethod
 from collections.abc import Callable
 import os
-import socket
 import time
 import capnp
 import argparse
@@ -35,17 +34,6 @@ STATIC_DIR = Path(__file__).parent / "static"
 def _ice_candidates(sdp: str) -> list[str]:
   return [line.removeprefix("a=") for line in sdp.splitlines() if line.startswith("a=candidate:")]
 
-# socket trick: route lookup for 8.8.8.8 (nothing is sent or actually connected to)
-# return the source interfaces IP which is the default interface of the device
-def _default_route_ip() -> str | None:
-  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  try:
-    s.connect(("8.8.8.8", 53))  # selects a route, sends nothing
-    return s.getsockname()[0]
-  except OSError:
-    return None
-  finally:
-    s.close()
 
 class AsyncTaskRunner:
   def __init__(self):
@@ -154,7 +142,7 @@ class DynamicPubMaster(messaging.PubMaster):
 
 
 class LivestreamBitrateController(AsyncTaskRunner):
-  bitrates = [800_000, 1_200_000, int(os.environ.get("STREAM_BITRATE", 1_500_000))]
+  bitrates = [2_000_000, 4_000_000, int(os.environ.get("STREAM_BITRATE", 8_000_000))]
   label_to_bitrate = { "high": bitrates[2], "med": bitrates[1], "low": bitrates[0]}
   sample_interval = 0.2
   high_level = 0.1 # drop immediately
@@ -416,8 +404,7 @@ class ServerState:
     self.loop: asyncio.AbstractEventLoop | None = None
     self.sm = messaging.SubMaster([
       "deviceState", "carState", "selfdriveState", "modelV2",
-      "extrinsicsCalibration", "radarState", "gpsLocation", "gpsLocationExternal",
-      "driverStateV2",
+      "extrinsicsCalibration", "radarState", "driverStateV2",
     ])
     self._gps_fix: tuple[float | None, float | None, float | None] = (None, None, None)
     try:
@@ -433,11 +420,18 @@ class ServerState:
     self.trip_miles = 0.0
     self.hud: dict[str, Any] = {}
     self.hud_lock = threading.Lock()
+    self.hud_last = 0.0
     threading.Thread(target=self._pump, name="hud-pump", daemon=True).start()
+
+  def touch_hud(self) -> None:
+    self.hud_last = time.monotonic()
 
   def _pump(self) -> None:
     while True:
       try:
+        if time.monotonic() - self.hud_last > 20:
+          time.sleep(0.4)
+          continue
         self.sm.update(50)
         self._poll_gps_socks()
         snap = self.build_hud()
@@ -657,6 +651,7 @@ async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: s
   if not livestream_network_ok():
     return _json_response({"error": "wifi_or_byo_sim", "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."})
   Params().put_bool("IsLiveStreaming", True)
+  state.touch_hud()
 
   async with state.stream_lock:
     # don't remove existing connection on prewarm request
@@ -765,9 +760,6 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
   def _can_stream(self) -> bool:
     return self._on_lan() and Params().get_bool("LivestreamEnabled")
 
-  def _lan_ok(self) -> bool:
-    return self._can_stream()
-
   def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
     self.send_response(status)
     self.send_header("Content-Type", content_type)
@@ -828,6 +820,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     return (200, fp.read_bytes(), ctype)
 
   def _snapshot(self) -> dict[str, Any]:
+    self.server.state.touch_hud()
     hub: HlsHub = self.server.state.hls
     hub.note_client(self.client_address[0])
     params = Params()
@@ -872,10 +865,8 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       "hlsFrames": hub.frame_counts(),
     }
 
-  def _xyz(self, line, step: int = 4, cap: int = 24) -> list[list[float]]:
-    return ServerState._xyz(line, step, cap)
-
   def _hud_snapshot(self) -> dict[str, Any]:
+    self.server.state.touch_hud()
     with self.server.state.hud_lock:
       snap = dict(self.server.state.hud)
     return snap or {"onAir": False, "lat": None, "lon": None, "tripMiles": 0, "engagedPct": 0}
@@ -899,8 +890,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         if self.command != "POST":
           result = _json_response({"error": "method not allowed"}, status=405)
         else:
-          self.server.state.hls.note_client(self.client_address[0])
-          self.server.state.hls.ensure()
+          Params().put_bool("IsLiveStreaming", True)
           schedule_teardown(self.server.state)
           result = _json_response({"ok": True})
       elif path.startswith("/hls/"):

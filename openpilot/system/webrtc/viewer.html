@@ -312,7 +312,7 @@ function attach(video, cam) {
       if (!usingRtc) nudgeLive(video);
       if (video === vWide && video.videoWidth)
         status("live · " + video.videoWidth + "×" + video.videoHeight);
-      if (video === vWide) { layoutHud(); layoutDriver(); }
+      if (video === vWide) { layoutHud(); }
     });
     video.addEventListener("error", () => { if (video === vWide && !usingRtc) recover("error"); });
   }
@@ -410,7 +410,6 @@ function applyHud() {
   $("btnHud").textContent = hudOn ? "HUD on" : "HUD off";
   $("btnHud").classList.toggle("on", hudOn);
   if (show) layoutHud();
-  layoutDriver();
 }
 function setMode(m) {
   mode = m;
@@ -706,27 +705,15 @@ function mapLine(pts, yOff, zOff, hud, vw, vh, allowInvert) {
   }
   return left.concat(right.reverse());
 }
-function projectPts(pts, hud, vw, vh) {
-  const T = carSpaceT(hud, vw, vh);
-  const out = [];
-  for (const p of pts) {
-    const q = xform(T, p);
-    if (q) out.push(q);
-  }
-  return out;
-}
 function videoBox(video) {
-  const rw = video.videoWidth || 1280, rh = video.videoHeight || 720;
+  const rw = video.videoWidth || 1920, rh = video.videoHeight || 1080;
   const cw = video.clientWidth, ch = video.clientHeight;
   const s = Math.min(cw / rw, ch / rh);
   const w = rw * s, h = rh * s;
   return { x: (cw - w) / 2, y: 0, w, h, vw: rw, vh: rh };
 }
-function layoutDriver() {
-  return;
-}
-window.addEventListener("resize", () => { layoutHud(); layoutDriver(); });
-window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHud(); layoutDriver(); }, 250); });
+window.addEventListener("resize", () => { layoutHud(); });
+window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHud(); }, 250); });
 function layoutHud() {
   const box = $("hudBox");
   if (!box) return;

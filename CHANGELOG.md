@@ -39,7 +39,9 @@ Reset Calibration shows **P / Y / R** on the card (`down`/`left`/`cw`).
 Wi-Fi or non-Prime SIM only. Does **not** use comma Connect, TURN, or Prime LTE.
 
 - Phone, same network: `http://<device-ip>:5001/`
-- **720p** H.264 at **4 Mbps** (steps down under load)
+- **1080p** H.264 **VBR up to 8 Mbps** (4 / 2 if the link drops)
+- **WebRTC** (Connect's `/stream`) on LAN; HLS only as fallback
+- Discord webhook on On-Air (`DiscordWebhookUrl` + optional `LivestreamPublicUrl`)
 - Dashcam encoder pauses while someone is watching
 - **HUD on/off** — clipper-style overlay on the wide cam (MAX, speed, path, lead)
 - Driver cam beside the map, trip card full width (miles, % engaged, street)

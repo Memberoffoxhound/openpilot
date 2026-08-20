@@ -256,7 +256,6 @@ class HlsHub:
   def touch(self):
     self.last_access = time.monotonic()
     Params().put_bool("IsLiveStreaming", True)
-    Params().put("LivestreamEncoderBitrate", 1_500_000)
 
   def ensure(self):
     self.touch()

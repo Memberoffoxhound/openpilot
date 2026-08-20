@@ -12,6 +12,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   LANE_COLOR_LABELS, lane_color_label, next_lane_color, restart_needed_callback,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.webrtc.helpers import notify_discord_on_air
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -71,6 +72,7 @@ class OnAirToggle(Widget):
   def _toggle(self):
     on = not self._params.get_bool("LivestreamEnabled")
     self._params.put_bool("LivestreamEnabled", on, block=True)
+    notify_discord_on_air(on)
 
   def _render(self, _):
     txt = self._on if self._params.get_bool("LivestreamEnabled") else self._off
@@ -89,7 +91,7 @@ class LivestreamLayoutMici(NavScroller):
     super().__init__()
     self._scroller.add_widgets([
       OnAirToggle(),
-      GreyBigButton("", "Fun local Wi-Fi viewer.\nPiP, HUD, 3D + map.\nPhone: port 5001.\nNot comma's servers."),
+      GreyBigButton("", "Local Wi-Fi viewer · 1080p WebRTC.\nPhone: port 5001. Not comma's servers.\nDiscord: set DiscordWebhookUrl.\nTunnel URL: LivestreamPublicUrl."),
     ])
 
 

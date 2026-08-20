@@ -57,26 +57,51 @@ Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib
 
 Live while driving; no restart.
 
-## Onroad livestream (1080p)
+## Onroad livestream (1080p VBR)
 
-Stock openpilot kills livestream at **ignition** (`IsLiveStreaming` is `CLEAR_ON_IGNITION_ON`). That is why Connect dies the moment you go onroad.
+Stock openpilot kills livestream at **ignition**. Connect stays **parked-only** on this fork so we do not use comma TURN or Prime LTE.
 
-Highland:
+Highland On-Air:
 
 - `IsLiveStreaming` survives ignition
-- `webrtcd` stays running (not gated offroad)
-- `athenad.startStream` works onroad; 60s encoder grace so Connect reconnect is instant
-- ICE is not pinned to the current wifi IP (wifi→LTE no longer tears the socket)
-- Dashcam `encoderd` **pauses** while watching. Route video for that window is missing
-- Stream is **1280×720 H264** at up to **4 Mbps** (steps down to 2 / 1 Mbps)
-- Only on **Wi-Fi** (or unmetered) **or a non-Prime SIM** (Prime Lite / BYO). Comma Prime LTE is refused so we don't burn their data plan or TURN relay
+- `webrtcd` stays running
+- ICE is not pinned to the current wifi IP
+- Dashcam `encoderd` **pauses** while watching
+- Stream is **1920×1080 H.264 VBR up to 8 Mbps** (steps 8 / 4 / 2 Mbps on packet loss)
+- **LAN:** WebRTC (`/stream`, same path as Connect) — near real-time
+- **Fallback / remote HTTP:** HLS, started only if WebRTC fails or someone hits `/hls/`
+- Only on **Wi-Fi** (or unmetered) **or a non-Prime SIM**
 
 ### On-Air toggle
 
-`LivestreamEnabled` (default **off**). Tap the **On-Air** badge on the home footer (next to experimental) or **Settings → livestream** (clapper card).
+`LivestreamEnabled` (default **off**). Tap the **On-Air** badge on the home footer or **Settings → livestream**.
 
-- **Off (gray):** stock Connect. Parked livestream only. Local phone page refused.
-- **On (red):** onroad Connect + `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. Red On-Air sits lower-left on the driving HUD at low opacity.
+- **Off (gray):** stock Connect. Parked livestream only. Local page refused.
+- **On (red):** `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. HUD / 3D / FACE / map on the phone.
+
+### Discord + internet (no phone relay)
+
+Discord cannot ingest the C4 WebRTC feed. A **webhook** posts the watch URL when On-Air turns on. Friends open that URL; they do not go through your phone.
+
+Params (set over SSH, persist):
+
+```
+# incoming webhook for a channel
+params put DiscordWebhookUrl 'https://discord.com/api/webhooks/…'
+
+# optional public HTTPS URL of the viewer (Cloudflare Tunnel, Tailscale Funnel, ngrok)
+params put LivestreamPublicUrl 'https://your-tunnel.example'
+```
+
+Remote watchers should use **HLS in the page** (TCP). WebRTC ICE host candidates are LAN-only; do **not** point this at comma Connect/TURN.
+
+Cloudflare Tunnel on the device (example, not bundled):
+
+```
+cloudflared tunnel --url http://127.0.0.1:5001
+```
+
+Loopback is allowed, so the tunnel can reach the viewer. 1080p × 3 cams can use a lot of **home upload** — expect a few Mbps to ~8 Mbps per camera.
 
 Connect itself is unchanged: Athena `startStream` + WebRTC. On-Air only gates *onroad* and the LAN page.
 
