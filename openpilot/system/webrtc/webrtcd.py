@@ -416,7 +416,7 @@ class ServerState:
     self.loop: asyncio.AbstractEventLoop | None = None
     self.sm = messaging.SubMaster([
       "deviceState", "carState", "selfdriveState", "modelV2",
-      "extrinsicsCalibration", "radarState",
+      "extrinsicsCalibration", "radarState", "liveLocationKalman",
     ])
 
 
@@ -706,6 +706,8 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       "edges": [],
       "laneProbs": [],
       "lead": None,
+      "lat": None,
+      "lon": None,
     }
     try:
       lc = params.get("LaneColor") or 1
@@ -754,6 +756,13 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         lead = sm["radarState"].leadOne
         if lead and lead.present:
           out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
+      if seen("liveLocationKalman"):
+        llk = sm["liveLocationKalman"]
+        pos = getattr(llk, "positionGeodetic", None)
+        if pos is not None and getattr(pos, "valid", True):
+          v = list(getattr(pos, "value", []) or [])
+          if len(v) >= 2:
+            out["lat"], out["lon"] = float(v[0]), float(v[1])
     except Exception:
       pass
     return out

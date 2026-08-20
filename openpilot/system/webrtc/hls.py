@@ -9,7 +9,7 @@ from openpilot.common.params import Params
 
 V4L2_BUF_FLAG_KEYFRAME = 0x8
 TARGET_SEGMENT_S = 0.25
-PLAYLIST_DEPTH = 3
+PLAYLIST_DEPTH = 2
 HZ90 = 90_000
 AUD = b"\x00\x00\x00\x01\x09\xf0"
 
@@ -203,7 +203,7 @@ class _CamBuf:
       "#EXT-X-VERSION:3",
       "#EXT-X-INDEPENDENT-SEGMENTS",
       "#EXT-X-TARGETDURATION:1",
-      "#EXT-X-START:TIME-OFFSET=-1.0,PRECISE=YES",
+      "#EXT-X-START:TIME-OFFSET=-0.4,PRECISE=YES",
       f"#EXT-X-MEDIA-SEQUENCE:{segs[0][0]}",
     ]
     for seq, dur, _ in segs:
