@@ -10,6 +10,25 @@ def restart_needed_callback(_=None):
   ui_state.params.put_bool("OnroadCycleRequested", True)
 
 
+LANE_COLOR_GREEN = 0
+LANE_COLOR_TESLA = 1
+LANE_COLOR_LABELS = ("stock green", "tesla blue")
+
+
+def lane_color_mode(params: Params | None = None) -> int:
+  params = params or Params()
+  mode = params.get("LaneColor", return_default=True)
+  return LANE_COLOR_TESLA if mode == LANE_COLOR_TESLA else LANE_COLOR_GREEN
+
+
+def lane_color_label(params: Params | None = None) -> str:
+  return LANE_COLOR_LABELS[lane_color_mode(params)]
+
+
+def next_lane_color(params: Params | None = None) -> int:
+  return LANE_COLOR_GREEN if lane_color_mode(params) == LANE_COLOR_TESLA else LANE_COLOR_TESLA
+
+
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
   # rpyCalib is device-frame Euler: roll, pitch, yaw.
   # Pitch/yaw words match stock. +roll is clockwise looking forward (right side down).

@@ -3,6 +3,7 @@ from openpilot.common.params import Params, UnknownKeyName
 from openpilot.selfdrive.controls.lib.auto_lane_change import (
   alc_label, next_alc_mode, normalize_alc_mode, AutoLaneChangeMode,
 )
+from openpilot.selfdrive.ui.layouts.settings.common import lane_color_label, next_lane_color
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -33,6 +34,9 @@ DESCRIPTIONS = {
   ),
   "AutoLaneChangeBsmDelay": tr_noop(
     "When Tesla BSM sees a vehicle in the blind spot, hold the auto lane change until the spot has been clear for about one second."
+  ),
+  "LaneColor": tr_noop(
+    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Stock green is default openpilot."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -126,6 +130,13 @@ class TogglesLayout(Widget):
       callback=self._cycle_alc,
     )
 
+    self._lane_color_setting = button_item(
+      lambda: tr("Theme: Lane Color"),
+      lambda: tr(lane_color_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["LaneColor"]),
+      callback=self._cycle_lane_color,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -159,6 +170,7 @@ class TogglesLayout(Widget):
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
         self._toggles["AutoLaneChangeTimer"] = self._alc_setting
+        self._toggles["LaneColor"] = self._lane_color_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -232,6 +244,7 @@ class TogglesLayout(Widget):
 
     mode = normalize_alc_mode(self._params.get("AutoLaneChangeTimer", return_default=True))
     self._alc_setting.action_item.set_text(lambda: tr(alc_label(mode)))
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     if "AutoLaneChangeBsmDelay" not in self._locked_toggles:
       self._toggles["AutoLaneChangeBsmDelay"].action_item.set_enabled(mode > AutoLaneChangeMode.NUDGE)
 
@@ -281,3 +294,8 @@ class TogglesLayout(Widget):
     self._alc_setting.action_item.set_text(lambda: tr(alc_label(nxt)))
     if "AutoLaneChangeBsmDelay" not in self._locked_toggles:
       self._toggles["AutoLaneChangeBsmDelay"].action_item.set_enabled(nxt > AutoLaneChangeMode.NUDGE)
+
+  def _cycle_lane_color(self):
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))

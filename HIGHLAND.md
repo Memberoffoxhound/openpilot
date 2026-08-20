@@ -54,6 +54,20 @@ Behavior:
 
 Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib[0,1,2]`. +pitch is down, +yaw is left, +roll is clockwise looking forward. Reset still clears calibration, torque, delay, and LiveParametersV2.
 
+## Theme
+
+**Toggles → theme** (Comma 4: card after BSM delay). Opens a subsection page.
+
+- **lane color** — engaged lane lines (the two closest lines on the C4 model view).
+  - `tesla blue` (default) — Tesla Autopilot visualization blue `#3E8CEB`
+  - `stock green` — stock openpilot `#00FF40`
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `LaneColor` | INT | `1` | `0` stock green, `1` Tesla Autopilot blue |
+
+Live while driving; no restart.
+
 ## Driving-model picker — not ported
 
 sunnypilot’s **model picker** (community driving NNs: GWM, DTR, etc.) is **not** a small drop-in. It needs:

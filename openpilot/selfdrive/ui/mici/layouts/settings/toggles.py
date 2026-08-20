@@ -10,7 +10,9 @@ from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
 from openpilot.system.ui.lib.application import gui_app, MousePos
-from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  LANE_COLOR_LABELS, lane_color_label, restart_needed_callback,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -37,6 +39,42 @@ class BigParamCycle(BigButton):
     self._mode = next_alc_mode(self._mode)
     self.set_value(ALC_MODE_LABELS[self._mode].lower())
     self._params.put(self._param, self._mode, block=True)
+
+
+class ThemeLayoutMici(NavScroller):
+  """Settings → Toggles → theme. Subsections live here."""
+
+  def __init__(self):
+    super().__init__()
+    self._lane_color = BigMultiParamToggle("lane color", "LaneColor", list(LANE_COLOR_LABELS))
+    self._scroller.add_widgets([
+      GreyBigButton("theme", "visuals"),
+      self._lane_color,
+    ])
+
+
+class ThemeBigButton(BigButton):
+  def __init__(self):
+    super().__init__("theme", "lane color")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = lane_color_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _update_state(self):
+    super()._update_state()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    gui_app.push_widget(ThemeLayoutMici())
 
 
 class ExperimentalModeConfirmPage(NavScroller):
@@ -73,6 +111,7 @@ class TogglesLayoutMici(NavScroller):
                                        toggle_callback=self._on_experimental_mode)
     self._alc_cycle = BigParamCycle("auto lane change", "AutoLaneChangeTimer")
     self._bsm_toggle = BigParamControl("bsm delay", "AutoLaneChangeBsmDelay")
+    self._theme_btn = ThemeBigButton()
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -83,6 +122,7 @@ class TogglesLayoutMici(NavScroller):
     self._scroller.add_widgets([
       self._alc_cycle,
       self._bsm_toggle,
+      self._theme_btn,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -130,6 +170,7 @@ class TogglesLayoutMici(NavScroller):
   def show_event(self):
     super().show_event()
     self._alc_cycle.refresh()
+    self._theme_btn.refresh()
     self._update_toggles()
 
   def _update_toggles(self):
@@ -152,6 +193,7 @@ class TogglesLayoutMici(NavScroller):
       item.set_checked(ui_state.params.get_bool(key))
 
     self._alc_cycle.refresh()
+    self._theme_btn.refresh()
     mode = normalize_alc_mode(ui_state.params.get("AutoLaneChangeTimer", return_default=True))
     self._bsm_toggle.set_enabled(mode > AutoLaneChangeMode.NUDGE)
 
