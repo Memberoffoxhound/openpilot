@@ -177,7 +177,7 @@ class _CamBuf:
     self.frames += 1
     if self.cur_start_pts is None:
       self.cur_start_pts = pts_90k
-    elif (pts_90k - self.cur_start_pts) / HZ90 >= 0.6:
+    elif (pts_90k - self.cur_start_pts) / HZ90 >= 0.28:
       self._flush()
 
   def _flush(self):
@@ -200,10 +200,10 @@ class _CamBuf:
       return None
     lines = [
       "#EXTM3U",
-      "#EXT-X-VERSION:3",
+      "#EXT-X-VERSION:6",
       "#EXT-X-INDEPENDENT-SEGMENTS",
       "#EXT-X-TARGETDURATION:1",
-      "#EXT-X-START:TIME-OFFSET=-0.25,PRECISE=YES",
+      "#EXT-X-START:TIME-OFFSET=-0.15,PRECISE=YES",
       f"#EXT-X-MEDIA-SEQUENCE:{segs[0][0]}",
     ]
     for seq, dur, _ in segs:

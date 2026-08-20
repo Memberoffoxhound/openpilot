@@ -419,6 +419,14 @@ class ServerState:
       "extrinsicsCalibration", "radarState", "gpsLocation", "gpsLocationExternal",
       "driverStateV2",
     ])
+    self._gps_fix: tuple[float | None, float | None, float | None] = (None, None, None)
+    try:
+      self._gps_socks = [
+        messaging.sub_sock("gpsLocation", conflate=True, timeout=0),
+        messaging.sub_sock("gpsLocationExternal", conflate=True, timeout=0),
+      ]
+    except Exception:
+      self._gps_socks = []
     self.trip_t0 = time.monotonic()
     self.trip_last = self.trip_t0
     self.trip_eng = 0.0
@@ -431,11 +439,27 @@ class ServerState:
     while True:
       try:
         self.sm.update(50)
+        self._poll_gps_socks()
         snap = self.build_hud()
         with self.hud_lock:
           self.hud = snap
       except Exception:
         time.sleep(0.15)
+
+  def _poll_gps_socks(self) -> None:
+    for sock in self._gps_socks:
+      try:
+        msg = messaging.recv_one_or_none(sock)
+        if msg is None:
+          continue
+        g = getattr(msg, msg.which())
+        lat, lon = float(g.latitude), float(g.longitude)
+        if abs(lat) < 0.01 and abs(lon) < 0.01:
+          continue
+        hdg = float(getattr(g, "bearingDeg", 0.0) or 0.0) or None
+        self._gps_fix = (lat, lon, hdg)
+      except Exception:
+        continue
 
   @staticmethod
   def _xyz(line, step: int = 4, cap: int = 24) -> list[list[float]]:
@@ -451,19 +475,20 @@ class ServerState:
     return pts
 
   def _read_gps(self) -> tuple[float | None, float | None, float | None]:
+    if self._gps_fix[0] is not None:
+      return self._gps_fix
     sm = self.sm
     best: tuple[float | None, float | None, float | None] = (None, None, None)
     for name in ("gpsLocation", "gpsLocationExternal"):
       try:
-        if not sm.seen.get(name) and sm.recv_frame.get(name, 0) == 0:
-          continue
         g = sm[name]
-        lat, lon = float(g.latitude), float(g.longitude)
-        if abs(lat) < 0.01 and abs(lon) < 0.01:
+        lat, lon = float(getattr(g, "latitude", 0) or 0), float(getattr(g, "longitude", 0) or 0)
+        if abs(lat) < 0.2 and abs(lon) < 0.2:
           continue
         hdg = float(getattr(g, "bearingDeg", 0.0) or 0.0) or None
         best = (lat, lon, hdg)
-        if getattr(g, "hasFix", True):
+        if getattr(g, "hasFix", False) or abs(lat) > 1:
+          self._gps_fix = best
           return best
       except Exception:
         continue
@@ -472,11 +497,17 @@ class ServerState:
         raw = Params().get("LastGPSPosition")
         if raw:
           if isinstance(raw, (bytes, bytearray)):
-            raw = raw.decode()
-          j = json.loads(raw)
-          lat = float(j.get("latitude") or j.get("lat") or 0)
-          lon = float(j.get("longitude") or j.get("lon") or 0)
-          if abs(lat) > 0.01 or abs(lon) > 0.01:
+            raw = raw.decode(errors="ignore")
+          lat = lon = None
+          try:
+            j = json.loads(raw)
+            lat = float(j.get("latitude") or j.get("lat") or 0)
+            lon = float(j.get("longitude") or j.get("lon") or 0)
+          except Exception:
+            parts = [p.strip() for p in raw.replace(";", ",").split(",")]
+            if len(parts) >= 2:
+              lat, lon = float(parts[0]), float(parts[1])
+          if lat is not None and (abs(lat) > 0.2 or abs(lon) > 0.2):
             return lat, lon, None
       except Exception:
         pass
