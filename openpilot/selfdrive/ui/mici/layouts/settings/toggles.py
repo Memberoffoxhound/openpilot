@@ -1,15 +1,98 @@
 from collections.abc import Callable
 
+import pyray as rl
 from openpilot.cereal import log
-
-from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton
+from openpilot.common.params import Params
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.system.ui.lib.application import gui_app
-from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+from openpilot.system.ui.widgets import Widget
+from openpilot.system.ui.widgets.scroller import NavScroller
+from openpilot.system.ui.lib.application import gui_app, MousePos
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  LANE_COLOR_LABELS, lane_color_label, next_lane_color, restart_needed_callback,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+
+class AutoLaneChangeConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+    accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                         lambda: self.dismiss(on_confirm))
+    self._scroller.add_widgets([
+      GreyBigButton("enabling\nauto lane change", "scroll to continue", warn),
+      GreyBigButton("", "Auto Lane Change uses Tesla's built-in blind spot monitoring to check for a vehicle in the adjacent lane prior to merging."),
+      GreyBigButton("", "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."),
+      accept,
+    ])
+
+
+class LaneColorCycle(BigButton):
+  """Tap to cycle tesla blue / comma green."""
+
+  def __init__(self):
+    super().__init__("lane color", "")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = lane_color_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self.set_value(LANE_COLOR_LABELS[nxt])
+
+
+class OnAirToggle(Widget):
+  """Red On-Air = livestream on. Gray = stock Connect only."""
+
+  def __init__(self):
+    super().__init__()
+    self._params = Params()
+    self._on = gui_app.texture("icons_mici/on_air_on.png", 280, 112)
+    self._off = gui_app.texture("icons_mici/on_air_off.png", 280, 112)
+    self.set_rect(rl.Rectangle(0, 0, 220, 180))
+    self.set_click_callback(self._toggle)
+
+  def _toggle(self):
+    on = not self._params.get_bool("LivestreamEnabled")
+    self._params.put_bool("LivestreamEnabled", on, block=True)
+
+  def _render(self, _):
+    txt = self._on if self._params.get_bool("LivestreamEnabled") else self._off
+    x = self.rect.x + (self.rect.width - txt.width) / 2
+    y = self.rect.y + (self.rect.height - txt.height) / 2
+    rl.draw_texture_ex(txt, rl.Vector2(x, y), 0.0, 1.0, rl.WHITE)
+
+
+class LivestreamLayoutMici(NavScroller):
+  def __init__(self):
+    super().__init__()
+    self._scroller.add_widgets([
+      OnAirToggle(),
+      GreyBigButton("", "On-Air enables onroad Connect and the local phone viewer on Wi-Fi. Off is stock Connect (parked only)."),
+    ])
+
+
+class ThemeLayoutMici(NavScroller):
+  """Settings → theme. Subsections live here."""
+
+  def __init__(self):
+    super().__init__()
+    self._lane_color = LaneColorCycle()
+    self._scroller.add_widgets([self._lane_color])
 
 
 class ExperimentalModeConfirmPage(NavScroller):
@@ -44,6 +127,8 @@ class TogglesLayoutMici(NavScroller):
     self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"])
     self._experimental_btn = BigToggle("experimental mode", initial_state=ui_state.params.get_bool("ExperimentalMode"),
                                        toggle_callback=self._on_experimental_mode)
+    self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
+                             toggle_callback=self._on_alc)
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -52,6 +137,7 @@ class TogglesLayoutMici(NavScroller):
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
 
     self._scroller.add_widgets([
+      self._alc_btn,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -65,6 +151,7 @@ class TogglesLayoutMici(NavScroller):
     # Toggle lists
     self._refresh_toggles = (
       ("ExperimentalMode", self._experimental_btn),
+      ("AutoLaneChangeEnabled", self._alc_btn),
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
@@ -114,6 +201,18 @@ class TogglesLayoutMici(NavScroller):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+
+  def _on_alc(self, state: bool):
+    if state:
+      self._alc_btn.set_checked(False)
+
+      def on_confirm():
+        ui_state.params.put_bool("AutoLaneChangeEnabled", True, block=True)
+        self._alc_btn.set_checked(True)
+
+      gui_app.push_widget(AutoLaneChangeConfirmPage(on_confirm))
+    else:
+      ui_state.params.put_bool("AutoLaneChangeEnabled", False, block=True)
 
   def _on_experimental_mode(self, state: bool):
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):

@@ -6,6 +6,7 @@ from opendbc.car.structs import car
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
+from openpilot.system.webrtc.helpers import livestream_network_ok
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
@@ -59,7 +60,16 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return params.get_bool("IsLiveStreaming")
+  if not params.get_bool("IsLiveStreaming") or not livestream_network_ok(params):
+    return False
+  # On-Air off: stock Connect (offroad only). On-Air on: onroad too.
+  if started and not params.get_bool("LivestreamEnabled"):
+    return False
+  return True
+
+def dashcam_encoder(started: bool, params: Params, CP: car.CarParams) -> bool:
+  # Pause dashcam encode while someone is watching the livestream (one encoderd at a time).
+  return started and not params.get_bool("IsLiveStreaming")
 
 def or_(*fns):
   return lambda *args: operator.or_(*(fn(*args) for fn in fns))
@@ -71,7 +81,7 @@ procs = [
   DaemonProcess("manage_athenad", "openpilot.system.athena.manage_athenad", "AthenadPid"),
 
   NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
-  NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
+  NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], dashcam_encoder),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
 
@@ -116,7 +126,7 @@ procs = [
 
   # debug procs
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
-  PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
+  PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", always_run),  # Highland: stay up onroad so Connect can reconnect
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),
 ]
 

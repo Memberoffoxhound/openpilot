@@ -1,7 +1,8 @@
 from openpilot.cereal import log
 from openpilot.common.params import Params, UnknownKeyName
+from openpilot.selfdrive.ui.layouts.settings.common import lane_color_label, next_lane_color
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item
+from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.lib.application import gui_app
@@ -22,6 +23,14 @@ DESCRIPTIONS = {
     "Standard is recommended. In aggressive mode, openpilot will follow lead cars closer and be more aggressive with the gas and brake. " +
     "In relaxed mode openpilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
     "your steering wheel distance button."
+  ),
+  "AutoLaneChangeEnabled": tr_noop(
+    "Auto Lane Change uses Tesla's built-in blind spot monitoring to check for a vehicle in the adjacent lane prior to merging. " +
+    "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary. " +
+    "When off, a steering-wheel nudge is required (stock openpilot)."
+  ),
+  "LaneColor": tr_noop(
+    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -58,6 +67,12 @@ class TogglesLayout(Widget):
         lambda: tr("Disengage on Accelerator Pedal"),
         DESCRIPTIONS["DisengageOnAccelerator"],
         "disengage_on_accelerator.png",
+        False,
+      ),
+      "AutoLaneChangeEnabled": (
+        lambda: tr("Auto Lane Change"),
+        DESCRIPTIONS["AutoLaneChangeEnabled"],
+        "warning.png",
         False,
       ),
       "IsLdwEnabled": (
@@ -102,6 +117,13 @@ class TogglesLayout(Widget):
       icon="speed_limit.png"
     )
 
+    self._lane_color_setting = button_item(
+      lambda: tr("Theme: Lane Color"),
+      lambda: tr(lane_color_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["LaneColor"]),
+      callback=self._cycle_lane_color,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -131,9 +153,10 @@ class TogglesLayout(Widget):
 
       self._toggles[param] = toggle
 
-      # insert longitudinal personality after NDOG toggle
+      # insert longitudinal personality + ALC cycle after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+        self._toggles["LaneColor"] = self._lane_color_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -205,6 +228,8 @@ class TogglesLayout(Widget):
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
 
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
+
   def _render(self, rect):
     self._scroller.render(rect)
 
@@ -236,10 +261,33 @@ class TogglesLayout(Widget):
     if param == "ExperimentalMode":
       self._handle_experimental_mode_toggle(state)
       return
+    if param == "AutoLaneChangeEnabled":
+      self._handle_alc_toggle(state)
+      return
 
     self._params.put_bool(param, state, block=True)
     if self._toggle_defs[param][3]:
       self._params.put_bool("OnroadCycleRequested", True, block=True)
 
+  def _handle_alc_toggle(self, state: bool):
+    if state:
+      def confirm_callback(result: DialogResult):
+        if result == DialogResult.CONFIRM:
+          self._params.put_bool("AutoLaneChangeEnabled", True, block=True)
+        else:
+          self._toggles["AutoLaneChangeEnabled"].action_item.set_state(False)
+
+      content = (f"<h1>{tr('Auto Lane Change')}</h1><br>" +
+                 f"<p>{tr(DESCRIPTIONS['AutoLaneChangeEnabled'])}</p>")
+      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
+      gui_app.push_widget(dlg)
+    else:
+      self._params.put_bool("AutoLaneChangeEnabled", False, block=True)
+
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
+
+  def _cycle_lane_color(self):
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))

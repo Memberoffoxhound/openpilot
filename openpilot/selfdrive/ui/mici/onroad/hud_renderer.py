@@ -128,6 +128,7 @@ class HudRenderer(Widget):
     self._txt_egpu_green: rl.Texture = gui_app.texture('icons_mici/egpu_green.png', 60, 44)
     self._txt_egpu_orange: rl.Texture = gui_app.texture('icons_mici/egpu_orange.png', 60, 44)
     self._txt_egpu_crossed: rl.Texture = gui_app.texture('icons_mici/egpu_crossed.png', 60, 52)
+    self._txt_on_air: rl.Texture = gui_app.texture('icons_mici/on_air_on.png', 80, 32)
     self._egpu_icon: rl.Texture | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
@@ -195,6 +196,7 @@ class HudRenderer(Widget):
       self._draw_model_source(rect)
 
     self._draw_steering_wheel(rect)
+    self._draw_on_air(rect)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
@@ -272,6 +274,13 @@ class HudRenderer(Widget):
       exclamation_pos_x = pos_x - self._txt_exclamation_point.width / 2 + wheel_txt.width / 2 + EXCLAMATION_POINT_SPACING
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
       rl.draw_texture_ex(self._txt_exclamation_point, rl.Vector2(exclamation_pos_x, exclamation_pos_y), 0.0, 1.0, rl.WHITE)
+
+  def _draw_on_air(self, rect: rl.Rectangle) -> None:
+    if not ui_state.params.get_bool("LivestreamEnabled"):
+      return
+    icon = self._txt_on_air
+    pos = rl.Vector2(rect.x + 10, rect.y + rect.height - 14 - 50 - 6 - icon.height)
+    rl.draw_texture_ex(icon, pos, 0.0, 1.0, rl.Color(255, 255, 255, 92))
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

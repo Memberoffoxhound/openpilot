@@ -125,6 +125,22 @@ class NetworkIcon(Widget):
     rl.draw_texture_ex(draw_net_txt, rl.Vector2(draw_x, draw_y), 0.0, 1.0, rl.Color(255, 255, 255, int(255 * 0.9)))
 
 
+class OnAirIcon(Widget):
+  """Home footer On-Air badge. Red = on, gray = off. Tap handled by MiciHomeLayout."""
+
+  def __init__(self):
+    super().__init__()
+    self._on = gui_app.texture("icons_mici/on_air_on.png", 120, 48)
+    self._off = gui_app.texture("icons_mici/on_air_off.png", 120, 48)
+    self.set_rect(rl.Rectangle(0, 0, 120, 48))
+    self.set_enabled(False)
+
+  def _render(self, _):
+    txt = self._on if ui_state.params.get_bool("LivestreamEnabled") else self._off
+    y = self.rect.y + (self.rect.height - txt.height) / 2
+    rl.draw_texture_ex(txt, rl.Vector2(self.rect.x, y), 0.0, 1.0, rl.WHITE)
+
+
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -139,6 +155,7 @@ class MiciHomeLayout(Widget):
     self._version_text = self._get_version_text()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
+    self._on_air_icon = OnAirIcon()
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -150,13 +167,14 @@ class MiciHomeLayout(Widget):
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
       self._experimental_icon,
+      self._on_air_icon,
       self._egpu_icon,
       self._egpu_icon_gray,
       self._body_icon,
       self._mic_icon,
     ], spacing=18)
 
-    self._openpilot_label = UnifiedLabel("openpilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False)
+    self._openpilot_label = UnifiedLabel("DELAMAIN", font_size=80, font_weight=FontWeight.DISPLAY, max_width=520, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
@@ -190,6 +208,11 @@ class MiciHomeLayout(Widget):
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self._did_long_press:
+      r = self._on_air_icon.rect
+      if r.x <= mouse_pos.x <= r.x + r.width and r.y <= mouse_pos.y <= r.y + r.height:
+        on = not ui_state.params.get_bool("LivestreamEnabled")
+        ui_state.params.put_bool("LivestreamEnabled", on, block=True)
+        return
       relative_x = mouse_pos.x - self.rect.x
       has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
       if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
