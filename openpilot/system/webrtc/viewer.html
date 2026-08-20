@@ -54,6 +54,54 @@
     inset: 0; width: 100%; height: 100%; opacity: 0.02; pointer-events: none; object-fit: contain;
   }
   body.mode-3d #gl { display: block; }
+  body.mode-hud #vDriver { display: none; }
+  body.mode-hud #gl { display: none; }
+  #hudLayer {
+    display: none; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  }
+  body.mode-hud #hudLayer { display: block; }
+  #hudBox { position: absolute; overflow: hidden; container-type: size; }
+  #hudLanes { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hudChrome { position: absolute; inset: 0; color: #fff; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  #hudMax {
+    position: absolute; left: 2.4%; top: 2%;
+    text-shadow: 0 8px 28px #000c;
+  }
+  #hudMax .num { font-size: clamp(28px, 14cqh, 72px); font-weight: 650; letter-spacing: -0.04em; line-height: 0.9; }
+  #hudMax .lbl { font-size: clamp(10px, 4.2cqh, 22px); font-weight: 650; letter-spacing: 0.18em; opacity: 0.9; margin-top: 2px; }
+  #hudSpeed {
+    position: absolute; left: 50%; top: 68%; transform: translate(-50%, -50%);
+    text-align: center; text-shadow: 0 10px 36px #000d;
+  }
+  #hudSpeed .num { font-size: clamp(44px, 28cqh, 140px); font-weight: 700; letter-spacing: -0.05em; line-height: 0.85; }
+  #hudSpeed .unit { font-size: clamp(12px, 6cqh, 28px); font-weight: 500; opacity: 0.78; margin-top: 2px; }
+  #hudWheel {
+    position: absolute; left: 3.6%; bottom: 7%;
+    width: 9.4%; aspect-ratio: 1; border: 0.35cqh solid rgba(255,255,255,.92);
+    border-radius: 50%; box-shadow: 0 0 0 0.15cqh rgba(0,0,0,.35);
+  }
+  #hudWheel:before {
+    content: ""; position: absolute; inset: 22%; border-radius: 50%;
+    border: 0.28cqh solid rgba(255,255,255,.88);
+  }
+  #hudWheel:after {
+    content: ""; position: absolute; left: 48%; top: 10%; width: 4%; height: 80%;
+    background: rgba(255,255,255,.9); border-radius: 2px;
+  }
+  #hudOnAir {
+    position: absolute; left: 50%; top: 3.2%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 0.6em;
+    background: #e02424; color: #fff; opacity: 0.4;
+    border-radius: 0.9em; padding: 0.35em 0.7em 0.35em 0.5em;
+    font-weight: 650; letter-spacing: 0.12em; font-size: clamp(10px, 4.6cqh, 20px);
+  }
+  #hudOnAir.on { display: flex; }
+  #hudOnAir i { width: 0.7em; height: 0.7em; border-radius: 50%; background: #fff; }
+  #hudAlert {
+    position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%);
+    max-width: 80%; text-align: center; font-size: clamp(13px, 5.5cqh, 26px);
+    font-weight: 650; text-shadow: 0 6px 24px #000; display: none;
+  }
   #bar {
     position: absolute; left: 0; right: 0; top: 0; z-index: 5;
     padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
@@ -117,6 +165,18 @@
     <video id="vDriver" playsinline webkit-playsinline muted autoplay></video>
     <video id="vRoad" playsinline webkit-playsinline muted autoplay></video>
     <canvas id="gl"></canvas>
+    <div id="hudLayer">
+      <div id="hudBox">
+        <canvas id="hudLanes"></canvas>
+        <div id="hudChrome">
+          <div id="hudMax"><div class="num" id="hudSet">–</div><div class="lbl">MAX</div></div>
+          <div id="hudSpeed"><div class="num" id="hudSpd">–</div><div class="unit" id="hudUnit">mph</div></div>
+          <div id="hudWheel"></div>
+          <div id="hudOnAir"><i></i>ON AIR</div>
+          <div id="hudAlert"></div>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="bar">
     <div class="row"><b>DELAMAIN</b><span class="sp"></span><span id="st">starting…</span></div>
@@ -125,6 +185,7 @@
   <div id="hint">drag to look around · pinch to zoom</div>
   <div id="modes">
     <button id="btnPip" class="on" type="button">PiP</button>
+    <button id="btnHud" type="button">HUD</button>
     <button id="btn3d" type="button">3D</button>
   </div>
   <div id="err"></div>
@@ -174,6 +235,7 @@ function attach(video, cam) {
   video.addEventListener("loadedmetadata", () => {
     if (video === vWide && video.videoWidth)
       status("live · " + video.videoWidth + "×" + video.videoHeight);
+    if (video === vWide) layoutHud();
   });
   video.addEventListener("error", () => {
     if (video === vWide) status("decode error — tap video");
@@ -191,14 +253,18 @@ function nudgeLive(v) {
 }
 let mode = "pip";
 $("btnPip").onclick = () => setMode("pip");
+$("btnHud").onclick = () => setMode("hud");
 $("btn3d").onclick = () => setMode("3d");
 function setMode(m) {
   mode = m;
   document.body.classList.toggle("mode-3d", m === "3d");
   document.body.classList.toggle("mode-pip", m === "pip");
+  document.body.classList.toggle("mode-hud", m === "hud");
   $("btnPip").classList.toggle("on", m === "pip");
+  $("btnHud").classList.toggle("on", m === "hud");
   $("btn3d").classList.toggle("on", m === "3d");
   if (m === "3d") startGL();
+  if (m === "hud") layoutHud();
 }
 const glCanvas = $("gl");
 const vWide = $("vWide"), vRoad = $("vRoad"), vDriver = $("vDriver");
@@ -418,7 +484,133 @@ glCanvas.addEventListener("touchmove", (e) => {
     dragging = false;
   }
 }, { passive: true });
-window.addEventListener("resize", resize);
+window.addEventListener("resize", () => { resize(); layoutHud(); });
+
+function mul3(a, b) {
+  const r = [[0,0,0],[0,0,0],[0,0,0]];
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++)
+      r[i][j] = a[i][0]*b[0][j] + a[i][1]*b[1][j] + a[i][2]*b[2][j];
+  return r;
+}
+function rotEuler(r, p, y) {
+  const cr = Math.cos(r), sr = Math.sin(r);
+  const cp = Math.cos(p), sp = Math.sin(p);
+  const cy = Math.cos(y), sy = Math.sin(y);
+  return [
+    [cy*cp, cy*sp*sr - sy*cr, cy*sp*cr + sy*sr],
+    [sy*cp, sy*sp*sr + cy*cr, sy*sp*cr - cy*sr],
+    [-sp, cp*sr, cp*cr]
+  ];
+}
+const VFD = [[0,0,1],[1,0,0],[0,1,0]];
+const NATIVE_W = 1928, NATIVE_H = 1208, F = 567;
+function projectPts(pts, hud, vw, vh) {
+  const sx = vw / NATIVE_W, sy = vh / NATIVE_H;
+  const fx = F * sx, fy = F * sy, cx = (NATIVE_W/2)*sx, cy = (NATIVE_H/2)*sy;
+  const Rd = rotEuler(hud.rpy[0]||0, hud.rpy[1]||0, hud.rpy[2]||0);
+  const Rw = rotEuler(hud.wideRpy[0]||0, hud.wideRpy[1]||0, hud.wideRpy[2]||0);
+  const V = mul3(VFD, mul3(Rw, Rd));
+  const out = [];
+  for (const p of pts) {
+    const vx = V[0][0]*p[0] + V[0][1]*p[1] + V[0][2]*p[2];
+    const vy = V[1][0]*p[0] + V[1][1]*p[1] + V[1][2]*p[2];
+    const vz = V[2][0]*p[0] + V[2][1]*p[1] + V[2][2]*p[2];
+    if (vz < 0.2) continue;
+    out.push([fx * vx / vz + cx, fy * vy / vz + cy]);
+  }
+  return out;
+}
+function videoBox(video) {
+  const rw = video.videoWidth || 1280, rh = video.videoHeight || 720;
+  const cw = video.clientWidth, ch = video.clientHeight;
+  const s = Math.min(cw / rw, ch / rh);
+  const w = rw * s, h = rh * s;
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h, vw: rw, vh: rh };
+}
+function layoutHud() {
+  const box = $("hudBox");
+  if (!box) return;
+  const b = videoBox(vWide);
+  box.style.left = b.x + "px";
+  box.style.top = b.y + "px";
+  box.style.width = b.w + "px";
+  box.style.height = b.h + "px";
+  const c = $("hudLanes");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = Math.floor(b.w * dpr);
+  c.height = Math.floor(b.h * dpr);
+}
+function drawPoly(ctx, pts, fill, stroke, width) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.lineJoin = "round"; ctx.stroke(); }
+}
+function paintHud(hud) {
+  layoutHud();
+  const b = videoBox(vWide);
+  const c = $("hudLanes");
+  const ctx = c.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  ctx.setTransform(dpr * b.w / b.vw, 0, 0, dpr * b.h / b.vh, 0, 0);
+  ctx.clearRect(0, 0, b.vw, b.vh);
+  const laneHex = hud.laneColor === 0 ? "#00ff40" : "#3e8ceb";
+  const zOff = hud.height || 1.22;
+  if (hud.enabled && hud.path && hud.path.length) {
+    const left = hud.path.map((p) => [p[0], p[1] + 0.9, p[2] + zOff]);
+    const right = hud.path.map((p) => [p[0], p[1] - 0.9, p[2] + zOff]).reverse();
+    const poly = projectPts(left.concat(right), hud, b.vw, b.vh);
+    drawPoly(ctx, poly, "rgba(13,248,122,0.28)", null, 0);
+  }
+  (hud.lanes || []).forEach((ln, i) => {
+    const pts = projectPts(ln.map((p) => [p[0], p[1], p[2] + zOff]), hud, b.vw, b.vh);
+    const prob = (hud.laneProbs && hud.laneProbs[i]) || 0;
+    if (pts.length < 2 || prob < 0.15) return;
+    ctx.globalAlpha = Math.min(0.95, 0.35 + prob);
+    drawPoly(ctx, pts, null, laneHex, i === 1 || i === 2 ? 5.5 : 3.2);
+    ctx.globalAlpha = 1;
+  });
+  if (hud.lead && hud.enabled) {
+    const pt = projectPts([[hud.lead.d, -hud.lead.y, zOff]], hud, b.vw, b.vh)[0];
+    if (pt) {
+      const sz = Math.max(14, Math.min(34, 700 / (hud.lead.d + 8)));
+      ctx.fillStyle = "rgba(201,34,49,0.85)";
+      ctx.beginPath();
+      ctx.moveTo(pt[0], pt[1]);
+      ctx.lineTo(pt[0] - sz, pt[1] + sz * 1.15);
+      ctx.lineTo(pt[0] + sz, pt[1] + sz * 1.15);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  const ms = 2.23694;
+  const kph = 3.6;
+  const unit = hud.metric ? "km/h" : "mph";
+  const spd = hud.speed * (hud.metric ? kph : ms);
+  $("hudSpd").textContent = hud.enabled || spd > 0.4 ? String(Math.round(Math.max(0, spd))) : "–";
+  $("hudUnit").textContent = unit;
+  if (hud.setSpeed != null) {
+    const v = hud.setSpeed * (hud.metric ? 1 : 0.621371);
+    $("hudSet").textContent = String(Math.round(v));
+    $("hudMax").style.opacity = hud.enabled ? "1" : "0.35";
+  } else {
+    $("hudSet").textContent = "–";
+  }
+  $("hudWheel").style.transform = "rotate(" + (-(hud.steerDeg || 0)) + "deg)";
+  $("hudWheel").style.opacity = hud.enabled ? "0.92" : "0.25";
+  $("hudOnAir").classList.toggle("on", !!hud.onAir);
+  const al = $("hudAlert");
+  if (hud.alert) { al.textContent = hud.alert; al.style.display = "block"; }
+  else al.style.display = "none";
+}
+async function tickHud() {
+  if (mode !== "hud") return;
+  try { paintHud(await (await fetch("/hud", { cache: "no-store" })).json()); }
+  catch (e) {}
+}
 async function waitPlaylist(cam, tries = 50) {
   for (let i = 0; i < tries; i++) {
     const r = await fetch("/hls/" + cam + ".m3u8", { cache: "no-store" });
@@ -457,10 +649,9 @@ async function goLive() {
       try { paintStats(await getInfo()); } catch (e) {}
       nudgeLive(vWide); nudgeLive(vDriver); nudgeLive(vRoad);
     };
-      try { paintStats(await getInfo()); } catch (e) {}
-    };
     tick();
     setInterval(tick, 2000);
+    setInterval(tickHud, 100);
     setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 15000);
   } catch (e) {
     status("error");

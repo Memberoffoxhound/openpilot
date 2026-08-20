@@ -414,7 +414,10 @@ class ServerState:
     self.teardown: asyncio.TimerHandle | None = None
     self.hls = HlsHub()
     self.loop: asyncio.AbstractEventLoop | None = None
-    self.sm = messaging.SubMaster(["deviceState"])
+    self.sm = messaging.SubMaster([
+      "deviceState", "carState", "selfdriveState", "modelV2",
+      "extrinsicsCalibration", "radarState",
+    ])
 
 
 def schedule_teardown(state: ServerState):
@@ -542,6 +545,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     "/": ("GET", "HEAD"),
     "/index.html": ("GET", "HEAD"),
     "/info": ("GET", "HEAD"),
+    "/hud": ("GET", "HEAD"),
     "/watch": ("POST",),
     "/schema": ("GET", "HEAD"),
     "/stream": ("POST",),
@@ -668,6 +672,92 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       "hlsFrames": hub.frame_counts(),
     }
 
+  def _xyz(self, line, step: int = 4, cap: int = 24) -> list[list[float]]:
+    try:
+      xs, ys, zs = list(line.x), list(line.y), list(line.z)
+    except Exception:
+      return []
+    pts = []
+    for i in range(0, min(len(xs), len(ys), len(zs)), step):
+      pts.append([float(xs[i]), float(ys[i]), float(zs[i])])
+      if len(pts) >= cap:
+        break
+    return pts
+
+  def _hud_snapshot(self) -> dict[str, Any]:
+    params = Params()
+    sm = self.server.state.sm
+    sm.update(0)
+    out: dict[str, Any] = {
+      "onAir": params.get_bool("LivestreamEnabled"),
+      "metric": params.get_bool("IsMetric"),
+      "laneColor": 1,
+      "enabled": False,
+      "experimental": False,
+      "speed": 0.0,
+      "setSpeed": None,
+      "steerDeg": 0.0,
+      "alert": "",
+      "rpy": [0.0, 0.0, 0.0],
+      "wideRpy": [0.0, 0.0, 0.0],
+      "height": 1.22,
+      "path": [],
+      "lanes": [],
+      "edges": [],
+      "laneProbs": [],
+      "lead": None,
+    }
+    try:
+      lc = params.get("LaneColor") or 1
+      out["laneColor"] = int(lc)
+    except Exception:
+      pass
+    def seen(name: str) -> bool:
+      try:
+        return bool(sm.seen[name] if hasattr(sm, "seen") else sm.recv_frame[name])
+      except Exception:
+        return False
+    try:
+      if seen("carState"):
+        cs = sm["carState"]
+        v = cs.vEgoCluster if cs.vEgoCluster else cs.vEgo
+        out["speed"] = float(v)
+        out["steerDeg"] = float(cs.steeringAngleDeg)
+        cruise = float(cs.vCruiseCluster or 0.0)
+        if 0 < cruise < 255:
+          out["setSpeed"] = cruise
+      if seen("selfdriveState"):
+        ss = sm["selfdriveState"]
+        out["enabled"] = bool(ss.enabled)
+        out["experimental"] = bool(ss.experimentalMode)
+        a1 = str(getattr(ss, "alertText1", "") or "")
+        a2 = str(getattr(ss, "alertText2", "") or "")
+        out["alert"] = a1 if a1 else a2
+      if seen("extrinsicsCalibration"):
+        cal = sm["extrinsicsCalibration"]
+        rpy = list(getattr(cal, "rpyCalib", []) or [])
+        if len(rpy) == 3:
+          out["rpy"] = [float(x) for x in rpy]
+        wr = list(getattr(cal, "wideFromDeviceEuler", []) or [])
+        if len(wr) == 3:
+          out["wideRpy"] = [float(x) for x in wr]
+        h = list(getattr(cal, "height", []) or [])
+        if h:
+          out["height"] = float(h[0])
+      if seen("modelV2"):
+        m = sm["modelV2"]
+        out["path"] = self._xyz(m.position)
+        out["lanes"] = [self._xyz(ll) for ll in m.laneLines]
+        out["edges"] = [self._xyz(e) for e in m.roadEdges]
+        out["laneProbs"] = [float(p) for p in list(m.laneLineProbs)[:4]]
+      if seen("radarState"):
+        lead = sm["radarState"].leadOne
+        if lead and lead.present:
+          out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
+    except Exception:
+      pass
+    return out
+
   def _dispatch_request(self) -> None:
     parsed = urlparse(self.path)
     path = parsed.path
@@ -679,6 +769,8 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         result = self._static(path)
       elif path == "/info":
         result = _json_response(self._snapshot())
+      elif path == "/hud":
+        result = _json_response(self._hud_snapshot())
       elif not self._can_stream() and path not in ("/schema",):
         result = (403, b"On-Air is off. Enable livestream in settings.", "text/plain; charset=utf-8")
       elif path == "/watch":
