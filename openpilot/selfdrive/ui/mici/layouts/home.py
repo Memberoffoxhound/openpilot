@@ -10,7 +10,9 @@ from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.webrtc.helpers import notify_discord_on_air
+from openpilot.selfdrive.ui.mici.layouts.settings.toggles import (
+  draw_on_air_slash, on_air_ui_blocked, try_toggle_on_air,
+)
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
@@ -139,7 +141,10 @@ class OnAirIcon(Widget):
   def _render(self, _):
     txt = self._on if ui_state.params.get_bool("LivestreamEnabled") else self._off
     y = self.rect.y + (self.rect.height - txt.height) / 2
-    rl.draw_texture_ex(txt, rl.Vector2(self.rect.x, y), 0.0, 1.0, rl.WHITE)
+    x = self.rect.x
+    rl.draw_texture_ex(txt, rl.Vector2(x, y), 0.0, 1.0, rl.WHITE)
+    if on_air_ui_blocked():
+      draw_on_air_slash(x, y, txt.width, txt.height)
 
 
 class MiciHomeLayout(Widget):
@@ -211,9 +216,7 @@ class MiciHomeLayout(Widget):
     if not self._did_long_press:
       r = self._on_air_icon.rect
       if r.x <= mouse_pos.x <= r.x + r.width and r.y <= mouse_pos.y <= r.y + r.height:
-        on = not ui_state.params.get_bool("LivestreamEnabled")
-        ui_state.params.put_bool("LivestreamEnabled", on, block=True)
-        notify_discord_on_air(on)
+        try_toggle_on_air()
         return
       relative_x = mouse_pos.x - self.rect.x
       has_alerts = self._alert_count_callback and self._alert_count_callback() > 0

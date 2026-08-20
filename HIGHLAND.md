@@ -78,6 +78,7 @@ Highland On-Air:
 
 - **Off (gray):** stock Connect. Parked livestream only. Local page refused.
 - **On (red):** `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. HUD / 3D / FACE / map on the phone.
+- **Blocked (red slash):** no Wi-Fi and not a BYO SIM. Tap shows a warning; comma Prime LTE cannot enable On-Air.
 
 ### Discord + internet (no phone relay)
 

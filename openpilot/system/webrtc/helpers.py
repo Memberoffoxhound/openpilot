@@ -30,6 +30,15 @@ def livestream_network_ok(params: Params | None = None) -> bool:
   return prime not in _COMMA_DATA_PRIME
 
 
+def on_air_block_reason(params: Params | None = None, network_none: bool = False) -> str | None:
+  """Why On-Air cannot enable. None = allowed. 'offline' | 'prime'."""
+  if network_none:
+    return "offline"
+  if livestream_network_ok(params):
+    return None
+  return "prime"
+
+
 def default_route_ip() -> str | None:
   s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   try:
