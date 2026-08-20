@@ -68,6 +68,19 @@ Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib
 
 Live while driving; no restart.
 
+## Onroad livestream (1080p)
+
+Stock openpilot only starts WebRTC livestream **offroad**. Highland allows it while driving:
+
+- `IsLiveStreaming` is no longer cleared on ignition
+- `athenad.startStream` brings up `webrtcd` + `encoderd --stream` onroad
+- Dashcam `encoderd` **pauses** for the session (no dual encode). Route video for that window is missing
+- Stream is **1920×1080 H264** at up to 8 Mbps (steps down to 5 / 2 Mbps if the network drops). H264 so Safari/iPhone can decode it
+
+Watch from an iPhone: Safari → [connect.comma.ai](https://connect.comma.ai) → your device → live view. Use **Safari**, not Chrome (iOS WebRTC). Device needs cellular or a hotspot.
+
+When you close the live view, `webrtcd` clears the flag and dashcam encode resumes.
+
 ## Driving-model picker — not ported
 
 sunnypilot’s **model picker** (community driving NNs: GWM, DTR, etc.) is **not** a small drop-in. It needs:

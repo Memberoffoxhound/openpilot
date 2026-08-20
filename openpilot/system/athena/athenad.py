@@ -801,16 +801,15 @@ def startStream(sdp: str, enabled: bool) -> dict:
       if CP.notCar:
         bridge_services_in.append("testJoystick")
 
-  if params.get_bool("IsOffroad"):
-    # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
-    # webrtcd clears IsLiveStreaming when the session ends
-    params.put_bool("IsLiveStreaming", True)
-    # wait for webrtcd end points to wake up
-    try:
-      wait_for_webrtcd()
-    except TimeoutError:
-      cloudlog.event("athena.startStream.webrtcd_offroad_start_timeout", error=True)
-      raise
+  # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
+  # Dashcam encoderd pauses while this is set (see process_config.dashcam_encoder).
+  # webrtcd clears IsLiveStreaming when the session ends.
+  params.put_bool("IsLiveStreaming", True)
+  try:
+    wait_for_webrtcd()
+  except TimeoutError:
+    cloudlog.event("athena.startStream.webrtcd_start_timeout", error=True)
+    raise
 
   return post_stream_request(StreamRequestBody(sdp, ["wideRoad"], enabled, bridge_services_in, ["carState", "deviceState"]))
 

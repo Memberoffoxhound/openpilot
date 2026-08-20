@@ -25,7 +25,7 @@ def post_stream_request(body: StreamRequestBody) -> dict:
   except requests.ConnectTimeout as e:
     raise Exception("device took too long to respond.") from e
   except requests.ConnectionError as e:
-    raise Exception("turn car ignition off to use livestreaming.") from e
+    raise Exception("livestream encoder is not up yet. retry in a few seconds.") from e
 
 
 def wait_for_webrtcd(max_retries: float = 10) -> None:
