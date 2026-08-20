@@ -16,7 +16,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"AthenadUploadQueue", {PERSISTENT, JSON}},
     {"AthenadRecentlyViewedRoutes", {PERSISTENT, STRING}},
     {"AutoLaneChangeBsmDelay", {PERSISTENT, BOOL, "1"}},
-    {"AutoLaneChangeTimer", {PERSISTENT, INT, "1"}},  // 1 = NUDGELESS
+    {"AutoLaneChangeTimer", {PERSISTENT, INT, "1"}},  // 1 = NUDGELESS; 0 = Nudge; 2–11 = 0.5–5.0 s
     {"BootCount", {PERSISTENT, INT}},
     {"CalibrationParams", {PERSISTENT, BYTES}},
     {"CameraDebugExpGain", {CLEAR_ON_MANAGER_START, STRING}},

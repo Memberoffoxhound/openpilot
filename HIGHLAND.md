@@ -6,6 +6,8 @@ Fork of [commaai/openpilot](https://github.com/commaai/openpilot). Tesla car int
 
 Surgical ports only — this is **not** a sunnypilot merge.
 
+comma server-ban rules and the Highland checklist live in [TESLAPILOT_SAFETY.md](TESLAPILOT_SAFETY.md).
+
 ## Boot (Comma 4)
 
 White Tesla T is the boot mark. Same file openpilot already loads:
@@ -22,7 +24,13 @@ On mici the spinner draws both at 140×140. The track rotates 360°/s. Install/u
 
 ## Nudgeless lane change (from sunnypilot)
 
-Blinker starts the lane change while **engaged** and **over 25 mph**. No steering-wheel nudge required. Tesla DAS blind-spot is checked first.
+Blinker starts the lane change while **engaged** and **over 25 mph**. Tesla DAS blind-spot is checked first.
+
+**Toggles → Auto Lane Change** (Comma 4: first card in the toggles scroller). Tap the value to cycle:
+
+Nudgeless → Nudge (stock, steer to confirm) → 0.5 s → 1 s → 1.5 s → … → 5 s → wrap.
+
+**Toggles → BSM delay** holds the auto change until the Tesla blind-spot has been clear ~1 s. Greyed out when the mode is Nudge, because auto is off.
 
 Behavior:
 
@@ -30,13 +38,11 @@ Behavior:
 - Speed floor: **25 mph** (stock openpilot is 20).
 - BSM: `DAS_status DAS_blindSpotRearLeft/Right` already in TeslaPilot-opendbc Highland `carstate.py` → `leftBlindspot` / `rightBlindspot`. Occupied BSM blocks the change. After it clears, wait ~1 s more (`AutoLaneChangeBsmDelay`).
 - Brake during the wait cancels that auto attempt. A previous auto change in the same blinker hold will not fire another; cancel the blinker and re-signal.
-- A real steering nudge still works immediately once BSM is clear.
-
-Defaults (no UI toggle on C4 — these params are the switch):
+- A real steering nudge still works immediately once BSM is clear, in every mode except Off.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `AutoLaneChangeTimer` | INT | `1` | `-1` off, `0` stock nudge, `1` nudgeless, `2`–`5` 0.5/1/2/3 s delay |
+| `AutoLaneChangeTimer` | INT | `1` | `-1` off (hidden), `0` stock nudge, `1` nudgeless, `2`–`11` = 0.5–5.0 s in 0.5 s steps |
 | `AutoLaneChangeBsmDelay` | BOOL | `1` | wait until BSM is clear, then ~1 s |
 
 ## Driving-model picker — not ported

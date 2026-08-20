@@ -1,7 +1,10 @@
 from openpilot.cereal import log
 from openpilot.common.params import Params, UnknownKeyName
+from openpilot.selfdrive.controls.lib.auto_lane_change import (
+  alc_label, next_alc_mode, normalize_alc_mode, AutoLaneChangeMode,
+)
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item
+from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.lib.application import gui_app
@@ -22,6 +25,14 @@ DESCRIPTIONS = {
     "Standard is recommended. In aggressive mode, openpilot will follow lead cars closer and be more aggressive with the gas and brake. " +
     "In relaxed mode openpilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
     "your steering wheel distance button."
+  ),
+  "AutoLaneChangeTimer": tr_noop(
+    "Blinker starts a lane change while engaged over 25 mph. Nudge is stock openpilot (steer to confirm). " +
+    "Nudgeless starts once the blinker is on and BSM is clear. Timed values wait 0.5–5 seconds after the blinker. " +
+    "Tap the value to cycle. Only signal when traffic allows."
+  ),
+  "AutoLaneChangeBsmDelay": tr_noop(
+    "When Tesla BSM sees a vehicle in the blind spot, hold the auto lane change until the spot has been clear for about one second."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -58,6 +69,12 @@ class TogglesLayout(Widget):
         lambda: tr("Disengage on Accelerator Pedal"),
         DESCRIPTIONS["DisengageOnAccelerator"],
         "disengage_on_accelerator.png",
+        False,
+      ),
+      "AutoLaneChangeBsmDelay": (
+        lambda: tr("Auto Lane Change: Delay with Blind Spot"),
+        DESCRIPTIONS["AutoLaneChangeBsmDelay"],
+        "warning.png",
         False,
       ),
       "IsLdwEnabled": (
@@ -102,6 +119,13 @@ class TogglesLayout(Widget):
       icon="speed_limit.png"
     )
 
+    self._alc_setting = button_item(
+      lambda: tr("Auto Lane Change"),
+      lambda: tr(alc_label(self._params.get("AutoLaneChangeTimer", return_default=True))),
+      description=lambda: tr(DESCRIPTIONS["AutoLaneChangeTimer"]),
+      callback=self._cycle_alc,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -131,9 +155,10 @@ class TogglesLayout(Widget):
 
       self._toggles[param] = toggle
 
-      # insert longitudinal personality after NDOG toggle
+      # insert longitudinal personality + ALC cycle after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+        self._toggles["AutoLaneChangeTimer"] = self._alc_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -205,6 +230,11 @@ class TogglesLayout(Widget):
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
 
+    mode = normalize_alc_mode(self._params.get("AutoLaneChangeTimer", return_default=True))
+    self._alc_setting.action_item.set_text(lambda: tr(alc_label(mode)))
+    if "AutoLaneChangeBsmDelay" not in self._locked_toggles:
+      self._toggles["AutoLaneChangeBsmDelay"].action_item.set_enabled(mode > AutoLaneChangeMode.NUDGE)
+
   def _render(self, rect):
     self._scroller.render(rect)
 
@@ -243,3 +273,11 @@ class TogglesLayout(Widget):
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
+
+  def _cycle_alc(self):
+    current = normalize_alc_mode(self._params.get("AutoLaneChangeTimer", return_default=True))
+    nxt = next_alc_mode(current)
+    self._params.put("AutoLaneChangeTimer", nxt, block=True)
+    self._alc_setting.action_item.set_text(lambda: tr(alc_label(nxt)))
+    if "AutoLaneChangeBsmDelay" not in self._locked_toggles:
+      self._toggles["AutoLaneChangeBsmDelay"].action_item.set_enabled(nxt > AutoLaneChangeMode.NUDGE)

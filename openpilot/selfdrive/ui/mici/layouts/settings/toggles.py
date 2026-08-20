@@ -1,15 +1,42 @@
 from collections.abc import Callable
 
 from openpilot.cereal import log
+from openpilot.common.params import Params
+from openpilot.selfdrive.controls.lib.auto_lane_change import (
+  ALC_MODE_LABELS, AutoLaneChangeMode, next_alc_mode, normalize_alc_mode,
+)
 
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+
+class BigParamCycle(BigButton):
+  """Tap-to-cycle integer param. C4 has no room for 12 mode pills."""
+
+  def __init__(self, text: str, param: str):
+    super().__init__(text, "")
+    self._param = param
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    mode = normalize_alc_mode(self._params.get(self._param, return_default=True))
+    if mode == AutoLaneChangeMode.OFF:
+      mode = AutoLaneChangeMode.NUDGE
+    self._mode = mode
+    self.set_value(ALC_MODE_LABELS[mode].lower())
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    self._mode = next_alc_mode(self._mode)
+    self.set_value(ALC_MODE_LABELS[self._mode].lower())
+    self._params.put(self._param, self._mode, block=True)
 
 
 class ExperimentalModeConfirmPage(NavScroller):
@@ -44,6 +71,8 @@ class TogglesLayoutMici(NavScroller):
     self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"])
     self._experimental_btn = BigToggle("experimental mode", initial_state=ui_state.params.get_bool("ExperimentalMode"),
                                        toggle_callback=self._on_experimental_mode)
+    self._alc_cycle = BigParamCycle("auto lane change", "AutoLaneChangeTimer")
+    self._bsm_toggle = BigParamControl("bsm delay", "AutoLaneChangeBsmDelay")
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -52,6 +81,8 @@ class TogglesLayoutMici(NavScroller):
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
 
     self._scroller.add_widgets([
+      self._alc_cycle,
+      self._bsm_toggle,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -71,6 +102,7 @@ class TogglesLayoutMici(NavScroller):
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
       ("OpenpilotEnabledToggle", enable_openpilot),
+      ("AutoLaneChangeBsmDelay", self._bsm_toggle),
     )
 
     enable_openpilot.set_enabled(lambda: not ui_state.engaged)
@@ -92,8 +124,12 @@ class TogglesLayoutMici(NavScroller):
         self._personality_toggle.set_value(self._personality_toggle._options[personality])
       ui_state.personality = personality
 
+    mode = normalize_alc_mode(ui_state.params.get("AutoLaneChangeTimer", return_default=True))
+    self._bsm_toggle.set_enabled(mode > AutoLaneChangeMode.NUDGE)
+
   def show_event(self):
     super().show_event()
+    self._alc_cycle.refresh()
     self._update_toggles()
 
   def _update_toggles(self):
@@ -114,6 +150,10 @@ class TogglesLayoutMici(NavScroller):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+
+    self._alc_cycle.refresh()
+    mode = normalize_alc_mode(ui_state.params.get("AutoLaneChangeTimer", return_default=True))
+    self._bsm_toggle.set_enabled(mode > AutoLaneChangeMode.NUDGE)
 
   def _on_experimental_mode(self, state: bool):
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):

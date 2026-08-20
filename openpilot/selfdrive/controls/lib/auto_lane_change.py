@@ -10,6 +10,12 @@ TeslaPilot Highland defaults:
   - Blind-spot delay: wait until DAS BSM is clear, then ~1s more
   - Speed floor is applied in desire_helper (25 mph)
   - Engaged gate is applied in desire_helper (lateral_active)
+
+AutoLaneChangeTimer values (Toggles → Auto Lane Change):
+  -1 Off (no lane change at all — not in the UI cycle)
+   0 Nudge (stock openpilot — must apply steering torque)
+   1 Nudgeless (~0.05 s)
+   2–11 timed delay, 0.5 s steps from 0.5 s through 5.0 s
 """
 from openpilot.cereal import log
 from openpilot.common.params import Params
@@ -20,25 +26,60 @@ class AutoLaneChangeMode:
   OFF = -1
   NUDGE = 0
   NUDGELESS = 1
-  HALF_SECOND = 2
-  ONE_SECOND = 3
-  TWO_SECONDS = 4
-  THREE_SECONDS = 5
+  DELAY_MIN = 2   # 0.5 s
+  DELAY_MAX = 11  # 5.0 s
 
 
 AUTO_LANE_CHANGE_TIMER = {
   AutoLaneChangeMode.OFF: 0.0,
   AutoLaneChangeMode.NUDGE: 0.0,
   AutoLaneChangeMode.NUDGELESS: 0.05,
-  AutoLaneChangeMode.HALF_SECOND: 0.5,
-  AutoLaneChangeMode.ONE_SECOND: 1.0,
-  AutoLaneChangeMode.TWO_SECONDS: 2.0,
-  AutoLaneChangeMode.THREE_SECONDS: 3.0,
 }
+
+ALC_MODE_LABELS = {
+  AutoLaneChangeMode.OFF: "Off",
+  AutoLaneChangeMode.NUDGE: "Nudge",
+  AutoLaneChangeMode.NUDGELESS: "Nudgeless",
+}
+
+for _mode in range(AutoLaneChangeMode.DELAY_MIN, AutoLaneChangeMode.DELAY_MAX + 1):
+  _sec = 0.5 * (_mode - 1)
+  AUTO_LANE_CHANGE_TIMER[_mode] = _sec
+  ALC_MODE_LABELS[_mode] = f"{_sec:g} s"
+
+# C4 / tici cycle order: one tap from the default lands on stock nudge.
+ALC_UI_MODES = (
+  [AutoLaneChangeMode.NUDGELESS, AutoLaneChangeMode.NUDGE] +
+  list(range(AutoLaneChangeMode.DELAY_MIN, AutoLaneChangeMode.DELAY_MAX + 1))
+)
 
 # When BSM is occupied on a nudgeless/timed change, rewind the wait so the
 # lane change cannot start until the spot has been clear ~1s.
 ONE_SECOND_DELAY = -1
+
+
+def normalize_alc_mode(value) -> int:
+  try:
+    mode = AutoLaneChangeMode.NUDGELESS if value is None else int(value)
+  except (TypeError, ValueError):
+    return AutoLaneChangeMode.NUDGELESS
+  if mode == AutoLaneChangeMode.OFF:
+    return AutoLaneChangeMode.OFF
+  if mode not in AUTO_LANE_CHANGE_TIMER:
+    return AutoLaneChangeMode.NUDGELESS
+  return mode
+
+
+def next_alc_mode(current: int) -> int:
+  mode = normalize_alc_mode(current)
+  if mode not in ALC_UI_MODES:
+    return AutoLaneChangeMode.NUDGELESS
+  idx = ALC_UI_MODES.index(mode)
+  return ALC_UI_MODES[(idx + 1) % len(ALC_UI_MODES)]
+
+
+def alc_label(value) -> str:
+  return ALC_MODE_LABELS[normalize_alc_mode(value)]
 
 
 class AutoLaneChangeController:
@@ -63,14 +104,9 @@ class AutoLaneChangeController:
       self.prev_lane_change = False
 
   def read_params(self) -> None:
-    timer = self.params.get("AutoLaneChangeTimer", return_default=True)
-    try:
-      self.lane_change_set_timer = AutoLaneChangeMode.NUDGELESS if timer is None else int(timer)
-    except (TypeError, ValueError):
-      self.lane_change_set_timer = AutoLaneChangeMode.NUDGELESS
-    if self.lane_change_set_timer not in AUTO_LANE_CHANGE_TIMER:
-      self.lane_change_set_timer = AutoLaneChangeMode.NUDGELESS
-
+    self.lane_change_set_timer = normalize_alc_mode(
+      self.params.get("AutoLaneChangeTimer", return_default=True)
+    )
     bsm = self.params.get("AutoLaneChangeBsmDelay", return_default=True)
     self.lane_change_bsm_delay = True if bsm is None else bool(bsm)
 
