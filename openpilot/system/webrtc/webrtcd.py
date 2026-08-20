@@ -417,6 +417,7 @@ class ServerState:
     self.sm = messaging.SubMaster([
       "deviceState", "carState", "selfdriveState", "modelV2",
       "extrinsicsCalibration", "radarState", "gpsLocation", "gpsLocationExternal",
+      "driverStateV2",
     ])
     self.trip_t0 = time.monotonic()
     self.trip_last = self.trip_t0
@@ -505,6 +506,12 @@ class ServerState:
       "lat": None,
       "lon": None,
       "hdg": None,
+      "faceYaw": 0.0,
+      "facePitch": 0.0,
+      "faceRoll": 0.0,
+      "faceProb": 0.0,
+      "blinkL": 0.0,
+      "blinkR": 0.0,
       "tripMiles": round(self.trip_miles, 2),
       "engagedPct": 0.0,
     }
@@ -559,6 +566,16 @@ class ServerState:
           out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
       lat, lon, hdg = self._read_gps()
       out["lat"], out["lon"], out["hdg"] = lat, lon, hdg
+      if got("driverStateV2"):
+        ds = sm["driverStateV2"]
+        left, right = ds.leftDriverData, ds.rightDriverData
+        pick = left if float(left.faceProb or 0) >= float(right.faceProb or 0) else right
+        ori = list(getattr(pick, "faceOrientation", []) or [])
+        if len(ori) >= 3:
+          out["facePitch"], out["faceYaw"], out["faceRoll"] = float(ori[0]), float(ori[1]), float(ori[2])
+        out["faceProb"] = float(pick.faceProb or 0)
+        out["blinkL"] = float(getattr(pick, "leftBlinkProb", 0) or 0)
+        out["blinkR"] = float(getattr(pick, "rightBlinkProb", 0) or 0)
     except Exception:
       pass
     now = time.monotonic()
