@@ -47,12 +47,12 @@ Behavior:
 
 ## Camera calibration
 
-**Device → Reset Calibration** shows the live mount angles on the control itself (stock only hid them in the expandable description).
+**Device → Reset Calibration** shows the live mount angles (roll, pitch, yaw) on the control itself (stock only hid pitch/yaw in the expandable description).
 
-- Comma 4: grey value on the card, two lines (`2.1° down` / `0.4° left`). `uncalibrated` until the first valid blocks.
-- tici: same string next to the RESET chip.
+- Comma 4: grey value on the card, three lines (`P 2.1° down` / `Y 0.4° left` / `R 0.3° cw`). `uncalibrated` until the first valid blocks.
+- tici: same three values next to the RESET chip.
 
-Pitch/yaw still come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib`. Reset still clears calibration, torque, delay, and LiveParametersV2.
+Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib[0,1,2]`. +pitch is down, +yaw is left, +roll is clockwise looking forward. Reset still clears calibration, torque, delay, and LiveParametersV2.
 
 ## Driving-model picker — not ported
 

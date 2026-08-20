@@ -121,10 +121,13 @@ class DeviceLayout(Widget):
         calib = messaging.log_from_bytes(calib_bytes, log.Event).extrinsicsCalibration
 
         if calib.calStatus != log.ExtrinsicsCalibration.Status.uncalibrated:
+          roll = math.degrees(calib.rpyCalib[0])
           pitch = math.degrees(calib.rpyCalib[1])
           yaw = math.degrees(calib.rpyCalib[2])
-          desc += tr(" Your device is pointed {:.1f}° {} and {:.1f}° {}.").format(abs(pitch), tr("down") if pitch > 0 else tr("up"),
-                                                                                  abs(yaw), tr("left") if yaw > 0 else tr("right"))
+          desc += tr(" Your device is pointed {:.1f}° {}, {:.1f}° {}, roll {:.1f}° {}.").format(
+            abs(pitch), tr("down") if pitch > 0 else tr("up"),
+            abs(yaw), tr("left") if yaw > 0 else tr("right"),
+            abs(roll), tr("cw") if roll > 0 else tr("ccw"))
       except Exception:
         cloudlog.exception("invalid CalibrationParams")
 

@@ -91,11 +91,13 @@ class EngagedConfirmationButton(BigButton):
 
 
 class ResetCalibrationButton(EngagedConfirmationButton):
-  """C4 Device card: live pitch/yaw on the button itself."""
+  """C4 Device card: live roll/pitch/yaw on the button itself."""
 
   def __init__(self, icon: rl.Texture, callback: Callable[[], None]):
     super().__init__("reset calibration", "reset", icon, callback)
     self._params = Params()
+    self._sub_label.set_font_size(28)
+    self._sub_label.set_line_height(0.92)
     self.refresh()
 
   def refresh(self):
