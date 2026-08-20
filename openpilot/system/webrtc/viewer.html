@@ -16,12 +16,12 @@
   .screen { position: fixed; inset: 0; }
   .hero {
     position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-    filter: saturate(1.05) contrast(1.05);
+    filter: saturate(1.05) contrast(1.05); pointer-events: none;
   }
-  .veil { position: absolute; inset: 0; background: linear-gradient(180deg, #0000 20%, #000c 78%, #000 100%); }
+  .veil { position: absolute; inset: 0; background: linear-gradient(180deg, #0000 20%, #000c 78%, #000 100%); pointer-events: none; }
   .copy {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 28px 24px calc(36px + env(safe-area-inset-bottom));
   }
   .kicker { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
   h1 { margin: 8px 0 10px; font-size: clamp(28px, 7vw, 44px); font-weight: 650; letter-spacing: .04em; }
@@ -632,6 +632,8 @@ function offCopy(info) {
   return "Enable On-Air on the device — tap the badge on the home screen, or Settings → livestream. Same Wi-Fi. Then reload.";
 }
 async function goLive() {
+  if (goLive.busy) return;
+  goLive.busy = true;
   show("live");
   document.body.classList.add("mode-pip");
   try {
@@ -654,6 +656,7 @@ async function goLive() {
     setInterval(tickHud, 100);
     setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 15000);
   } catch (e) {
+    goLive.busy = false;
     status("error");
     showErr(e.message || String(e));
   }
@@ -669,7 +672,8 @@ async function boot() {
   }
   show("boot");
 }
-$("enter").onclick = () => goLive();
+$("enter").onclick = (e) => { e.stopPropagation(); goLive(); };
+$("boot").onclick = () => goLive();
 $("retry").onclick = () => boot();
 boot();
 </script>
