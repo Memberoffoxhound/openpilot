@@ -416,7 +416,7 @@ class ServerState:
     self.loop: asyncio.AbstractEventLoop | None = None
     self.sm = messaging.SubMaster([
       "deviceState", "carState", "selfdriveState", "modelV2",
-      "extrinsicsCalibration", "radarState", "gpsLocation",
+      "extrinsicsCalibration", "radarState", "gpsLocation", "gpsLocationExternal",
     ])
     self.trip_t0 = time.monotonic()
     self.trip_last = self.trip_t0
@@ -763,15 +763,20 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         lead = sm["radarState"].leadOne
         if lead and lead.present:
           out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
+      gps = None
       if seen("gpsLocation"):
         gps = sm["gpsLocation"]
-        if getattr(gps, "hasFix", True) or (getattr(gps, "latitude", 0) or getattr(gps, "longitude", 0)):
-          lat, lon = float(gps.latitude), float(gps.longitude)
-          if lat != 0.0 or lon != 0.0:
-            out["lat"], out["lon"] = lat, lon
-          hdg = float(getattr(gps, "bearingDeg", 0.0) or 0.0)
-          if hdg:
-            out["hdg"] = hdg
+      if seen("gpsLocationExternal"):
+        ext = sm["gpsLocationExternal"]
+        if gps is None or (float(getattr(gps, "latitude", 0) or 0) == 0.0 and float(getattr(gps, "longitude", 0) or 0) == 0.0):
+          gps = ext
+      if gps is not None:
+        lat, lon = float(gps.latitude), float(gps.longitude)
+        if lat != 0.0 or lon != 0.0:
+          out["lat"], out["lon"] = lat, lon
+        hdg = float(getattr(gps, "bearingDeg", 0.0) or 0.0)
+        if hdg:
+          out["hdg"] = hdg
     except Exception:
       pass
     try:

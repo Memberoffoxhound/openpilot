@@ -36,13 +36,13 @@
   body.boot #boot, body.off #off { display: block; }
   body.live #live { display: block; }
   #live { display: none; background: #000; }
-  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center; background: #000; }
   video { background: #000; }
-  #vWide { width: 100%; height: 100%; object-fit: contain; }
+  #vWide { width: 100%; height: 100%; object-fit: contain; object-position: center top; }
   #vDriver {
-    position: absolute; right: max(12px, env(safe-area-inset-right));
-    bottom: calc(86px + env(safe-area-inset-bottom));
-    width: min(34vw, 220px); aspect-ratio: 4/3; object-fit: cover;
+    position: absolute; z-index: 3;
+    right: max(12px, env(safe-area-inset-right));
+    width: min(32vw, 180px); aspect-ratio: 4/3; object-fit: cover;
     border-radius: 14px; border: 1px solid var(--line);
     box-shadow: 0 10px 32px rgba(0,0,0,.55);
   }
@@ -55,7 +55,6 @@
     inset: 0; width: 100%; height: 100%; opacity: 0.02; pointer-events: none; object-fit: contain;
   }
   body.mode-3d #gl { display: block; }
-  body.mode-hud #vDriver { display: none; }
   body.mode-hud #gl { display: none; }
   #hudLayer {
     display: none; position: absolute; inset: 0; z-index: 2; pointer-events: none;
@@ -113,12 +112,12 @@
     font-weight: 650; text-shadow: 0 6px 24px #000; display: none;
   }
   #mapDock {
-    display: none; position: absolute; z-index: 4;
+    display: flex; position: absolute; z-index: 4;
     left: 10px; right: 10px;
     bottom: calc(70px + env(safe-area-inset-bottom));
     gap: 10px; align-items: stretch; pointer-events: auto;
   }
-  body.mode-hud #mapDock, body.mode-pip #mapDock { display: flex; }
+  body.mode-3d #mapDock { display: none; }
   #map {
     width: min(38vw, 190px); height: min(20vh, 138px); flex: 0 0 auto;
     border-radius: 14px; overflow: hidden;
@@ -234,8 +233,7 @@
   </div>
   <div id="hint">drag to look around · pinch to zoom</div>
   <div id="modes">
-    <button id="btnPip" class="on" type="button">PiP</button>
-    <button id="btnHud" type="button">HUD</button>
+    <button id="btnHud" type="button">HUD off</button>
     <button id="btn3d" type="button">3D</button>
   </div>
   <div id="err"></div>
@@ -286,7 +284,7 @@ function attach(video, cam) {
   video.addEventListener("loadedmetadata", () => {
     if (video === vWide && video.videoWidth)
       status("live · " + video.videoWidth + "×" + video.videoHeight);
-    if (video === vWide) layoutHud();
+    if (video === vWide) { layoutHud(); layoutDriver(); }
   });
   video.addEventListener("error", () => {
     if (video === vWide) status("decode error — tap video");
@@ -312,20 +310,31 @@ function videoLagMs() {
     return Math.max(80, (b.end(b.length - 1) - vWide.currentTime) * 1000);
   } catch (e) { return 400; }
 }
-let mode = "pip";
-$("btnPip").onclick = () => setMode("pip");
-$("btnHud").onclick = () => setMode("hud");
-$("btn3d").onclick = () => setMode("3d");
+let mode = "live";
+let hudOn = false;
+$("btnHud").onclick = () => {
+  hudOn = !hudOn;
+  if (mode === "3d") setMode("live");
+  else applyHud();
+};
+$("btn3d").onclick = () => setMode(mode === "3d" ? "live" : "3d");
+function applyHud() {
+  const show = hudOn && mode !== "3d";
+  document.body.classList.toggle("mode-hud", show);
+  $("btnHud").textContent = hudOn ? "HUD on" : "HUD off";
+  $("btnHud").classList.toggle("on", hudOn);
+  if (show) layoutHud();
+  layoutDriver();
+}
 function setMode(m) {
   mode = m;
   document.body.classList.toggle("mode-3d", m === "3d");
-  document.body.classList.toggle("mode-pip", m === "pip");
-  document.body.classList.toggle("mode-hud", m === "hud");
-  $("btnPip").classList.toggle("on", m === "pip");
-  $("btnHud").classList.toggle("on", m === "hud");
   $("btn3d").classList.toggle("on", m === "3d");
-  if (m === "3d") startGL();
-  if (m === "hud") layoutHud();
+  if (m === "3d") {
+    startGL();
+    vDriver.style.left = vDriver.style.top = vDriver.style.width = vDriver.style.height = "";
+  }
+  applyHud();
   if (map) setTimeout(() => map.invalidateSize(), 150);
 }
 const glCanvas = $("gl");
@@ -339,7 +348,7 @@ uniform sampler2D uWide, uRoad, uDriver;
 uniform vec2 uRes;
 uniform float uYaw, uPitch, uFov;
 uniform float uWideH, uRoadH, uDriverH;
-uniform float uHasRoad, uHasDriver;
+uniform float uHasRoad, uHasDriver, uDriverRoll;
 
 vec2 pinhole(vec3 dir, float hfov, float aspect) {
   float z = dir.z;
@@ -404,11 +413,15 @@ void main() {
   }
 
   if (uHasDriver > 0.5) {
-    vec3 ddir = vec3(-dir.x, dir.y - 0.12 * abs(dir.z), -dir.z);
+    vec3 ddir = normalize(vec3(-dir.x, dir.y - 0.06 * abs(dir.z), -dir.z));
+    float cr = cos(uDriverRoll), sr = sin(uDriverRoll);
+    ddir = vec3(cr * ddir.x - sr * ddir.y, sr * ddir.x + cr * ddir.y, ddir.z);
     vec2 uvd = sphereUV(normalize(ddir), uDriverH);
     float wD = cover(uvd);
     if (wD > 0.001) {
-      col += texture2D(uDriver, clamp(uvd, 0.0, 1.0)).rgb * wD;
+      vec3 dcol = texture2D(uDriver, clamp(uvd, 0.0, 1.0)).rgb;
+      dcol = matchTo(dcol, wideCol);
+      col += dcol * wD;
       wSum += wD;
     }
   }
@@ -463,9 +476,11 @@ function startGL() {
   u.driverH = g.getUniformLocation(prog, "uDriverH");
   u.hasRoad = g.getUniformLocation(prog, "uHasRoad");
   u.hasDriver = g.getUniformLocation(prog, "uHasDriver");
+  u.driverRoll = g.getUniformLocation(prog, "uDriverRoll");
   g.uniform1f(u.wideH, WIDE_HFOV);
   g.uniform1f(u.roadH, ROAD_HFOV);
   g.uniform1f(u.driverH, DRIVER_HFOV);
+  g.uniform1f(u.driverRoll, 0.40);
   glOn = true;
   resize();
   requestAnimationFrame(draw);
@@ -580,8 +595,23 @@ function videoBox(video) {
   const cw = video.clientWidth, ch = video.clientHeight;
   const s = Math.min(cw / rw, ch / rh);
   const w = rw * s, h = rh * s;
-  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h, vw: rw, vh: rh };
+  return { x: (cw - w) / 2, y: 0, w, h, vw: rw, vh: rh };
 }
+function layoutDriver() {
+  if (mode === "3d") return;
+  const b = videoBox(vWide);
+  if (!b.w) return;
+  const w = Math.min(window.innerWidth * 0.32, 180);
+  const h = w * 0.75;
+  vDriver.style.width = w + "px";
+  vDriver.style.height = h + "px";
+  vDriver.style.left = Math.max(8, b.x + b.w - w - 10) + "px";
+  vDriver.style.top = Math.max(8, b.y + b.h - h - 10) + "px";
+  vDriver.style.right = "auto";
+  vDriver.style.bottom = "auto";
+}
+window.addEventListener("resize", () => { layoutHud(); layoutDriver(); });
+window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHud(); layoutDriver(); }, 250); });
 function layoutHud() {
   const box = $("hudBox");
   if (!box) return;
@@ -687,16 +717,20 @@ function paintTrip(hud) {
   else { b.className = "off"; b.textContent = "NOT ENGAGED"; }
 }
 async function reverseGeo(lat, lon) {
+  $("place").textContent = lat.toFixed(4) + ", " + lon.toFixed(4);
+  const apply = (road, city, region) => {
+    const bits = [road, city, region].filter(Boolean);
+    if (bits.length) $("place").textContent = bits.join(" · ");
+  };
   try {
     const r = await fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat + "&longitude=" + lon + "&localityLanguage=en");
     const j = await r.json();
-    const infos = (j.localityInfo && (j.localityInfo.informative || j.localityInfo.administrative)) || [];
-    const road = infos.map((x) => x.name).find((n) => n && /St|Ave|Rd|Dr|Blvd|Hwy|Ln|Way|Pkwy|Pike|Cir|Ct/i.test(n));
-    const bits = [road, j.locality || j.city, j.principalSubdivisionCode || j.principalSubdivision].filter(Boolean);
-    $("place").textContent = bits.join(" · ") || (lat.toFixed(4) + ", " + lon.toFixed(4));
-  } catch (e) {
-    $("place").textContent = lat.toFixed(4) + ", " + lon.toFixed(4);
-  }
+    const infos = (j.localityInfo && (j.localityInfo.informative || []).concat(j.localityInfo.administrative || [])) || [];
+    const road = infos.map((x) => x.name).find((n) => n && /St|Ave|Rd|Dr|Blvd|Hwy|Ln|Way|Pkwy|Pike|Cir|Ct|Street/i.test(n));
+    apply(road, j.locality || j.city, j.principalSubdivisionCode || j.principalSubdivision);
+    if ($("place").textContent.indexOf(",") >= 0 && (j.locality || j.city))
+      apply(road, j.locality || j.city, j.principalSubdivisionCode || j.principalSubdivision);
+  } catch (e) {}
 }
 function updateMap(hud) {
   initMap();
@@ -715,14 +749,15 @@ async function tickHud() {
     const hud = await (await fetch("/hud", { cache: "no-store" })).json();
     paintTrip(hud);
     updateMap(hud);
-    if (mode !== "hud") return;
-    const now = performance.now();
-    hudBuf.push({ t: now, hud });
-    const lag = videoLagMs();
-    const target = now - lag;
-    while (hudBuf.length > 1 && hudBuf[1].t <= target) hudBuf.shift();
-    if (hudBuf.length > 80) hudBuf.splice(0, hudBuf.length - 40);
-    paintHud(hudBuf[0].hud);
+    if (hudOn && mode !== "3d") {
+      const now = performance.now();
+      hudBuf.push({ t: now, hud });
+      const lag = videoLagMs();
+      const target = now - lag;
+      while (hudBuf.length > 1 && hudBuf[1].t <= target) hudBuf.shift();
+      if (hudBuf.length > 80) hudBuf.splice(0, hudBuf.length - 40);
+      paintHud(hudBuf[0].hud);
+    }
   } catch (e) {}
 }
 async function waitPlaylist(cam, tries = 50) {
@@ -749,7 +784,7 @@ async function goLive() {
   if (goLive.busy) return;
   goLive.busy = true;
   show("live");
-  document.body.classList.add("mode-pip");
+  applyHud();
   try {
     status("starting cameras");
     await watch();
