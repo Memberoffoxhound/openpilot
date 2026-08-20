@@ -4,6 +4,8 @@ Working branch for Tesla Model 3 Highland (2024+) on TeslaPilot.
 
 Fork of [commaai/openpilot](https://github.com/commaai/openpilot). Tesla car interface lives in [TeslaPilot-opendbc](https://github.com/Memberoffoxhound/TeslaPilot-opendbc/tree/Highland).
 
+Surgical ports only — this is **not** a sunnypilot merge.
+
 ## Boot (Comma 4)
 
 White Tesla T is the boot mark. Same file openpilot already loads:
@@ -17,3 +19,36 @@ On mici the spinner draws both at 140×140. The track rotates 360°/s. Install/u
 
 - **Cooperative steering** — light steering-wheel torque adds angle while engaged instead of requiring a full override. Stiffer as speed increases. Disengages if torsion-bar torque exceeds 5 Nm.
 - **Cancel cruise with steering button** — on stalkless Highland, the steering-wheel scroll cancel is seen via `DAS_accState == 13` and raised as `ButtonType.cancel`.
+
+## Nudgeless lane change (from sunnypilot)
+
+Blinker starts the lane change while **engaged** and **over 25 mph**. No steering-wheel nudge required. Tesla DAS blind-spot is checked first.
+
+Behavior:
+
+- Gate: `lateral_active` (openpilot engaged). Blinker is ignored when disengaged.
+- Speed floor: **25 mph** (stock openpilot is 20).
+- BSM: `DAS_status DAS_blindSpotRearLeft/Right` already in TeslaPilot-opendbc Highland `carstate.py` → `leftBlindspot` / `rightBlindspot`. Occupied BSM blocks the change. After it clears, wait ~1 s more (`AutoLaneChangeBsmDelay`).
+- Brake during the wait cancels that auto attempt. A previous auto change in the same blinker hold will not fire another; cancel the blinker and re-signal.
+- A real steering nudge still works immediately once BSM is clear.
+
+Defaults (no UI toggle on C4 — these params are the switch):
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `AutoLaneChangeTimer` | INT | `1` | `-1` off, `0` stock nudge, `1` nudgeless, `2`–`5` 0.5/1/2/3 s delay |
+| `AutoLaneChangeBsmDelay` | BOOL | `1` | wait until BSM is clear, then ~1 s |
+
+## Driving-model picker — not ported
+
+sunnypilot’s **model picker** (community driving NNs: GWM, DTR, etc.) is **not** a small drop-in. It needs:
+
+- custom cereal `ModelManagerSP` (stock TeslaPilot cereal has no such type)
+- `modelManagerD` daemon + fetcher + `ModelManager_ActiveBundle` params
+- sunnylink catalog (`REQUIRED_JSON_VERSION = 17`)
+- modeld custom runners (`ModelRunnerTypeCache`, tinygrad vs stock)
+- tici-heavy `ModelsLayout` UI — not the Comma 4 536×240 OLED
+
+TeslaPilot Highland already tracks commaai/openpilot **master**, so you get the latest **stock comma** driving model. Community models need a sunnypilot-based fork, not a surgical port.
+
+The other “model picker” in sunnypilot is the **vehicle platform selector** (`car_list.json` / ~350 cars). TeslaPilot is Tesla-only; that UI is not useful here.
