@@ -45,6 +45,15 @@ Behavior:
 | `AutoLaneChangeTimer` | INT | `1` | `-1` off (hidden), `0` stock nudge, `1` nudgeless, `2`–`11` = 0.5–5.0 s in 0.5 s steps |
 | `AutoLaneChangeBsmDelay` | BOOL | `1` | wait until BSM is clear, then ~1 s |
 
+## Camera calibration
+
+**Device → Reset Calibration** shows the live mount angles on the control itself (stock only hid them in the expandable description).
+
+- Comma 4: grey value on the card, two lines (`2.1° down` / `0.4° left`). `uncalibrated` until the first valid blocks.
+- tici: same string next to the RESET chip.
+
+Pitch/yaw still come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib`. Reset still clears calibration, torque, delay, and LiveParametersV2.
+
 ## Driving-model picker — not ported
 
 sunnypilot’s **model picker** (community driving NNs: GWM, DTR, etc.) is **not** a small drop-in. It needs:

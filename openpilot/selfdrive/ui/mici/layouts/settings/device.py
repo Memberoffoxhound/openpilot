@@ -6,6 +6,7 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.ui.widgets.scroller import NavRawScrollPanel, NavScroller
+from openpilot.selfdrive.ui.layouts.settings.common import calib_button_value
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationDialog
 from openpilot.selfdrive.ui.mici.widgets.pairing_dialog import PairingDialog
@@ -87,6 +88,24 @@ class EngagedConfirmationButton(BigButton):
                exit_on_confirm: bool = True, red: bool = False):
     super().__init__(text, "", icon)
     self.set_click_callback(lambda: _engaged_confirmation_click(callback, action_text, icon, exit_on_confirm=exit_on_confirm, red=red))
+
+
+class ResetCalibrationButton(EngagedConfirmationButton):
+  """C4 Device card: live pitch/yaw on the button itself."""
+
+  def __init__(self, icon: rl.Texture, callback: Callable[[], None]):
+    super().__init__("reset calibration", "reset", icon, callback)
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = calib_button_value(self._params, compact=True)
+    if value != self.value:
+      self.set_value(value)
+
+  def _update_state(self):
+    super()._update_state()
+    self.refresh()
 
 
 class DeviceInfoLayoutMici(Widget):
@@ -175,9 +194,10 @@ class DeviceLayoutMici(NavScroller):
       params.remove("LiveParametersV2")
       params.remove("LiveDelay")
       params.put_bool("OnroadCycleRequested", True, block=True)
+      self._reset_calib_btn.refresh()
 
-    reset_calibration_btn = EngagedConfirmationButton("reset calibration", "reset", gui_app.texture("icons_mici/settings/device/lkas.png", 122, 64),
-                                                      reset_calibration_callback)
+    self._reset_calib_btn = ResetCalibrationButton(gui_app.texture("icons_mici/settings/device/lkas.png", 122, 64),
+                                                   reset_calibration_callback)
 
     reboot_btn = EngagedConfirmationCircleButton("reboot", gui_app.texture("icons_mici/settings/device/reboot.png", 64, 70),
                                                  reboot_callback, exit_on_confirm=False)
@@ -207,10 +227,14 @@ class DeviceLayoutMici(NavScroller):
       cabin_cam_btn,
       terms_btn,
       regulatory_btn,
-      reset_calibration_btn,
+      self._reset_calib_btn,
       reboot_btn,
       self._power_off_btn,
     ])
+
+  def show_event(self):
+    super().show_event()
+    self._reset_calib_btn.refresh()
 
   def _on_regulatory(self):
     if not self._fcc_dialog:
