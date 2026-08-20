@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from typing import Any
 
-from openpilot.system.webrtc.helpers import StreamRequestBody, livestream_network_ok, on_air_block_reason
+from openpilot.system.webrtc.helpers import StreamRequestBody, on_air_block_reason
 from openpilot.system.webrtc.schema import generate_field
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -218,12 +218,13 @@ class LivestreamBitrateController(AsyncTaskRunner):
 class StreamSession:
   shared_pub_master = DynamicPubMaster([])
 
-  def __init__(self, body: StreamRequestBody):
+  def __init__(self, body: StreamRequestBody, lan: bool = False):
     from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
     from teleoprtc.builder import WebRTCAnswerBuilder
 
     self.identifier = str(uuid.uuid4())
     self.params = Params()
+    self.lan = lan
     # Highland: don't pin ICE to the current default-route IP. Binding to wifi
     # makes the peer connection die the instant the device switches to LTE onroad.
     builder = WebRTCAnswerBuilder(body.sdp, bind_address=None)
@@ -313,12 +314,15 @@ class StreamSession:
       self.logger.exception("Cereal incoming proxy failure")
 
   async def _watch_network(self):
+    # Connect (loopback) is stock: never apply On-Air / Prime gates.
+    if not self.lan:
+      return
     while True:
       await asyncio.sleep(2.0)
       reason = None
-      if not livestream_network_ok(self.params):
+      if on_air_block_reason(self.params):
         reason = "Livestream is limited to Wi-Fi or a non-Prime SIM."
-      elif not self.params.get_bool("LivestreamEnabled") and not self.params.get_bool("IsOffroad"):
+      elif not self.params.get_bool("LivestreamEnabled"):
         reason = "On-Air is off."
       if reason is None:
         continue
@@ -448,22 +452,25 @@ class ServerState:
       return False
 
   def _stop_streams_async(self) -> None:
+    """Drop LAN viewer sessions only. Never touch Connect (loopback)."""
     loop = self.loop
     if loop is None:
-      self.params.put_bool("IsLiveStreaming", False)
       return
 
     async def _stop():
       async with self.stream_lock:
-        for session in list(self.streams.values()):
+        for sid, session in list(self.streams.items()):
+          if not getattr(session, "lan", False):
+            continue
           try:
             ch = session.stream.get_messaging_channel()
             ch.send(json.dumps({"type": "disconnect", "data": "On-Air network lost."}))
           except Exception:
             pass
           await session.stop()
-        self.streams.clear()
-      self.params.put_bool("IsLiveStreaming", False)
+          self.streams.pop(sid, None)
+      if not self.streams:
+        schedule_teardown(self)
 
     asyncio.run_coroutine_threadsafe(_stop(), loop)
 
@@ -479,7 +486,6 @@ class ServerState:
         now = time.monotonic()
         if on and reason:
           self.params.put_bool("LivestreamEnabled", False)
-          self.params.put_bool("IsLiveStreaming", False)
           self._forced_off = True
           self._resume_deadline = now + self.RESUME_S
           self._stop_streams_async()
@@ -692,18 +698,20 @@ def _text_response(text: str, status: int = 200) -> tuple[int, bytes, str]:
   return (status, text.encode(), "text/plain; charset=utf-8")
 
 
-async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: str) -> tuple[int, bytes, str]:
+async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: str, lan: bool = False) -> tuple[int, bytes, str]:
   if content_type and not content_type.startswith("application/json"):
     return _json_response({"error": "unsupported media type"}, status=415)
 
   stream_dict = state.streams
   body = StreamRequestBody(**json.loads(raw_body))
   params = Params()
-  reason = on_air_block_reason(params)
-  if reason:
-    return _json_response({"error": reason, "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."}, status=403)
-  if not params.get_bool("LivestreamEnabled"):
-    return _json_response({"error": "onair", "message": "On-Air is off."}, status=403)
+  # LAN viewer only. Connect (athenad → 127.0.0.1) is stock and must not see our gates.
+  if lan:
+    reason = state.block_reason or on_air_block_reason(params)
+    if reason:
+      return _json_response({"error": reason, "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."}, status=403)
+    if not params.get_bool("LivestreamEnabled"):
+      return _json_response({"error": "onair", "message": "On-Air is off."}, status=403)
   params.put_bool("IsLiveStreaming", True)
   state.touch_hud()
 
@@ -723,7 +731,7 @@ async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: s
       await s.stop()
       stream_dict.pop(sid, None)
 
-    session = StreamSession(body)
+    session = StreamSession(body, lan=lan)
     stream_dict[session.identifier] = session
     try:
       answer = await asyncio.wait_for(session.get_answer(), timeout=30)
@@ -806,7 +814,13 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     self.params = Params()
     super().__init__(*args, **kwargs)
 
+  def _loopback(self) -> bool:
+    return self.client_address[0] in ("127.0.0.1", "::1")
+
   def _can_stream(self) -> bool:
+    # Connect/athenad always hits loopback. On-Air only gates the LAN viewer.
+    if self._loopback():
+      return True
     return self.params.get_bool("LivestreamEnabled") and self.server.state.block_reason is None
 
   def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
@@ -907,7 +921,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       elif path == "/hud":
         result = _json_response(self._hud_snapshot())
       elif not self._can_stream() and path not in ("/schema",):
-        result = (403, b"On-Air is off. Enable livestream in settings.", "text/plain; charset=utf-8")
+        result = _json_response({"error": "onair", "message": "On-Air is off. Enable livestream in settings."}, status=403)
       elif path == "/watch":
         if self.command != "POST":
           result = _json_response({"error": "method not allowed"}, status=405)
@@ -925,7 +939,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
           services = parse_qs(parsed.query).get("services", [""])[0]
           result = self._run(handle_get_schema(self.server.state, services))
         elif path == "/stream":
-          result = self._run(handle_get_stream(self.server.state, self._read_body(), self.headers.get_content_type()))
+          result = self._run(handle_get_stream(self.server.state, self._read_body(), self.headers.get_content_type(), lan=not self._loopback()))
         else:
           try:
             payload = json.loads(self._read_body())
