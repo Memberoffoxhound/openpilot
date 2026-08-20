@@ -1,3 +1,13 @@
+Version 0.11.2.1 — DELAMAIN (2026-08-20)
+========================================
+Tesla Model 3 Highland fork on top of openpilot 0.11.2. See CHANGELOG.md.
+
+* Auto lane change (off by default) with Tesla stock BSM and a slide-to-enable warning
+* Theme: Tesla blue or comma green lane lines
+* Calibration card shows pitch, yaw, and roll
+* On-Air local Wi-Fi viewer (HUD, 3D stitch, map/trip, Andross FACE) — not comma Connect
+* White Tesla T boot mark; home wordmark DELAMAIN
+
 Version 0.11.2 (2026-08-12)
 =======================
 * New driving model
