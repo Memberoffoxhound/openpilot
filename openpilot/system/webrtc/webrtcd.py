@@ -418,6 +418,10 @@ class ServerState:
       "deviceState", "carState", "selfdriveState", "modelV2",
       "extrinsicsCalibration", "radarState", "liveLocationKalman",
     ])
+    self.trip_t0 = time.monotonic()
+    self.trip_last = self.trip_t0
+    self.trip_eng = 0.0
+    self.trip_miles = 0.0
 
 
 def schedule_teardown(state: ServerState):
@@ -708,6 +712,9 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       "lead": None,
       "lat": None,
       "lon": None,
+      "hdg": None,
+      "tripMiles": 0.0,
+      "engagedPct": 0.0,
     }
     try:
       lc = params.get("LaneColor") or 1
@@ -763,6 +770,24 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
           v = list(getattr(pos, "value", []) or [])
           if len(v) >= 2:
             out["lat"], out["lon"] = float(v[0]), float(v[1])
+        ori = getattr(llk, "calibratedOrientationNED", None)
+        if ori is not None:
+          ov = list(getattr(ori, "value", []) or [])
+          if len(ov) >= 3:
+            out["hdg"] = float(ov[2]) * 57.2957795
+    except Exception:
+      pass
+    try:
+      st = self.server.state
+      now = time.monotonic()
+      dt = max(0.0, now - st.trip_last)
+      st.trip_last = now
+      st.trip_miles += abs(float(out["speed"] or 0.0)) * dt / 1609.344
+      if out["enabled"]:
+        st.trip_eng += dt
+      total = max(now - st.trip_t0, 1e-3)
+      out["tripMiles"] = round(st.trip_miles, 2)
+      out["engagedPct"] = round(100.0 * st.trip_eng / total, 1)
     except Exception:
       pass
     return out

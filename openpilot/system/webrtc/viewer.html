@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <title>DELAMAIN Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   :root { color-scheme: dark; --fg: #f2f2f2; --muted: rgba(255,255,255,.62); --line: rgba(255,255,255,.12); --blue: #3e8ceb; --gold: #d4b36a; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -111,6 +112,36 @@
     max-width: 80%; text-align: center; font-size: clamp(13px, 5.5cqh, 26px);
     font-weight: 650; text-shadow: 0 6px 24px #000; display: none;
   }
+  #mapDock {
+    display: none; position: absolute; z-index: 4;
+    left: 10px; right: 10px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    gap: 10px; align-items: stretch; pointer-events: auto;
+  }
+  body.mode-hud #mapDock, body.mode-pip #mapDock { display: flex; }
+  #map {
+    width: min(38vw, 190px); height: min(20vh, 138px); flex: 0 0 auto;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 10px 28px #0008; background: #111;
+  }
+  #map .leaflet-container { width: 100%; height: 100%; background: #111; }
+  #trip {
+    flex: 1; min-width: 0; background: #141414cc;
+    border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
+    padding: 10px 12px; backdrop-filter: blur(8px);
+    font-size: 12px; color: var(--muted);
+  }
+  #trip .place { color: #fff; font-weight: 650; font-size: 13px; margin-bottom: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #trip .row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
+  #trip b { color: #fff; font-weight: 650; font-variant-numeric: tabular-nums; }
+  #engBadge {
+    display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px;
+    font-weight: 700; letter-spacing: .14em; font-size: 10px;
+  }
+  #engBadge.on { background: #3e8ceb; color: #fff; }
+  #engBadge.off { background: #2c2c2c; color: #8e8e8e; }
   #bar {
     position: absolute; left: 0; right: 0; top: 0; z-index: 5;
     padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
@@ -188,6 +219,15 @@
       </div>
     </div>
   </div>
+  <div id="mapDock">
+    <div id="map"></div>
+    <div id="trip">
+      <div class="place" id="place">Locating…</div>
+      <div class="row"><span>Trip</span><b id="tripMi">0.0 mi</b></div>
+      <div class="row"><span>Engaged</span><b id="engPct">0%</b></div>
+      <span id="engBadge" class="off">NOT ENGAGED</span>
+    </div>
+  </div>
   <div id="bar">
     <div class="row"><b>DELAMAIN</b><span class="sp"></span><span id="st">starting…</span></div>
     <div id="stats"></div>
@@ -200,10 +240,11 @@
   </div>
   <div id="err"></div>
 </section>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const WIDE_HFOV = 119 * Math.PI/180;
+const WIDE_HFOV = 185 * Math.PI/180;
 const ROAD_HFOV = 40 * Math.PI/180;
-const DRIVER_HFOV = 119 * Math.PI/180;
+const DRIVER_HFOV = 185 * Math.PI/180;
 const $ = (id) => document.getElementById(id);
 const st = $("st");
 const errBox = $("err");
@@ -285,10 +326,11 @@ function setMode(m) {
   $("btn3d").classList.toggle("on", m === "3d");
   if (m === "3d") startGL();
   if (m === "hud") layoutHud();
+  if (map) setTimeout(() => map.invalidateSize(), 150);
 }
 const glCanvas = $("gl");
 const vWide = $("vWide"), vRoad = $("vRoad"), vDriver = $("vDriver");
-let gl, prog, tex = {}, u = {}, view = { yaw: 0, pitch: 0.04, fov: 95 * Math.PI/180 };
+let gl, prog, tex = {}, u = {}, view = { yaw: 0, pitch: 0.02, fov: 82 * Math.PI/180 };
 let glOn = false;
 const VS = `attribute vec2 a; void main(){ gl_Position = vec4(a,0.0,1.0); }`;
 const FS = `
@@ -307,13 +349,21 @@ vec2 pinhole(vec3 dir, float hfov, float aspect) {
   return vec2(0.5 + (dir.x / z) / (2.0 * tanH), 0.5 - (dir.y / z) / (2.0 * tanV));
 }
 
+vec2 sphereUV(vec3 dir, float fov) {
+  float theta = acos(clamp(dir.z, -1.0, 1.0));
+  float r = theta / max(fov * 0.5, 0.001);
+  float n = length(dir.xy);
+  vec2 a = n > 1e-6 ? dir.xy / n : vec2(0.0);
+  return vec2(0.5 + 0.5 * a.x * r, 0.5 - 0.5 * a.y * r * (16.0/9.0));
+}
+
 float inside(vec2 uv) {
   return step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
 }
 
-float edgeW(vec2 uv) {
+float cover(vec2 uv) {
   float e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-  return smoothstep(0.0, 0.08, e);
+  return inside(uv) * smoothstep(0.0, 0.07, e);
 }
 
 vec3 matchTo(vec3 src, vec3 ref) {
@@ -334,52 +384,36 @@ void main() {
   float cy = cos(uYaw), sy = sin(uYaw);
   dir = vec3(cy * dir.x + sy * dir.z, dir.y, -sy * dir.x + cy * dir.z);
 
-  vec3 col = vec3(0.02);
-  float wgt = 0.0;
+  vec3 col = vec3(0.03);
+  float wSum = 0.0;
 
-  vec2 uvw = pinhole(dir, uWideH, 16.0/9.0);
-  float iw = inside(uvw);
+  vec2 uvw = sphereUV(dir, uWideH);
+  float wW = cover(uvw);
   vec3 wideCol = texture2D(uWide, clamp(uvw, 0.0, 1.0)).rgb;
-  if (iw > 0.5) {
-    col = wideCol;
-    wgt = 1.0;
-  }
+  if (wW > 0.001) { col += wideCol * wW; wSum += wW; }
 
   if (uHasRoad > 0.5) {
-    vec3 dirR = dir;
-    dirR = normalize(vec3(dirR.x, dirR.y + 0.035 * dirR.z, dirR.z));
+    vec3 dirR = normalize(vec3(dir.x, dir.y + 0.03 * dir.z, dir.z));
     vec2 uvr = pinhole(dirR, uRoadH, 16.0/9.0);
-    if (inside(uvr) > 0.5) {
-      vec3 roadCol = texture2D(uRoad, uvr).rgb;
-      roadCol = matchTo(roadCol, wideCol);
-      float a = edgeW(uvr);
-      col = mix(col, roadCol, a);
-      wgt = 1.0;
+    float wR = cover(uvr);
+    if (wR > 0.001) {
+      vec3 roadCol = matchTo(texture2D(uRoad, uvr).rgb, wideCol);
+      col += roadCol * wR * 1.15;
+      wSum += wR * 1.15;
     }
   }
 
   if (uHasDriver > 0.5) {
-    vec3 back = vec3(-dir.x, dir.y * 0.96, -dir.z);
-    vec2 uvd = pinhole(back, uDriverH, 16.0/9.0);
-    float id = inside(uvd);
-    vec3 dcol = texture2D(uDriver, clamp(uvd, 0.0, 1.0)).rgb;
-    float lookBack = smoothstep(0.08, 0.55, -dir.z);
-    float a = max(id * lookBack, lookBack * edgeW(clamp(uvd, 0.0, 1.0)) * (1.0 - iw) * 0.85);
-    if (a > 0.01) {
-      col = mix(col, dcol, clamp(a, 0.0, 1.0));
-      wgt = max(wgt, a);
+    vec3 ddir = vec3(-dir.x, dir.y - 0.12 * abs(dir.z), -dir.z);
+    vec2 uvd = sphereUV(normalize(ddir), uDriverH);
+    float wD = cover(uvd);
+    if (wD > 0.001) {
+      col += texture2D(uDriver, clamp(uvd, 0.0, 1.0)).rgb * wD;
+      wSum += wD;
     }
   }
 
-  if (wgt < 0.5) {
-    vec2 uvw2 = clamp(uvw, 0.0, 1.0);
-    vec3 back = vec3(-dir.x, dir.y, -dir.z);
-    vec2 uvd2 = pinhole(back, uDriverH, 16.0/9.0);
-    float useD = smoothstep(-0.15, 0.25, -dir.z);
-    vec3 fill = mix(texture2D(uWide, uvw2).rgb, texture2D(uDriver, clamp(uvd2, 0.0, 1.0)).rgb, useD);
-    col = mix(fill, col, wgt);
-  }
-
+  if (wSum > 0.001) col /= wSum;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -635,10 +669,53 @@ function paintHud(hud) {
   else al.style.display = "none";
 }
 const hudBuf = [];
+let map, marker, lastGeo = 0;
+function initMap() {
+  if (map || typeof L === "undefined") return;
+  try {
+    map = L.map("map", { zoomControl: false, attributionControl: false, dragging: true }).setView([38.65, -90.24], 15);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    marker = L.circleMarker([38.65, -90.24], { radius: 6, color: "#80d8a6", fillColor: "#3e8ceb", fillOpacity: 1, weight: 2 }).addTo(map);
+  } catch (e) {}
+}
+function paintTrip(hud) {
+  const mi = Number(hud.tripMiles || 0);
+  $("tripMi").textContent = hud.metric ? (mi * 1.60934).toFixed(1) + " km" : mi.toFixed(1) + " mi";
+  $("engPct").textContent = Math.round(hud.engagedPct || 0) + "%";
+  const b = $("engBadge");
+  if (hud.enabled) { b.className = "on"; b.textContent = "ENGAGED"; }
+  else { b.className = "off"; b.textContent = "NOT ENGAGED"; }
+}
+async function reverseGeo(lat, lon) {
+  try {
+    const r = await fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat + "&longitude=" + lon + "&localityLanguage=en");
+    const j = await r.json();
+    const infos = (j.localityInfo && (j.localityInfo.informative || j.localityInfo.administrative)) || [];
+    const road = infos.map((x) => x.name).find((n) => n && /St|Ave|Rd|Dr|Blvd|Hwy|Ln|Way|Pkwy|Pike|Cir|Ct/i.test(n));
+    const bits = [road, j.locality || j.city, j.principalSubdivisionCode || j.principalSubdivision].filter(Boolean);
+    $("place").textContent = bits.join(" · ") || (lat.toFixed(4) + ", " + lon.toFixed(4));
+  } catch (e) {
+    $("place").textContent = lat.toFixed(4) + ", " + lon.toFixed(4);
+  }
+}
+function updateMap(hud) {
+  initMap();
+  if (!map || hud.lat == null || hud.lon == null) return;
+  const ll = [hud.lat, hud.lon];
+  if (marker) marker.setLatLng(ll);
+  map.setView(ll, Math.max(map.getZoom(), 15), { animate: false });
+  const now = Date.now();
+  if (now - lastGeo > 12000) {
+    lastGeo = now;
+    reverseGeo(hud.lat, hud.lon);
+  }
+}
 async function tickHud() {
-  if (mode !== "hud") return;
   try {
     const hud = await (await fetch("/hud", { cache: "no-store" })).json();
+    paintTrip(hud);
+    updateMap(hud);
+    if (mode !== "hud") return;
     const now = performance.now();
     hudBuf.push({ t: now, hud });
     const lag = videoLagMs();
