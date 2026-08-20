@@ -8,8 +8,8 @@ from openpilot.cereal import messaging
 from openpilot.common.params import Params
 
 V4L2_BUF_FLAG_KEYFRAME = 0x8
-TARGET_SEGMENT_S = 1.0
-PLAYLIST_DEPTH = 6
+TARGET_SEGMENT_S = 0.25
+PLAYLIST_DEPTH = 3
 HZ90 = 90_000
 AUD = b"\x00\x00\x00\x01\x09\xf0"
 
@@ -171,13 +171,13 @@ class _CamBuf:
     if not annexb:
       return
     dur = 0.0 if self.cur_start_pts is None else (pts_90k - self.cur_start_pts) / HZ90
-    if self.cur_frames and keyframe and dur >= 0.5:
+    if self.cur_frames and keyframe and dur >= 0.22:
       self._flush()
     self.cur_frames.append((annexb, pts_90k))
     self.frames += 1
     if self.cur_start_pts is None:
       self.cur_start_pts = pts_90k
-    elif (pts_90k - self.cur_start_pts) / HZ90 >= TARGET_SEGMENT_S * 2:
+    elif (pts_90k - self.cur_start_pts) / HZ90 >= 0.6:
       self._flush()
 
   def _flush(self):
@@ -202,7 +202,8 @@ class _CamBuf:
       "#EXTM3U",
       "#EXT-X-VERSION:3",
       "#EXT-X-INDEPENDENT-SEGMENTS",
-      "#EXT-X-TARGETDURATION:3",
+      "#EXT-X-TARGETDURATION:1",
+      "#EXT-X-START:TIME-OFFSET=-1.0,PRECISE=YES",
       f"#EXT-X-MEDIA-SEQUENCE:{segs[0][0]}",
     ]
     for seq, dur, _ in segs:
@@ -255,6 +256,7 @@ class HlsHub:
   def touch(self):
     self.last_access = time.monotonic()
     Params().put_bool("IsLiveStreaming", True)
+    Params().put("LivestreamEncoderBitrate", 1_500_000)
 
   def ensure(self):
     self.touch()
