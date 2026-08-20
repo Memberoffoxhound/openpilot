@@ -36,24 +36,25 @@
   body.boot #boot, body.off #off { display: block; }
   body.live #live { display: block; }
   #live { display: none; background: #000; }
-  #stage { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center; background: #000; }
+  #stage {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    top: calc(56px + env(safe-area-inset-top));
+    display: flex; align-items: flex-start; justify-content: center; background: #000;
+  }
   video { background: #000; }
   #vWide { width: 100%; height: 100%; object-fit: contain; object-position: center top; }
   #vDriver {
-    position: absolute; z-index: 3;
-    right: max(12px, env(safe-area-inset-right));
-    width: min(32vw, 180px); aspect-ratio: 4/3; object-fit: cover;
+    position: fixed; z-index: 4; object-fit: cover;
     border-radius: 14px; border: 1px solid var(--line);
-    box-shadow: 0 10px 32px rgba(0,0,0,.55);
-  }
-  @media (orientation: portrait) {
-    #vDriver { width: min(42vw, 200px); }
+    box-shadow: 0 10px 32px rgba(0,0,0,.55); background: #111;
   }
   #vRoad { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: none; z-index: 1; }
   body.mode-3d #vWide, body.mode-3d #vDriver, body.mode-3d #vRoad {
-    inset: 0; width: 100%; height: 100%; opacity: 0.02; pointer-events: none; object-fit: contain;
+    position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.02;
+    pointer-events: none; object-fit: contain; border: 0; border-radius: 0; box-shadow: none;
   }
+  body.mode-3d #stage { top: 0; }
   body.mode-3d #gl { display: block; }
   body.mode-hud #gl { display: none; }
   #hudLayer {
@@ -112,21 +113,22 @@
     font-weight: 650; text-shadow: 0 6px 24px #000; display: none;
   }
   #mapDock {
-    display: flex; position: absolute; z-index: 4;
+    display: flex; flex-direction: column; position: absolute; z-index: 4;
     left: 10px; right: 10px;
     bottom: calc(70px + env(safe-area-inset-bottom));
-    gap: 10px; align-items: stretch; pointer-events: auto;
+    gap: 10px; pointer-events: auto;
   }
-  body.mode-3d #mapDock { display: none; }
-  #map {
-    width: min(38vw, 190px); height: min(20vh, 138px); flex: 0 0 auto;
+  body.mode-3d #mapDock { visibility: hidden; pointer-events: none; }
+  #mapRow { display: flex; gap: 10px; height: min(20vh, 138px); }
+  #map, #dcamSlot {
+    flex: 1; height: 100%; min-width: 0;
     border-radius: 14px; overflow: hidden;
     border: 1px solid rgba(255,255,255,.16);
     box-shadow: 0 10px 28px #0008; background: #111;
   }
   #map .leaflet-container { width: 100%; height: 100%; background: #111; }
   #trip {
-    flex: 1; min-width: 0; background: #141414cc;
+    width: 100%; background: #141414cc;
     border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
     padding: 10px 12px; backdrop-filter: blur(8px);
     font-size: 12px; color: var(--muted);
@@ -219,7 +221,10 @@
     </div>
   </div>
   <div id="mapDock">
-    <div id="map"></div>
+    <div id="mapRow">
+      <div id="map"></div>
+      <div id="dcamSlot"></div>
+    </div>
     <div id="trip">
       <div class="place" id="place">Waiting for GPS</div>
       <div class="row"><span>Trip</span><b id="tripMi">0.0 mi</b></div>
@@ -242,7 +247,7 @@
 <script>
 const WIDE_HFOV = 185 * Math.PI/180;
 const ROAD_HFOV = 40 * Math.PI/180;
-const DRIVER_HFOV = 185 * Math.PI/180;
+const DRIVER_HFOV = 150 * Math.PI/180;
 const $ = (id) => document.getElementById(id);
 const st = $("st");
 const errBox = $("err");
@@ -280,15 +285,19 @@ function attach(video, cam) {
   video.setAttribute("webkit-playsinline", "");
   video.autoplay = true;
   const play = () => video.play().catch(() => {});
-  video.addEventListener("canplay", play);
-  video.addEventListener("loadedmetadata", () => {
-    if (video === vWide && video.videoWidth)
-      status("live · " + video.videoWidth + "×" + video.videoHeight);
-    if (video === vWide) { layoutHud(); layoutDriver(); }
-  });
-  video.addEventListener("error", () => {
-    if (video === vWide) status("decode error — tap video");
-  });
+  if (!video._bound) {
+    video._bound = true;
+    video.addEventListener("canplay", play);
+    video.addEventListener("loadedmetadata", () => {
+      nudgeLive(video);
+      if (video === vWide && video.videoWidth)
+        status("live · " + video.videoWidth + "×" + video.videoHeight);
+      if (video === vWide) { layoutHud(); layoutDriver(); }
+    });
+    video.addEventListener("error", () => { if (video === vWide) recover("error"); });
+    video.addEventListener("stalled", () => { if (video === vWide) recover("stalled"); });
+    video.addEventListener("emptied", () => { if (video === vWide) recover("emptied"); });
+  }
   video.load();
   play();
 }
@@ -298,9 +307,8 @@ function nudgeLive(v) {
     if (!b.length) return;
     const end = b.end(b.length - 1);
     const lag = end - v.currentTime;
-    if (lag > 1.2) v.currentTime = Math.max(0, end - 0.25);
-    else if (lag > 0.45) v.playbackRate = 1.18;
-    else v.playbackRate = 1;
+    if (lag > 0.35) v.currentTime = Math.max(0, end - 0.12);
+    v.playbackRate = lag > 0.25 ? 1.35 : 1;
   } catch (e) {}
 }
 function videoLagMs() {
@@ -413,13 +421,17 @@ void main() {
   }
 
   if (uHasDriver > 0.5) {
-    vec3 ddir = normalize(vec3(-dir.x, dir.y - 0.06 * abs(dir.z), -dir.z));
+    vec3 ddir = normalize(vec3(-dir.x, dir.y - 0.04 * abs(dir.z), -dir.z));
     float cr = cos(uDriverRoll), sr = sin(uDriverRoll);
     ddir = vec3(cr * ddir.x - sr * ddir.y, sr * ddir.x + cr * ddir.y, ddir.z);
-    vec2 uvd = sphereUV(normalize(ddir), uDriverH);
+    ddir = normalize(ddir);
+    float yaw = atan(ddir.x, ddir.z);
+    float u = 0.5 + yaw / max(uDriverH, 0.001);
+    float v = 0.5 - ddir.y * 0.70;
+    vec2 uvd = vec2(u, v);
     float wD = cover(uvd);
     if (wD > 0.001) {
-      vec3 dcol = texture2D(uDriver, clamp(uvd, 0.0, 1.0)).rgb;
+      vec3 dcol = texture2D(uDriver, uvd).rgb;
       dcol = matchTo(dcol, wideCol);
       col += dcol * wD;
       wSum += wD;
@@ -480,7 +492,7 @@ function startGL() {
   g.uniform1f(u.wideH, WIDE_HFOV);
   g.uniform1f(u.roadH, ROAD_HFOV);
   g.uniform1f(u.driverH, DRIVER_HFOV);
-  g.uniform1f(u.driverRoll, 0.40);
+  g.uniform1f(u.driverRoll, 0.22);
   glOn = true;
   resize();
   requestAnimationFrame(draw);
@@ -598,17 +610,20 @@ function videoBox(video) {
   return { x: (cw - w) / 2, y: 0, w, h, vw: rw, vh: rh };
 }
 function layoutDriver() {
-  if (mode === "3d") return;
-  const b = videoBox(vWide);
-  if (!b.w) return;
-  const w = Math.min(window.innerWidth * 0.32, 180);
-  const h = w * 0.75;
-  vDriver.style.width = w + "px";
-  vDriver.style.height = h + "px";
-  vDriver.style.left = Math.max(8, b.x + b.w - w - 10) + "px";
-  vDriver.style.top = Math.max(8, b.y + b.h - h - 10) + "px";
-  vDriver.style.right = "auto";
-  vDriver.style.bottom = "auto";
+  if (mode === "3d") {
+    vDriver.style.left = vDriver.style.top = vDriver.style.width = vDriver.style.height = "";
+    return;
+  }
+  const slot = $("dcamSlot");
+  if (!slot) return;
+  const r = slot.getBoundingClientRect();
+  if (r.width < 8) return;
+  vDriver.style.position = "fixed";
+  vDriver.style.left = r.left + "px";
+  vDriver.style.top = r.top + "px";
+  vDriver.style.width = r.width + "px";
+  vDriver.style.height = r.height + "px";
+  vDriver.style.opacity = "1";
 }
 window.addEventListener("resize", () => { layoutHud(); layoutDriver(); });
 window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHud(); layoutDriver(); }, 250); });
@@ -785,6 +800,27 @@ function offCopy(info) {
     return "This viewer is Wi-Fi only. Join the same network as the device, then reload.";
   return "Enable On-Air on the device — tap the badge on the home screen, or Settings → livestream. Same Wi-Fi. Then reload.";
 }
+let recoverAt = 0, recovering = false;
+async function recover(_why) {
+  if (!document.body.classList.contains("live")) return;
+  const now = Date.now();
+  if (recovering || now - recoverAt < 1600) return;
+  recoverAt = now;
+  recovering = true;
+  status("reconnecting…");
+  try {
+    await watch();
+    await waitPlaylist("wide", 16);
+    attach(vWide, "wide");
+    attach(vDriver, "driver");
+    attach(vRoad, "road");
+    status("live");
+  } catch (e) {
+    status("retry");
+  } finally {
+    recovering = false;
+  }
+}
 async function goLive() {
   if (goLive.busy) return;
   goLive.busy = true;
@@ -807,9 +843,15 @@ async function goLive() {
     };
     tick();
     setInterval(tick, 2000);
-    setInterval(() => { nudgeLive(vWide); nudgeLive(vDriver); nudgeLive(vRoad); }, 400);
+    setInterval(() => { nudgeLive(vWide); nudgeLive(vDriver); nudgeLive(vRoad); }, 250);
     setInterval(tickHud, 100);
-    setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 15000);
+    setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 8000);
+    if (!window._liveBound) {
+      window._liveBound = true;
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) recover("visible"); });
+      window.addEventListener("pageshow", () => recover("pageshow"));
+      window.addEventListener("focus", () => recover("focus"));
+    }
   } catch (e) {
     goLive.busy = false;
     status("error");
