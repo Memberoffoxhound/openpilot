@@ -66,8 +66,8 @@ Highland On-Air:
 - `IsLiveStreaming` survives ignition
 - `webrtcd` stays running
 - ICE is not pinned to the current wifi IP
-- Dashcam `encoderd` **pauses** while watching
-- Stream is **1920×1080 H.264 VBR up to 8 Mbps** (steps 8 / 4 / 2 Mbps on packet loss)
+- Dashcam `encoderd` **keeps running** so Connect still gets route video while you watch locally
+- Stream is **1920×1080 H.264 VBR up to 6 Mbps** (steps 6 / 4 / 2 Mbps on packet loss)
 - **LAN:** WebRTC (`/stream`, same path as Connect) — near real-time
 - **Fallback / remote HTTP:** HLS, started only if WebRTC fails or someone hits `/hls/`
 - Only on **Wi-Fi** (or unmetered) **or a non-Prime SIM**

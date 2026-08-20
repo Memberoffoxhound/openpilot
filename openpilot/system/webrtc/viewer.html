@@ -54,6 +54,11 @@
     border-radius: 14px; background: #111;
   }
   #vRoad { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  body.mode-hud #vRoad {
+    inset: 0; width: 100%; height: 100%; opacity: 1; z-index: 1;
+    object-fit: contain; object-position: center top; pointer-events: none;
+  }
+  body.mode-hud #vWide { opacity: 0.02; }
   #gl, #face {
     position: absolute; inset: 0; width: 100%; height: 100%; display: none; z-index: 2;
   }
@@ -666,14 +671,23 @@ function rotEuler(r, p, y) {
     [-sp, cp*sr, cp*cr]
   ];
 }
-const VFD = [[0,0,1],[1,0,0],[0,1,0]];
-const SRC_W = 1928, SRC_H = 1208, SRC_F = 567;
-function carSpaceT(hud, vw, vh) {
+const VFD = [[0,1,0],[0,0,1],[1,0,0]];
+const SRC_W = 1928, SRC_H = 1208;
+const WIDE_F = 567, ROAD_F = 2648;
+function hudVideo() {
+  return (hudOn && vRoad && vRoad.videoWidth) ? vRoad : vWide;
+}
+function carSpaceT(hud, vw, vh, wide) {
   const Rd = rotEuler(hud.rpy[0]||0, hud.rpy[1]||0, hud.rpy[2]||0);
-  const Rw = rotEuler(hud.wideRpy[0]||0, hud.wideRpy[1]||0, hud.wideRpy[2]||0);
+  const Rw = wide ? rotEuler(hud.wideRpy[0]||0, hud.wideRpy[1]||0, hud.wideRpy[2]||0)
+                  : [[1,0,0],[0,1,0],[0,0,1]];
   const view = mul3(VFD, mul3(Rw, Rd));
-  const fx = SRC_F * (vw / SRC_W), fy = SRC_F * (vh / SRC_H);
-  const K = [[fx, 0, vw / 2], [0, fy, vh / 2], [0, 0, 1]];
+  const f = wide ? WIDE_F : ROAD_F;
+  const s = Math.max(vw / SRC_W, vh / SRC_H);
+  const fx = f * s, fy = f * s;
+  const cx = (SRC_W * s) / 2 - (SRC_W * s - vw) / 2;
+  const cy = (SRC_H * s) / 2 - (SRC_H * s - vh) / 2;
+  const K = [[fx, 0, cx], [0, fy, cy], [0, 0, 1]];
   return mul3(K, view);
 }
 function xform(T, p) {
@@ -683,9 +697,8 @@ function xform(T, p) {
   if (z < 0.2) return null;
   return [x / z, y / z];
 }
-function mapLine(pts, yOff, zOff, hud, vw, vh, allowInvert) {
+function mapLine(pts, yOff, zOff, T, vw, vh, allowInvert) {
   if (!pts || pts.length < 2) return [];
-  const T = carSpaceT(hud, vw, vh);
   const left = [], right = [];
   for (const p of pts) {
     if (p[0] < 0 || p[0] > 100) continue;
@@ -717,7 +730,7 @@ window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHu
 function layoutHud() {
   const box = $("hudBox");
   if (!box) return;
-  const b = videoBox(vWide);
+  const b = videoBox(hudVideo());
   box.style.left = b.x + "px";
   box.style.top = b.y + "px";
   box.style.width = b.w + "px";
@@ -737,7 +750,9 @@ function drawPoly(ctx, pts, fill, stroke, width) {
 }
 function paintHud(hud) {
   layoutHud();
-  const b = videoBox(vWide);
+  const vid = hudVideo();
+  const wide = vid === vWide;
+  const b = videoBox(vid);
   const c = $("hudLanes");
   const ctx = c.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -745,21 +760,22 @@ function paintHud(hud) {
   ctx.clearRect(0, 0, b.vw, b.vh);
   const laneHex = hud.laneColor === 0 ? "#00ff40" : "#3e8ceb";
   const zPath = hud.height || 1.22;
+  const T = carSpaceT(hud, b.vw, b.vh, wide);
   (hud.lanes || []).forEach((ln, i) => {
     const prob = (hud.laneProbs && hud.laneProbs[i]) || 0;
     if (prob < 0.08) return;
     const w = (i === 1 || i === 2 ? 0.16 : 0.12) * Math.max(prob, 0.15);
     ctx.globalAlpha = Math.min(0.85, 0.25 + prob);
-    drawPoly(ctx, mapLine(ln, w, 0, hud, b.vw, b.vh, true), laneHex, null, 0);
+    drawPoly(ctx, mapLine(ln, w, 0, T, b.vw, b.vh, true), laneHex, null, 0);
     ctx.globalAlpha = 1;
   });
   (hud.edges || []).forEach((ln) => {
     ctx.globalAlpha = 0.28;
-    drawPoly(ctx, mapLine(ln, 0.12, 0, hud, b.vw, b.vh, true), "rgba(255,255,255,0.7)", null, 0);
+    drawPoly(ctx, mapLine(ln, 0.12, 0, T, b.vw, b.vh, true), "rgba(255,255,255,0.7)", null, 0);
     ctx.globalAlpha = 1;
   });
   if (hud.enabled && hud.path && hud.path.length) {
-    drawPoly(ctx, mapLine(hud.path, 0.9, zPath, hud, b.vw, b.vh, false), "rgba(13,248,122,0.42)", null, 0);
+    drawPoly(ctx, mapLine(hud.path, 0.9, zPath, T, b.vw, b.vh, false), "rgba(13,248,122,0.42)", null, 0);
   }
   if (hud.lead && hud.enabled) {
     let z = zPath;
@@ -768,7 +784,7 @@ function paintHud(hud) {
       for (const p of hud.path) if (Math.abs(p[0] - hud.lead.d) < Math.abs(best[0] - hud.lead.d)) best = p;
       z = best[2] + zPath;
     }
-    const pt = xform(carSpaceT(hud, b.vw, b.vh), [hud.lead.d, -hud.lead.y, z]);
+    const pt = xform(T, [hud.lead.d, -hud.lead.y, z]);
     if (pt) {
       const sz = Math.max(14, Math.min(36, 700 / (hud.lead.d + 8)));
       ctx.fillStyle = "rgba(201,34,49,0.88)";
