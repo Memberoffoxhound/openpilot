@@ -29,7 +29,7 @@ const int SEGMENT_LENGTH = LOGGERD_TEST ? atoi(getenv("LOGGERD_SEGMENT_LENGTH"))
 inline int livestream_width() {
   switch (Hardware::get_device_type()) {
     case cereal::InitData::DeviceType::TIZI: return 1280;
-    case cereal::InitData::DeviceType::MICI: return 1920;
+    case cereal::InitData::DeviceType::MICI: return 1280;
     default: return -1;
   }
 }
@@ -38,7 +38,7 @@ inline int livestream_height() {
   switch (Hardware::get_device_type()) {
     case cereal::InitData::DeviceType::TIZI:
       return 720;
-    case cereal::InitData::DeviceType::MICI: return 1080;
+    case cereal::InitData::DeviceType::MICI: return 720;
     default: return -1;
   }
 }

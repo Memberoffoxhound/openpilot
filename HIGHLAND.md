@@ -57,7 +57,7 @@ Roll/pitch/yaw come from `CalibrationParams` → `extrinsicsCalibration.rpyCalib
 
 Live while driving; no restart.
 
-## Onroad livestream (1080p VBR)
+## Onroad livestream (720p VBR)
 
 Stock openpilot kills livestream at **ignition**. Connect stays **parked-only** on this fork so we do not use comma TURN or Prime LTE.
 
@@ -67,7 +67,7 @@ Highland On-Air:
 - `webrtcd` stays running
 - ICE is not pinned to the current wifi IP
 - Dashcam `encoderd` **keeps running** so Connect still gets route video while you watch locally
-- Stream is **1920×1080 H.264 VBR up to 6 Mbps** (steps 6 / 4 / 2 Mbps on packet loss)
+- Stream is **1280×720 H.264 VBR up to 6 Mbps** (steps 6 / 4 / 2 Mbps on packet loss)
 - **LAN:** WebRTC (`/stream`, same path as Connect) — near real-time
 - Only on **Wi-Fi** (or unmetered) **or a non-Prime SIM**
 

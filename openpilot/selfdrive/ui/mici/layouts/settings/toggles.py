@@ -140,7 +140,7 @@ class LivestreamLayoutMici(NavScroller):
     super().__init__()
     self._scroller.add_widgets([
       OnAirToggle(),
-      GreyBigButton("", "Local Wi-Fi viewer · 1080p WebRTC.\nPhone: port 5001. Not comma's servers."),
+      GreyBigButton("", "Local Wi-Fi viewer · 720p WebRTC.\nPhone: port 5001. Not comma's servers."),
     ])
 
 

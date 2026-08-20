@@ -60,11 +60,12 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
-  if not params.get_bool("IsLiveStreaming") or not livestream_network_ok(params):
+  if not params.get_bool("IsLiveStreaming"):
     return False
-  # On-Air off: stock Connect (offroad only). On-Air on: onroad too.
-  if started and not params.get_bool("LivestreamEnabled"):
-    return False
+  if started:
+    # onroad LAN viewer only, and not comma Prime LTE
+    return params.get_bool("LivestreamEnabled") and livestream_network_ok(params)
+  # offroad Connect: athenad set IsLiveStreaming. Do not apply On-Air/Prime gates.
   return True
 
 def or_(*fns):

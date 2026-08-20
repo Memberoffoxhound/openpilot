@@ -39,7 +39,7 @@ Reset Calibration shows **P / Y / R** on the card (`down`/`left`/`cw`).
 Wi-Fi or non-Prime SIM only. Does **not** use comma Connect, TURN, or Prime LTE.
 
 - Phone, same network: `http://<device-ip>:5001/`
-- **1080p** H.264 **VBR up to 6 Mbps** (4 / 2 if the link drops)
+- **720p** H.264 **VBR up to 6 Mbps** (4 / 2 if the link drops)
 - **WebRTC** (Connect's `/stream`) on LAN
 - Dashcam **keeps recording** for Connect while you watch locally
 - **HUD on/off** — clipper-style overlay on the **narrow road cam** (MAX, speed, path, lead)
