@@ -69,7 +69,6 @@ Highland On-Air:
 - Dashcam `encoderd` **keeps running** so Connect still gets route video while you watch locally
 - Stream is **1920×1080 H.264 VBR up to 6 Mbps** (steps 6 / 4 / 2 Mbps on packet loss)
 - **LAN:** WebRTC (`/stream`, same path as Connect) — near real-time
-- **Fallback / remote HTTP:** HLS, started only if WebRTC fails or someone hits `/hls/`
 - Only on **Wi-Fi** (or unmetered) **or a non-Prime SIM**
 
 ### On-Air toggle
@@ -77,32 +76,8 @@ Highland On-Air:
 `LivestreamEnabled` (default **off**). Tap the **On-Air** badge on the home footer or **Settings → livestream**.
 
 - **Off (gray):** stock Connect. Parked livestream only. Local page refused.
-- **On (red):** `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. HUD / 3D / FACE / map on the phone.
+- **On (red):** `http://<c4-wifi-ip>:5001/` on the same Wi-Fi. HUD / 3D / map on the phone.
 - **Blocked (red slash):** no Wi-Fi and not a BYO SIM. Tap shows a warning; comma Prime LTE cannot enable On-Air.
-
-### Discord + internet (no phone relay)
-
-Discord cannot ingest the C4 WebRTC feed. A **webhook** posts the watch URL when On-Air turns on. Friends open that URL; they do not go through your phone.
-
-Params (set over SSH, persist):
-
-```
-# incoming webhook for a channel
-params put DiscordWebhookUrl 'https://discord.com/api/webhooks/…'
-
-# optional public HTTPS URL of the viewer (Cloudflare Tunnel, Tailscale Funnel, ngrok)
-params put LivestreamPublicUrl 'https://your-tunnel.example'
-```
-
-Remote watchers should use **HLS in the page** (TCP). WebRTC ICE host candidates are LAN-only; do **not** point this at comma Connect/TURN.
-
-Cloudflare Tunnel on the device (example, not bundled):
-
-```
-cloudflared tunnel --url http://127.0.0.1:5001
-```
-
-Loopback is allowed, so the tunnel can reach the viewer. 1080p × 3 cams can use a lot of **home upload** — expect a few Mbps to ~8 Mbps per camera.
 
 Connect itself is unchanged: Athena `startStream` + WebRTC. On-Air only gates *onroad* and the LAN page.
 
@@ -118,7 +93,7 @@ C4 **Settings → Network** shows the IP. Guest-Wi-Fi client isolation will bloc
 - **3D** — wide + road stitch you can pan (drag) and pinch-zoom. Look behind for the driver cam
 - HUD: encode bitrate, CPU temp, memory, Wi-Fi bars, viewers
 
-HLS, not Connect. Comma's TURN/Athena are not in the path. Close the page; encoder stops after ~60s idle and dashcam resumes.
+WebRTC, not Connect. Comma's TURN/Athena are not in the path. Close the page; encoder stops after ~60s idle.
 
 Watch from Connect still works the same (Wi-Fi, Safari → [connect.comma.ai](https://connect.comma.ai)). If you leave Wi-Fi onto a Prime SIM the Connect stream hangs up.
 

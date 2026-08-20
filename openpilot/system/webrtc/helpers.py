@@ -1,5 +1,3 @@
-import socket
-import threading
 import time
 import requests
 from dataclasses import asdict, dataclass, field
@@ -8,10 +6,6 @@ from openpilot.common.params import Params
 
 
 WEBRTCD_PORT = 5001
-_DISCORD_PREFIXES = (
-  "https://discord.com/api/webhooks/",
-  "https://discordapp.com/api/webhooks/",
-)
 
 # PrimeType from prime_state.py. Magenta/Blue/Purple include comma cellular data.
 # Lite is bring-your-own SIM.
@@ -37,67 +31,6 @@ def on_air_block_reason(params: Params | None = None, network_none: bool = False
   if livestream_network_ok(params):
     return None
   return "prime"
-
-
-def default_route_ip() -> str | None:
-  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  try:
-    s.connect(("8.8.8.8", 53))
-    return s.getsockname()[0]
-  except OSError:
-    return None
-  finally:
-    s.close()
-
-
-def _param_str(params: Params, key: str) -> str:
-  raw = params.get(key)
-  if not raw:
-    return ""
-  if isinstance(raw, (bytes, bytearray)):
-    return raw.decode(errors="ignore").strip()
-  return str(raw).strip()
-
-
-def notify_discord_on_air(enabled: bool) -> None:
-  """POST a going-live (or off-air) note. Never blocks the UI."""
-  threading.Thread(target=_discord_post, args=(enabled,), daemon=True, name="discord-hook").start()
-
-
-def _discord_post(enabled: bool) -> None:
-  try:
-    params = Params()
-    url = _param_str(params, "DiscordWebhookUrl")
-    if not url or not url.startswith(_DISCORD_PREFIXES):
-      return
-    pub = _param_str(params, "LivestreamPublicUrl")
-    ip = default_route_ip()
-    lan = f"http://{ip}:{WEBRTCD_PORT}/" if ip else f"http://<device>:{WEBRTCD_PORT}/"
-    if enabled:
-      lines = [
-        "DELAMAIN is **ON AIR**.",
-        f"LAN (same Wi-Fi): {lan}",
-      ]
-      if pub:
-        lines.append(f"Internet: {pub}")
-      else:
-        lines.append("No public URL set (`LivestreamPublicUrl`). LAN only until you add a tunnel.")
-      color = 0xE02424
-      title = "ON AIR"
-    else:
-      lines = ["Stream ended."]
-      color = 0x6B7280
-      title = "OFF AIR"
-    requests.post(url, json={
-      "username": "DELAMAIN",
-      "embeds": [{
-        "title": title,
-        "description": "\n".join(lines),
-        "color": color,
-      }],
-    }, timeout=5)
-  except Exception:
-    pass
 
 
 @dataclass

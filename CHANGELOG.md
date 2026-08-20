@@ -40,14 +40,12 @@ Wi-Fi or non-Prime SIM only. Does **not** use comma Connect, TURN, or Prime LTE.
 
 - Phone, same network: `http://<device-ip>:5001/`
 - **1080p** H.264 **VBR up to 6 Mbps** (4 / 2 if the link drops)
-- **WebRTC** (Connect's `/stream`) on LAN; HLS only as fallback
-- Discord webhook on On-Air (`DiscordWebhookUrl` + optional `LivestreamPublicUrl`)
+- **WebRTC** (Connect's `/stream`) on LAN
 - Dashcam **keeps recording** for Connect while you watch locally
 - **HUD on/off** — clipper-style overlay on the **narrow road cam** (MAX, speed, path, lead)
 - Driver cam beside the map, trip card full width (miles, % engaged, street)
 - **3D** — pan/pinch passenger stitch (wide + driver at the A-pillar)
-- **FACE** — Star Fox Andross on the phone, follows driver-monitor gaze
-- Auto-reconnect if you leave and come back; seeks the live edge to cut lag
+- Auto-reconnect if you leave and come back
 
 On-Air **off** = stock Connect behavior. On-Air **on** = local viewer; Connect is not taxed.
 

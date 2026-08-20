@@ -19,7 +19,6 @@ from urllib.parse import urlparse, parse_qs
 from typing import Any
 
 from openpilot.system.webrtc.helpers import StreamRequestBody, livestream_network_ok
-from openpilot.system.webrtc.hls import CAMERAS as HLS_CAMERAS, HlsHub
 from openpilot.system.webrtc.schema import generate_field
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -400,11 +399,11 @@ class ServerState:
     self.streams: dict[str, StreamSession] = {}
     self.stream_lock = asyncio.Lock()
     self.teardown: asyncio.TimerHandle | None = None
-    self.hls = HlsHub()
     self.loop: asyncio.AbstractEventLoop | None = None
+    self.params = Params()
     self.sm = messaging.SubMaster([
       "deviceState", "carState", "selfdriveState", "modelV2",
-      "extrinsicsCalibration", "radarState", "driverStateV2",
+      "extrinsicsCalibration", "radarState",
     ])
     self._gps_fix: tuple[float | None, float | None, float | None] = (None, None, None)
     try:
@@ -508,7 +507,7 @@ class ServerState:
     return best
 
   def build_hud(self) -> dict[str, Any]:
-    params = Params()
+    params = self.params
     sm = self.sm
     out: dict[str, Any] = {
       "onAir": params.get_bool("LivestreamEnabled"),
@@ -531,12 +530,6 @@ class ServerState:
       "lat": None,
       "lon": None,
       "hdg": None,
-      "faceYaw": 0.0,
-      "facePitch": 0.0,
-      "faceRoll": 0.0,
-      "faceProb": 0.0,
-      "blinkL": 0.0,
-      "blinkR": 0.0,
       "tripMiles": round(self.trip_miles, 2),
       "engagedPct": 0.0,
     }
@@ -591,16 +584,6 @@ class ServerState:
           out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
       lat, lon, hdg = self._read_gps()
       out["lat"], out["lon"], out["hdg"] = lat, lon, hdg
-      if got("driverStateV2"):
-        ds = sm["driverStateV2"]
-        left, right = ds.leftDriverData, ds.rightDriverData
-        pick = left if float(left.faceProb or 0) >= float(right.faceProb or 0) else right
-        ori = list(getattr(pick, "faceOrientation", []) or [])
-        if len(ori) >= 3:
-          out["facePitch"], out["faceYaw"], out["faceRoll"] = float(ori[0]), float(ori[1]), float(ori[2])
-        out["faceProb"] = float(pick.faceProb or 0)
-        out["blinkL"] = float(getattr(pick, "leftBlinkProb", 0) or 0)
-        out["blinkR"] = float(getattr(pick, "rightBlinkProb", 0) or 0)
     except Exception:
       pass
     now = time.monotonic()
@@ -625,9 +608,8 @@ def schedule_teardown(state: ServerState):
       state.teardown.cancel()
 
     def clear():
-      if not state.streams and state.hls.idle():
+      if not state.streams:
         Params().put_bool("IsLiveStreaming", False)
-        state.hls.stop()
 
     state.teardown = loop.call_later(60.0, clear)
 
@@ -648,9 +630,10 @@ async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: s
 
   stream_dict = state.streams
   body = StreamRequestBody(**json.loads(raw_body))
-  if not livestream_network_ok():
+  params = Params()
+  if not livestream_network_ok(params):
     return _json_response({"error": "wifi_or_byo_sim", "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."})
-  Params().put_bool("IsLiveStreaming", True)
+  params.put_bool("IsLiveStreaming", True)
   state.touch_hud()
 
   async with state.stream_lock:
@@ -748,17 +731,20 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     "/notify": ("POST",),
   }
 
+  def __init__(self, *args, **kwargs):
+    self.params = Params()
+    super().__init__(*args, **kwargs)
+
   def _loopback(self) -> bool:
     return self.client_address[0] in ("127.0.0.1", "::1")
 
   def _on_lan(self) -> bool:
     if self._loopback():
       return True
-    params = Params()
-    return livestream_network_ok(params) and not params.get_bool("NetworkMetered")
+    return livestream_network_ok(self.params) and not self.params.get_bool("NetworkMetered")
 
   def _can_stream(self) -> bool:
-    return self._on_lan() and Params().get_bool("LivestreamEnabled")
+    return self._on_lan() and self.params.get_bool("LivestreamEnabled")
 
   def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
     self.send_response(status)
@@ -780,34 +766,6 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
   def _run(self, coro) -> tuple[int, bytes, str]:
     return asyncio.run_coroutine_threadsafe(coro, self.server.loop).result()
 
-  def _hls(self, path: str) -> tuple[int, bytes, str]:
-    hub: HlsHub = self.server.state.hls
-    hub.note_client(self.client_address[0])
-    hub.ensure()
-    schedule_teardown(self.server.state)
-    parts = path.strip("/").split("/")
-    if len(parts) == 2 and parts[1].endswith(".m3u8"):
-      cam = parts[1][:-5]
-      if cam not in HLS_CAMERAS:
-        return _json_response({"error": "not found"}, status=404)
-      body = hub.cams[cam].playlist(cam)
-      if not body:
-        return (200, b"#EXTM3U\n#EXT-X-VERSION:3\n", "application/vnd.apple.mpegurl")
-      return (200, body.encode(), "application/vnd.apple.mpegurl")
-    if len(parts) == 3 and parts[2].endswith(".ts"):
-      cam = parts[1]
-      if cam not in HLS_CAMERAS:
-        return _json_response({"error": "not found"}, status=404)
-      try:
-        seq = int(parts[2][:-3])
-      except ValueError:
-        return _json_response({"error": "not found"}, status=404)
-      data = hub.cams[cam].segment(seq)
-      if not data:
-        return (404, b"", "video/mp2t")
-      return (200, data, "video/mp2t")
-    return _json_response({"error": "not found"}, status=404)
-
   def _static(self, path: str) -> tuple[int, bytes, str]:
     rel = path[len("/static/"):]
     if not rel or ".." in rel or rel.startswith("/"):
@@ -821,9 +779,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
 
   def _snapshot(self) -> dict[str, Any]:
     self.server.state.touch_hud()
-    hub: HlsHub = self.server.state.hls
-    hub.note_client(self.client_address[0])
-    params = Params()
+    params = self.params
     temp = mem = None
     strength = 0
     ntype = "none"
@@ -848,21 +804,23 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       reason = "onair"
     elif not net_ok or metered:
       reason = "network"
+    br = params.get("LivestreamEncoderBitrate") or 0
+    try:
+      kbps = int(br) // 1000
+    except (TypeError, ValueError):
+      kbps = 0
     return {
       "ok": True,
       "onAir": on_air,
       "networkOk": net_ok,
       "metered": metered,
       "reason": reason,
-      "hls": True,
-      "kbps": hub.kbps,
-      "viewers": hub.client_count(),
+      "kbps": kbps,
+      "viewers": len(self.server.state.streams),
       "tempC": temp,
       "memPct": mem,
       "wifiBars": strength,
       "network": ntype,
-      "hlsSegs": hub.seg_counts(),
-      "hlsFrames": hub.frame_counts(),
     }
 
   def _hud_snapshot(self) -> dict[str, Any]:
@@ -890,11 +848,9 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
         if self.command != "POST":
           result = _json_response({"error": "method not allowed"}, status=405)
         else:
-          Params().put_bool("IsLiveStreaming", True)
+          self.params.put_bool("IsLiveStreaming", True)
           schedule_teardown(self.server.state)
           result = _json_response({"ok": True})
-      elif path.startswith("/hls/"):
-        result = self._hls(path)
       else:
         allowed = self._routes.get(path)
         if allowed is None:
