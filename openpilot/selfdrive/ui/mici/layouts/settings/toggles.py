@@ -25,8 +25,10 @@ class AutoLaneChangeConfirmPage(NavScroller):
                                          lambda: self.dismiss(on_confirm))
     self._scroller.add_widgets([
       GreyBigButton("enabling\nauto lane change", "scroll to continue", warn),
-      GreyBigButton("", "Auto Lane Change uses Tesla's built-in blind spot monitoring to check for a vehicle in the adjacent lane prior to merging."),
-      GreyBigButton("", "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."),
+      GreyBigButton("", "Auto Lane Change uses Tesla's stock blind spot monitoring"),
+      GreyBigButton("", "to check for a vehicle in the adjacent lane prior to merging."),
+      GreyBigButton("", "You are still responsible for ensuring the lane of travel is clear"),
+      GreyBigButton("", "and agree to intervene as necessary."),
       accept,
     ])
 
@@ -72,9 +74,14 @@ class OnAirToggle(Widget):
 
   def _render(self, _):
     txt = self._on if self._params.get_bool("LivestreamEnabled") else self._off
-    x = self.rect.x + (self.rect.width - txt.width) / 2
-    y = self.rect.y + (self.rect.height - txt.height) / 2
-    rl.draw_texture_ex(txt, rl.Vector2(x, y), 0.0, 1.0, rl.WHITE)
+    max_w = max(40.0, self.rect.width - 24)
+    scale = min(1.0, max_w / max(1, txt.width))
+    w, h = txt.width * scale, txt.height * scale
+    x = self.rect.x + (self.rect.width - w) / 2
+    y = self.rect.y + (self.rect.height - h) / 2
+    src = rl.Rectangle(0, 0, txt.width, txt.height)
+    dest = rl.Rectangle(x, y, w, h)
+    rl.draw_texture_pro(txt, src, dest, rl.Vector2(0, 0), 0.0, rl.WHITE)
 
 
 class LivestreamLayoutMici(NavScroller):

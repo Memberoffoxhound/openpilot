@@ -2,84 +2,162 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <title>DELAMAIN Live</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; --fg: #f2f2f2; --muted: rgba(255,255,255,.62); --line: rgba(255,255,255,.12); --blue: #3e8ceb; --gold: #d4b36a; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: #000; color: #eee; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; overflow: hidden; touch-action: none; }
-  #stage { position: fixed; inset: 0; background: #000; }
+  html, body { margin: 0; min-height: 100%; min-height: 100dvh; background: #000; color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { overflow: hidden; }
+  button { appearance: none; font: inherit; color: inherit; cursor: pointer; }
+  .screen { position: fixed; inset: 0; }
+  .hero {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    filter: saturate(1.05) contrast(1.05);
+  }
+  .veil { position: absolute; inset: 0; background: linear-gradient(180deg, #0000 20%, #000c 78%, #000 100%); }
+  .copy {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+  }
+  .kicker { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+  h1 { margin: 8px 0 10px; font-size: clamp(28px, 7vw, 44px); font-weight: 650; letter-spacing: .04em; }
+  .sub { margin: 0; max-width: 28em; font-size: 15px; line-height: 1.45; color: var(--muted); }
+  .enter {
+    margin-top: 18px; border: 0; background: #fff; color: #111; border-radius: 999px;
+    padding: 12px 22px; font-size: 15px; font-weight: 600; letter-spacing: .04em;
+  }
+  .enter.ghost { background: transparent; color: #fff; border: 1px solid var(--line); }
+  #boot, #off { display: none; }
+  body.boot #boot, body.off #off { display: block; }
+  body.live #live { display: block; }
+  #live { display: none; background: #000; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
   video { background: #000; }
-  #vWide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #vWide { width: 100%; height: 100%; object-fit: contain; }
   #vDriver {
     position: absolute; right: max(12px, env(safe-area-inset-right));
-    bottom: calc(72px + env(safe-area-inset-bottom));
+    bottom: calc(86px + env(safe-area-inset-bottom));
     width: min(34vw, 220px); aspect-ratio: 4/3; object-fit: cover;
-    border-radius: 14px; border: 2px solid rgba(255,255,255,.22);
+    border-radius: 14px; border: 1px solid var(--line);
     box-shadow: 0 10px 32px rgba(0,0,0,.55);
+  }
+  @media (orientation: portrait) {
+    #vDriver { width: min(42vw, 200px); }
   }
   #vRoad { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
   body.mode-3d #vWide, body.mode-3d #vDriver { opacity: 0; pointer-events: none; }
   body.mode-3d #gl { display: block; }
   #bar {
-    position: fixed; left: 0; right: 0; top: 0; z-index: 5;
-    display: flex; align-items: center; gap: 8px;
+    position: absolute; left: 0; right: 0; top: 0; z-index: 5;
     padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-    background: linear-gradient(#000c, #0000); font-size: 13px; letter-spacing: .08em;
+    background: linear-gradient(#000c, #0000);
+    display: flex; flex-direction: column; gap: 6px;
   }
-  #bar b { font-weight: 700; letter-spacing: .18em; }
+  #bar .row { display: flex; align-items: center; gap: 10px; }
+  #bar b { font-weight: 700; letter-spacing: .2em; font-size: 13px; }
   #bar .sp { flex: 1; }
-  #bar .st { opacity: .7; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+  #st { opacity: .7; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #stats {
+    display: flex; flex-wrap: wrap; gap: 10px 14px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; letter-spacing: .06em; color: var(--muted);
+  }
+  #stats span { white-space: nowrap; }
+  #stats .bars { color: var(--fg); letter-spacing: .12em; }
   #modes {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center; gap: 10px;
     padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
     background: linear-gradient(#0000, #000c);
   }
-  button {
-    appearance: none; border: 1px solid #ffffff2a; background: #141414cc;
-    color: #fff; border-radius: 999px; padding: 10px 18px; font-size: 15px;
+  #modes button {
+    border: 1px solid var(--line); background: #141414cc; color: #fff;
+    border-radius: 999px; padding: 10px 18px; font-size: 15px;
     backdrop-filter: blur(8px);
   }
-  button.on { background: #3e8ceb; border-color: #3e8ceb; color: #fff; }
-  #hint { position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); text-align: center; font-size: 12px; opacity: .45; pointer-events: none; display: none; }
+  #modes button.on { background: var(--blue); border-color: var(--blue); }
+  #hint { position: absolute; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom));
+    text-align: center; font-size: 12px; opacity: .45; pointer-events: none; display: none; }
   body.mode-3d #hint { display: block; }
-  #err { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; z-index: 6; background: #000a; }
+  #err { position: absolute; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; z-index: 6; background: #000a; }
   #err.show { display: grid; }
 </style>
 </head>
-<body class="mode-pip">
-<div id="stage">
-  <video id="vWide" playsinline webkit-playsinline muted autoplay></video>
-  <video id="vDriver" playsinline webkit-playsinline muted autoplay></video>
-  <video id="vRoad" playsinline webkit-playsinline muted autoplay></video>
-  <canvas id="gl"></canvas>
-</div>
-<div id="bar"><b>DELAMAIN</b><span class="sp"></span><span class="st" id="st">starting…</span></div>
-<div id="hint">drag to look · pinch to zoom · look back for driver</div>
-<div id="modes">
-  <button id="btnPip" class="on">PiP</button>
-  <button id="btn3d">3D</button>
-</div>
-<div id="err"></div>
+<body class="boot">
+<section id="boot" class="screen">
+  <img class="hero" src="/static/welcome.jpg" alt=""/>
+  <div class="veil"></div>
+  <div class="copy">
+    <div class="kicker">DELAMAIN</div>
+    <h1>Welcome to the livestream</h1>
+    <p class="sub">Wide cam up front. Driver cam in the corner. 3D if you want to look around.</p>
+    <button class="enter" id="enter" type="button">Enter</button>
+  </div>
+</section>
+<section id="off" class="screen">
+  <img class="hero" src="/static/offair.jpg" alt=""/>
+  <div class="veil"></div>
+  <div class="copy">
+    <div class="kicker">DELAMAIN</div>
+    <h1>Sorry — On-Air is off</h1>
+    <p class="sub" id="offMsg">Enable On-Air on the device (home footer, or Settings → livestream). Same Wi-Fi. Then reload.</p>
+    <button class="enter ghost" id="retry" type="button">Check again</button>
+  </div>
+</section>
+<section id="live" class="screen">
+  <div id="stage">
+    <video id="vWide" playsinline webkit-playsinline muted autoplay></video>
+    <video id="vDriver" playsinline webkit-playsinline muted autoplay></video>
+    <video id="vRoad" playsinline webkit-playsinline muted autoplay></video>
+    <canvas id="gl"></canvas>
+  </div>
+  <div id="bar">
+    <div class="row"><b>DELAMAIN</b><span class="sp"></span><span id="st">starting…</span></div>
+    <div id="stats"></div>
+  </div>
+  <div id="hint">drag to look · pinch to zoom · look back for driver</div>
+  <div id="modes">
+    <button id="btnPip" class="on" type="button">PiP</button>
+    <button id="btn3d" type="button">3D</button>
+  </div>
+  <div id="err"></div>
+</section>
 <script>
 const WIDE_HFOV = 60 * Math.PI/180;
 const ROAD_HFOV = 30 * Math.PI/180;
 const DRIVER_HFOV = 90 * Math.PI/180;
-
 const $ = (id) => document.getElementById(id);
 const st = $("st");
 const errBox = $("err");
 function status(t) { st.textContent = t; }
 function showErr(t) { errBox.textContent = t; errBox.classList.add("show"); }
-
+function bars(n) {
+  const v = Math.max(0, Math.min(4, n|0));
+  return "▂▄▆█".slice(0, Math.max(1, v)) + "·".repeat(4 - Math.max(1, v));
+}
+function paintStats(info) {
+  const bits = [];
+  if (info.tempC != null) bits.push(`TEMP ${info.tempC}°`);
+  if (info.memPct != null) bits.push(`MEM ${info.memPct}%`);
+  if (info.kbps) bits.push(`${info.kbps} kbps`);
+  bits.push(`<span class="bars">${(info.network || "net").toUpperCase()} ${bars(info.wifiBars)}</span>`);
+  if (info.viewers != null) bits.push(`${info.viewers} watching`);
+  $("stats").innerHTML = bits.map((b) => `<span>${b}</span>`).join("");
+}
+async function getInfo() {
+  const r = await fetch("/info", { cache: "no-store" });
+  if (!r.ok) throw new Error("device unreachable");
+  return r.json();
+}
 async function watch() {
   const r = await fetch("/watch", { method: "POST" });
   if (!r.ok) throw new Error(await r.text() || r.statusText);
 }
-
 function attach(video, cam) {
   video.src = "/hls/" + cam + ".m3u8?t=" + Date.now();
   video.muted = true;
@@ -89,11 +167,9 @@ function attach(video, cam) {
   video.addEventListener("canplay", play, { once: true });
   play();
 }
-
 let mode = "pip";
 $("btnPip").onclick = () => setMode("pip");
 $("btn3d").onclick = () => setMode("3d");
-
 function setMode(m) {
   mode = m;
   document.body.classList.toggle("mode-3d", m === "3d");
@@ -102,16 +178,11 @@ function setMode(m) {
   $("btn3d").classList.toggle("on", m === "3d");
   if (m === "3d") startGL();
 }
-
 const glCanvas = $("gl");
 const vWide = $("vWide"), vRoad = $("vRoad"), vDriver = $("vDriver");
 let gl, prog, tex = {}, u = {}, view = { yaw: 0, pitch: 0, fov: 70 * Math.PI/180 };
 let glOn = false;
-
-const VS = `
-attribute vec2 a;
-void main(){ gl_Position = vec4(a,0.0,1.0); }
-`;
+const VS = `attribute vec2 a; void main(){ gl_Position = vec4(a,0.0,1.0); }`;
 const FS = `
 precision highp float;
 uniform sampler2D uWide, uRoad, uDriver;
@@ -119,7 +190,6 @@ uniform vec2 uRes;
 uniform float uYaw, uPitch, uFov;
 uniform float uWideH, uRoadH, uDriverH;
 uniform float uHasRoad, uHasDriver;
-
 vec2 pinhole(vec3 dir, float hfov, float aspect) {
   float z = dir.z;
   if (z < 0.05) return vec2(-1.0);
@@ -127,7 +197,6 @@ vec2 pinhole(vec3 dir, float hfov, float aspect) {
   float tanV = tanH / aspect;
   return vec2(0.5 + (dir.x / z) / (2.0 * tanH), 0.5 - (dir.y / z) / (2.0 * tanV));
 }
-
 void main() {
   vec2 ndc = (gl_FragCoord.xy / uRes) * 2.0 - 1.0;
   ndc.x *= uRes.x / uRes.y;
@@ -137,7 +206,6 @@ void main() {
   dir = vec3(dir.x, dir.y * cp - dir.z * sp, dir.y * sp + dir.z * cp);
   float cy = cos(uYaw), sy = sin(uYaw);
   dir = vec3(cy * dir.x + sy * dir.z, dir.y, -sy * dir.x + cy * dir.z);
-
   vec3 col = vec3(0.015);
   if (dir.z > 0.02) {
     vec2 uvw = pinhole(dir, uWideH, 16.0/9.0);
@@ -161,14 +229,12 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }
 `;
-
 function compile(g, type, src) {
   const s = g.createShader(type);
   g.shaderSource(s, src); g.compileShader(s);
   if (!g.getShaderParameter(s, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(s));
   return s;
 }
-
 function startGL() {
   if (glOn) { resize(); return; }
   gl = glCanvas.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: false });
@@ -216,17 +282,13 @@ function startGL() {
   resize();
   requestAnimationFrame(draw);
 }
-
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.floor(glCanvas.clientWidth * dpr);
   const h = Math.floor(glCanvas.clientHeight * dpr);
-  if (glCanvas.width !== w || glCanvas.height !== h) {
-    glCanvas.width = w; glCanvas.height = h;
-  }
+  if (glCanvas.width !== w || glCanvas.height !== h) { glCanvas.width = w; glCanvas.height = h; }
   if (gl) gl.viewport(0, 0, w, h);
 }
-
 function upload(name) {
   const g = gl, rec = tex[name];
   const v = rec.vid;
@@ -236,7 +298,6 @@ function upload(name) {
   try { g.texImage2D(g.TEXTURE_2D, 0, g.RGB, g.RGB, g.UNSIGNED_BYTE, v); return true; }
   catch (e) { return false; }
 }
-
 function draw() {
   if (mode === "3d" && gl) {
     resize();
@@ -253,7 +314,6 @@ function draw() {
   }
   requestAnimationFrame(draw);
 }
-
 let dragging = false, lastX = 0, lastY = 0, lastDist = 0;
 function onDown(x, y) { dragging = true; lastX = x; lastY = y; }
 function onMove(x, y) {
@@ -290,9 +350,7 @@ glCanvas.addEventListener("touchmove", (e) => {
     dragging = false;
   }
 }, { passive: true });
-
 window.addEventListener("resize", resize);
-
 async function waitPlaylist(cam, tries = 40) {
   for (let i = 0; i < tries; i++) {
     const r = await fetch("/hls/" + cam + ".m3u8", { cache: "no-store" });
@@ -304,8 +362,18 @@ async function waitPlaylist(cam, tries = 40) {
   }
   return false;
 }
-
-(async () => {
+function show(which) {
+  document.body.classList.remove("boot", "off", "live");
+  document.body.classList.add(which);
+}
+function offCopy(info) {
+  if (info && info.reason === "network")
+    return "This viewer is Wi-Fi only. Join the same network as the device, then reload.";
+  return "Enable On-Air on the device — tap the badge on the home screen, or Settings → livestream. Same Wi-Fi. Then reload.";
+}
+async function goLive() {
+  show("live");
+  document.body.classList.add("mode-pip");
   try {
     status("starting cameras");
     await watch();
@@ -316,12 +384,31 @@ async function waitPlaylist(cam, tries = 40) {
     attach(vDriver, "driver");
     attach(vRoad, "road");
     status("live");
+    const tick = async () => {
+      try { paintStats(await getInfo()); } catch (e) {}
+    };
+    tick();
+    setInterval(tick, 2000);
     setInterval(() => fetch("/watch", { method: "POST" }).catch(() => {}), 15000);
   } catch (e) {
     status("error");
     showErr(e.message || String(e));
   }
-})();
+}
+async function boot() {
+  let info = null;
+  try { info = await getInfo(); } catch (e) { info = null; }
+  if (info) paintStats(info);
+  if (!info || !info.onAir || !info.networkOk || info.metered) {
+    $("offMsg").textContent = offCopy(info || { reason: "onair" });
+    show("off");
+    return;
+  }
+  show("boot");
+}
+$("enter").onclick = () => goLive();
+$("retry").onclick = () => boot();
+boot();
 </script>
 </body>
 </html>

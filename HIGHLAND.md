@@ -86,10 +86,11 @@ The C4 hosts a page on **port 5001**. Phone and device on the same Wi-Fi, Safari
 http://<c4-wifi-ip>:5001/
 ```
 
-C4 **Settings → Network** shows the IP. Guest-Wi-Fi client isolation will block it.
+C4 **Settings → Network** shows the IP. Guest-Wi-Fi client isolation will block it. On-Air must be on (home badge or Settings → livestream). If it's off, the page explains that instead of a raw 403.
 
-- **PiP** — wide cam full screen, driver cam in the corner
+- Splash, then **PiP** — wide cam letterboxed to the phone orientation, driver cam in the corner
 - **3D** — wide + road stitch you can pan (drag) and pinch-zoom. Look behind for the driver cam
+- HUD: encode bitrate, CPU temp, memory, Wi-Fi bars, viewers
 
 HLS, not Connect. Comma's TURN/Athena are not in the path. Close the page; encoder stops after ~60s idle and dashcam resumes.
 

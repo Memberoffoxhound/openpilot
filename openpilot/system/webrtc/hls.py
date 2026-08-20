@@ -138,7 +138,7 @@ def mux_h264_segment(frames: list[tuple[bytes, int]], cc: dict[str, list[int]]) 
 
   pat_section = bytes([
     0x00, 0xB0, 0x0D, 0x00, 0x01, 0xC1, 0x00, 0x00,
-    0x00, 0x01, 0xE1, 0x00,
+    0x00, 0x01, 0xF0, 0x00,  # program 1 → PMT PID 0x1000
   ])
   pat = bytes([0x00]) + pat_section + struct.pack(">I", _mpeg_crc32(pat_section))
   pmt_section = bytes([
@@ -163,8 +163,12 @@ class _CamBuf:
     self.cur_frames: list[tuple[bytes, int]] = []
     self.cur_start_pts: int | None = None
     self.cc: dict[str, list[int]] = {}
+    self.got_keyframe = False
 
   def push(self, raw: bytes, pts_90k: int, keyframe: bool):
+    if not self.got_keyframe and not keyframe:
+      return
+    self.got_keyframe = True
     annexb = to_annexb(raw)
     dur = 0.0 if self.cur_start_pts is None else (pts_90k - self.cur_start_pts) / HZ90
     if self.cur_frames and keyframe and dur >= 0.5:
@@ -196,6 +200,7 @@ class _CamBuf:
     lines = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",
+      "#EXT-X-INDEPENDENT-SEGMENTS",
       "#EXT-X-TARGETDURATION:3",
       f"#EXT-X-MEDIA-SEQUENCE:{segs[0][0]}",
     ]
@@ -220,6 +225,21 @@ class HlsHub:
     self.last_access = 0.0
     self._started = False
     self._lock = threading.Lock()
+    self._bytes = 0
+    self._bytes_t = time.monotonic()
+    self.kbps = 0
+    self.clients: dict[str, float] = {}
+
+  def note_client(self, ip: str):
+    now = time.monotonic()
+    self.clients[ip] = now
+    dead = [k for k, t in self.clients.items() if now - t > 30]
+    for k in dead:
+      self.clients.pop(k, None)
+
+  def client_count(self) -> int:
+    now = time.monotonic()
+    return sum(1 for t in self.clients.values() if now - t < 30)
 
   def touch(self):
     self.last_access = time.monotonic()
@@ -265,4 +285,11 @@ class HlsHub:
       if t0 is None:
         t0 = ts
       pts = int((ts - t0) * 9 // 100_000)
+      self._bytes += len(raw)
+      now = time.monotonic()
+      dt = now - self._bytes_t
+      if dt >= 1.0:
+        self.kbps = int(self._bytes * 8 / max(dt, 0.001) / 1000)
+        self._bytes = 0
+        self._bytes_t = now
       buf.push(raw, max(pts, 0), bool(idx.flags & V4L2_BUF_FLAG_KEYFRAME))

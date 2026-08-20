@@ -279,7 +279,7 @@ class HudRenderer(Widget):
     if not ui_state.params.get_bool("LivestreamEnabled"):
       return
     icon = self._txt_on_air
-    pos = rl.Vector2(rect.x + 10, rect.y + rect.height - 14 - 50 - 6 - icon.height)
+    pos = rl.Vector2(rect.x + (rect.width - icon.width) / 2, rect.y + 8)
     rl.draw_texture_ex(icon, pos, 0.0, 1.0, rl.Color(255, 255, 255, 92))
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:

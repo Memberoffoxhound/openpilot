@@ -28,6 +28,7 @@ from openpilot.cereal import messaging, log
 
 SESSION_TIMEOUT_SECONDS = 300
 VIEWER_HTML = Path(__file__).with_name("viewer.html")
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 # ice candidate parser for logging
@@ -413,6 +414,7 @@ class ServerState:
     self.teardown: asyncio.TimerHandle | None = None
     self.hls = HlsHub()
     self.loop: asyncio.AbstractEventLoop | None = None
+    self.sm = messaging.SubMaster(["deviceState"])
 
 
 def schedule_teardown(state: ServerState):
@@ -549,12 +551,17 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
   def _loopback(self) -> bool:
     return self.client_address[0] in ("127.0.0.1", "::1")
 
-  def _lan_ok(self) -> bool:
+  def _on_lan(self) -> bool:
     if self._loopback():
       return True
     params = Params()
-    return (livestream_network_ok(params) and not params.get_bool("NetworkMetered")
-            and params.get_bool("LivestreamEnabled"))
+    return livestream_network_ok(params) and not params.get_bool("NetworkMetered")
+
+  def _can_stream(self) -> bool:
+    return self._on_lan() and Params().get_bool("LivestreamEnabled")
+
+  def _lan_ok(self) -> bool:
+    return self._can_stream()
 
   def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
     self.send_response(status)
@@ -577,6 +584,7 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
 
   def _hls(self, path: str) -> tuple[int, bytes, str]:
     hub: HlsHub = self.server.state.hls
+    hub.note_client(self.client_address[0])
     hub.ensure()
     schedule_teardown(self.server.state)
     parts = path.strip("/").split("/")
@@ -602,21 +610,79 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
       return (200, data, "video/mp2t")
     return _json_response({"error": "not found"}, status=404)
 
+  def _static(self, path: str) -> tuple[int, bytes, str]:
+    rel = path[len("/static/"):]
+    if not rel or ".." in rel or rel.startswith("/"):
+      return _json_response({"error": "not found"}, status=404)
+    fp = (STATIC_DIR / rel).resolve()
+    if not str(fp).startswith(str(STATIC_DIR.resolve())) or not fp.is_file():
+      return _json_response({"error": "not found"}, status=404)
+    ext = fp.suffix.lower()
+    ctype = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(ext, "application/octet-stream")
+    return (200, fp.read_bytes(), ctype)
+
+  def _snapshot(self) -> dict[str, Any]:
+    hub: HlsHub = self.server.state.hls
+    hub.note_client(self.client_address[0])
+    params = Params()
+    temp = mem = None
+    strength = 0
+    ntype = "none"
+    try:
+      sm = self.server.state.sm
+      sm.update(0)
+      if sm.recv_frame.get("deviceState", 0) > 0:
+        ds = sm["deviceState"]
+        temps = list(getattr(ds, "cpuTempC", None) or [])
+        if temps:
+          temp = round(float(max(temps)), 1)
+        mem = int(getattr(ds, "memoryUsagePercent", 0) or 0)
+        ns = ds.networkStrength
+        strength = int(getattr(ns, "raw", 0) or 0)
+        ntype = str(ds.networkType).split(".")[-1]
+    except Exception:
+      pass
+    on_air = params.get_bool("LivestreamEnabled")
+    net_ok = livestream_network_ok(params)
+    metered = params.get_bool("NetworkMetered")
+    reason = None
+    if not on_air:
+      reason = "onair"
+    elif not net_ok or metered:
+      reason = "network"
+    return {
+      "ok": True,
+      "onAir": on_air,
+      "networkOk": net_ok,
+      "metered": metered,
+      "reason": reason,
+      "hls": True,
+      "kbps": hub.kbps,
+      "viewers": hub.client_count(),
+      "tempC": temp,
+      "memPct": mem,
+      "wifiBars": strength,
+      "network": ntype,
+    }
+
   def _dispatch_request(self) -> None:
     parsed = urlparse(self.path)
     path = parsed.path
     try:
-      if not self._lan_ok() and path not in ("/schema",):
-        result = (403, b"On-Air is off. Enable livestream in settings.", "text/plain; charset=utf-8")
-      elif path in ("/", "/index.html"):
+      if path in ("/", "/index.html"):
         html = VIEWER_HTML.read_bytes()
         result = (200, html, "text/html; charset=utf-8")
+      elif path.startswith("/static/"):
+        result = self._static(path)
       elif path == "/info":
-        result = _json_response({"ok": True, "networkOk": livestream_network_ok(), "hls": True})
+        result = _json_response(self._snapshot())
+      elif not self._can_stream() and path not in ("/schema",):
+        result = (403, b"On-Air is off. Enable livestream in settings.", "text/plain; charset=utf-8")
       elif path == "/watch":
         if self.command != "POST":
           result = _json_response({"error": "method not allowed"}, status=405)
         else:
+          self.server.state.hls.note_client(self.client_address[0])
           self.server.state.hls.ensure()
           schedule_teardown(self.server.state)
           result = _json_response({"ok": True})
