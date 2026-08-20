@@ -1,6 +1,8 @@
-# TeslaPilot — Highland
+# S3XYPilot — Highland
 
-Working branch for Tesla Model 3 Highland (2024+) on TeslaPilot.
+Working branch for Tesla Model 3 Highland (2024+) on S3XYPilot.
+
+Internally this is still openpilot (repo name `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works). The C4 home wordmark is **S3XYPILOT**. Version is **0.4.20.69-FUELON**.
 
 Fork of [commaai/openpilot](https://github.com/commaai/openpilot). Tesla car interface lives in [TeslaPilot-opendbc](https://github.com/Memberoffoxhound/TeslaPilot-opendbc/tree/Highland).
 
