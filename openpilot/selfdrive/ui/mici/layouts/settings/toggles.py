@@ -89,7 +89,7 @@ class LivestreamLayoutMici(NavScroller):
     super().__init__()
     self._scroller.add_widgets([
       OnAirToggle(),
-      GreyBigButton("", "On-Air enables onroad Connect and the local phone viewer on Wi-Fi. Off is stock Connect (parked only)."),
+      GreyBigButton("", "Fun local Wi-Fi viewer.\nPiP, HUD, 3D + map.\nPhone: port 5001.\nNot comma's servers."),
     ])
 
 
