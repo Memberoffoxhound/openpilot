@@ -422,6 +422,155 @@ class ServerState:
     self.trip_last = self.trip_t0
     self.trip_eng = 0.0
     self.trip_miles = 0.0
+    self.hud: dict[str, Any] = {}
+    self.hud_lock = threading.Lock()
+    threading.Thread(target=self._pump, name="hud-pump", daemon=True).start()
+
+  def _pump(self) -> None:
+    while True:
+      try:
+        self.sm.update(50)
+        snap = self.build_hud()
+        with self.hud_lock:
+          self.hud = snap
+      except Exception:
+        time.sleep(0.15)
+
+  @staticmethod
+  def _xyz(line, step: int = 4, cap: int = 24) -> list[list[float]]:
+    try:
+      xs, ys, zs = list(line.x), list(line.y), list(line.z)
+    except Exception:
+      return []
+    pts = []
+    for i in range(0, min(len(xs), len(ys), len(zs)), step):
+      pts.append([float(xs[i]), float(ys[i]), float(zs[i])])
+      if len(pts) >= cap:
+        break
+    return pts
+
+  def _read_gps(self) -> tuple[float | None, float | None, float | None]:
+    sm = self.sm
+    best: tuple[float | None, float | None, float | None] = (None, None, None)
+    for name in ("gpsLocation", "gpsLocationExternal"):
+      try:
+        if not sm.seen.get(name) and sm.recv_frame.get(name, 0) == 0:
+          continue
+        g = sm[name]
+        lat, lon = float(g.latitude), float(g.longitude)
+        if abs(lat) < 0.01 and abs(lon) < 0.01:
+          continue
+        hdg = float(getattr(g, "bearingDeg", 0.0) or 0.0) or None
+        best = (lat, lon, hdg)
+        if getattr(g, "hasFix", True):
+          return best
+      except Exception:
+        continue
+    if best[0] is None:
+      try:
+        raw = Params().get("LastGPSPosition")
+        if raw:
+          if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode()
+          j = json.loads(raw)
+          lat = float(j.get("latitude") or j.get("lat") or 0)
+          lon = float(j.get("longitude") or j.get("lon") or 0)
+          if abs(lat) > 0.01 or abs(lon) > 0.01:
+            return lat, lon, None
+      except Exception:
+        pass
+    return best
+
+  def build_hud(self) -> dict[str, Any]:
+    params = Params()
+    sm = self.sm
+    out: dict[str, Any] = {
+      "onAir": params.get_bool("LivestreamEnabled"),
+      "metric": params.get_bool("IsMetric"),
+      "laneColor": 1,
+      "enabled": False,
+      "experimental": False,
+      "speed": 0.0,
+      "setSpeed": None,
+      "steerDeg": 0.0,
+      "alert": "",
+      "rpy": [0.0, 0.0, 0.0],
+      "wideRpy": [0.0, 0.0, 0.0],
+      "height": 1.22,
+      "path": [],
+      "lanes": [],
+      "edges": [],
+      "laneProbs": [],
+      "lead": None,
+      "lat": None,
+      "lon": None,
+      "hdg": None,
+      "tripMiles": round(self.trip_miles, 2),
+      "engagedPct": 0.0,
+    }
+    try:
+      lc = params.get("LaneColor") or 1
+      out["laneColor"] = int(lc)
+    except Exception:
+      pass
+
+    def got(name: str) -> bool:
+      try:
+        return bool(sm.seen.get(name) or sm.recv_frame.get(name, 0))
+      except Exception:
+        return False
+
+    try:
+      if got("carState"):
+        cs = sm["carState"]
+        v = cs.vEgoCluster if cs.vEgoCluster else cs.vEgo
+        out["speed"] = float(v)
+        out["steerDeg"] = float(cs.steeringAngleDeg)
+        cruise = float(cs.vCruiseCluster or 0.0)
+        if 0 < cruise < 255:
+          out["setSpeed"] = cruise
+      if got("selfdriveState"):
+        ss = sm["selfdriveState"]
+        out["enabled"] = bool(ss.enabled)
+        out["experimental"] = bool(ss.experimentalMode)
+        a1 = str(getattr(ss, "alertText1", "") or "")
+        a2 = str(getattr(ss, "alertText2", "") or "")
+        out["alert"] = a1 if a1 else a2
+      if got("extrinsicsCalibration"):
+        cal = sm["extrinsicsCalibration"]
+        rpy = list(getattr(cal, "rpyCalib", []) or [])
+        if len(rpy) == 3:
+          out["rpy"] = [float(x) for x in rpy]
+        wr = list(getattr(cal, "wideFromDeviceEuler", []) or [])
+        if len(wr) == 3:
+          out["wideRpy"] = [float(x) for x in wr]
+        h = list(getattr(cal, "height", []) or [])
+        if h:
+          out["height"] = float(h[0])
+      if got("modelV2"):
+        m = sm["modelV2"]
+        out["path"] = self._xyz(m.position)
+        out["lanes"] = [self._xyz(ll) for ll in m.laneLines]
+        out["edges"] = [self._xyz(e) for e in m.roadEdges]
+        out["laneProbs"] = [float(p) for p in list(m.laneLineProbs)[:4]]
+      if got("radarState"):
+        lead = sm["radarState"].leadOne
+        if lead and lead.present:
+          out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
+      lat, lon, hdg = self._read_gps()
+      out["lat"], out["lon"], out["hdg"] = lat, lon, hdg
+    except Exception:
+      pass
+    now = time.monotonic()
+    dt = max(0.0, now - self.trip_last)
+    self.trip_last = now
+    self.trip_miles += abs(float(out["speed"] or 0.0)) * dt / 1609.344
+    if out["enabled"]:
+      self.trip_eng += dt
+    total = max(now - self.trip_t0, 1e-3)
+    out["tripMiles"] = round(self.trip_miles, 2)
+    out["engagedPct"] = round(100.0 * self.trip_eng / total, 1)
+    return out
 
 
 def schedule_teardown(state: ServerState):
@@ -639,7 +788,6 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     ntype = "none"
     try:
       sm = self.server.state.sm
-      sm.update(0)
       if sm.recv_frame.get("deviceState", 0) > 0:
         ds = sm["deviceState"]
         temps = list(getattr(ds, "cpuTempC", None) or [])
@@ -677,122 +825,12 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
     }
 
   def _xyz(self, line, step: int = 4, cap: int = 24) -> list[list[float]]:
-    try:
-      xs, ys, zs = list(line.x), list(line.y), list(line.z)
-    except Exception:
-      return []
-    pts = []
-    for i in range(0, min(len(xs), len(ys), len(zs)), step):
-      pts.append([float(xs[i]), float(ys[i]), float(zs[i])])
-      if len(pts) >= cap:
-        break
-    return pts
+    return ServerState._xyz(line, step, cap)
 
   def _hud_snapshot(self) -> dict[str, Any]:
-    params = Params()
-    sm = self.server.state.sm
-    sm.update(0)
-    out: dict[str, Any] = {
-      "onAir": params.get_bool("LivestreamEnabled"),
-      "metric": params.get_bool("IsMetric"),
-      "laneColor": 1,
-      "enabled": False,
-      "experimental": False,
-      "speed": 0.0,
-      "setSpeed": None,
-      "steerDeg": 0.0,
-      "alert": "",
-      "rpy": [0.0, 0.0, 0.0],
-      "wideRpy": [0.0, 0.0, 0.0],
-      "height": 1.22,
-      "path": [],
-      "lanes": [],
-      "edges": [],
-      "laneProbs": [],
-      "lead": None,
-      "lat": None,
-      "lon": None,
-      "hdg": None,
-      "tripMiles": 0.0,
-      "engagedPct": 0.0,
-    }
-    try:
-      lc = params.get("LaneColor") or 1
-      out["laneColor"] = int(lc)
-    except Exception:
-      pass
-    def seen(name: str) -> bool:
-      try:
-        return bool(sm.seen[name] if hasattr(sm, "seen") else sm.recv_frame[name])
-      except Exception:
-        return False
-    try:
-      if seen("carState"):
-        cs = sm["carState"]
-        v = cs.vEgoCluster if cs.vEgoCluster else cs.vEgo
-        out["speed"] = float(v)
-        out["steerDeg"] = float(cs.steeringAngleDeg)
-        cruise = float(cs.vCruiseCluster or 0.0)
-        if 0 < cruise < 255:
-          out["setSpeed"] = cruise
-      if seen("selfdriveState"):
-        ss = sm["selfdriveState"]
-        out["enabled"] = bool(ss.enabled)
-        out["experimental"] = bool(ss.experimentalMode)
-        a1 = str(getattr(ss, "alertText1", "") or "")
-        a2 = str(getattr(ss, "alertText2", "") or "")
-        out["alert"] = a1 if a1 else a2
-      if seen("extrinsicsCalibration"):
-        cal = sm["extrinsicsCalibration"]
-        rpy = list(getattr(cal, "rpyCalib", []) or [])
-        if len(rpy) == 3:
-          out["rpy"] = [float(x) for x in rpy]
-        wr = list(getattr(cal, "wideFromDeviceEuler", []) or [])
-        if len(wr) == 3:
-          out["wideRpy"] = [float(x) for x in wr]
-        h = list(getattr(cal, "height", []) or [])
-        if h:
-          out["height"] = float(h[0])
-      if seen("modelV2"):
-        m = sm["modelV2"]
-        out["path"] = self._xyz(m.position)
-        out["lanes"] = [self._xyz(ll) for ll in m.laneLines]
-        out["edges"] = [self._xyz(e) for e in m.roadEdges]
-        out["laneProbs"] = [float(p) for p in list(m.laneLineProbs)[:4]]
-      if seen("radarState"):
-        lead = sm["radarState"].leadOne
-        if lead and lead.present:
-          out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
-      gps = None
-      if seen("gpsLocation"):
-        gps = sm["gpsLocation"]
-      if seen("gpsLocationExternal"):
-        ext = sm["gpsLocationExternal"]
-        if gps is None or (float(getattr(gps, "latitude", 0) or 0) == 0.0 and float(getattr(gps, "longitude", 0) or 0) == 0.0):
-          gps = ext
-      if gps is not None:
-        lat, lon = float(gps.latitude), float(gps.longitude)
-        if lat != 0.0 or lon != 0.0:
-          out["lat"], out["lon"] = lat, lon
-        hdg = float(getattr(gps, "bearingDeg", 0.0) or 0.0)
-        if hdg:
-          out["hdg"] = hdg
-    except Exception:
-      pass
-    try:
-      st = self.server.state
-      now = time.monotonic()
-      dt = max(0.0, now - st.trip_last)
-      st.trip_last = now
-      st.trip_miles += abs(float(out["speed"] or 0.0)) * dt / 1609.344
-      if out["enabled"]:
-        st.trip_eng += dt
-      total = max(now - st.trip_t0, 1e-3)
-      out["tripMiles"] = round(st.trip_miles, 2)
-      out["engagedPct"] = round(100.0 * st.trip_eng / total, 1)
-    except Exception:
-      pass
-    return out
+    with self.server.state.hud_lock:
+      snap = dict(self.server.state.hud)
+    return snap or {"onAir": False, "lat": None, "lon": None, "tripMiles": 0, "engagedPct": 0}
 
   def _dispatch_request(self) -> None:
     parsed = urlparse(self.path)

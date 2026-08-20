@@ -221,7 +221,7 @@
   <div id="mapDock">
     <div id="map"></div>
     <div id="trip">
-      <div class="place" id="place">Locating…</div>
+      <div class="place" id="place">Waiting for GPS</div>
       <div class="row"><span>Trip</span><b id="tripMi">0.0 mi</b></div>
       <div class="row"><span>Engaged</span><b id="engPct">0%</b></div>
       <span id="engBadge" class="off">NOT ENGAGED</span>
@@ -699,13 +699,12 @@ function paintHud(hud) {
   else al.style.display = "none";
 }
 const hudBuf = [];
-let map, marker, lastGeo = 0;
+let map, marker, lastGeo = 0, lastLL = null;
 function initMap() {
   if (map || typeof L === "undefined") return;
   try {
-    map = L.map("map", { zoomControl: false, attributionControl: false, dragging: true }).setView([38.65, -90.24], 15);
+    map = L.map("map", { zoomControl: false, attributionControl: false, dragging: true }).setView([39.8, -98.5], 4);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
-    marker = L.circleMarker([38.65, -90.24], { radius: 6, color: "#80d8a6", fillColor: "#3e8ceb", fillOpacity: 1, weight: 2 }).addTo(map);
   } catch (e) {}
 }
 function paintTrip(hud) {
@@ -736,10 +735,16 @@ function updateMap(hud) {
   initMap();
   if (!map || hud.lat == null || hud.lon == null) return;
   const ll = [hud.lat, hud.lon];
-  if (marker) marker.setLatLng(ll);
-  map.setView(ll, Math.max(map.getZoom(), 15), { animate: false });
+  if (!marker) {
+    marker = L.circleMarker(ll, { radius: 6, color: "#80d8a6", fillColor: "#3e8ceb", fillOpacity: 1, weight: 2 }).addTo(map);
+  } else {
+    marker.setLatLng(ll);
+  }
+  const moved = !lastLL || Math.abs(lastLL[0] - ll[0]) > 1e-6 || Math.abs(lastLL[1] - ll[1]) > 1e-6;
+  lastLL = ll;
+  if (moved) map.setView(ll, Math.max(map.getZoom() || 0, 16), { animate: false });
   const now = Date.now();
-  if (now - lastGeo > 12000) {
+  if (now - lastGeo > 8000) {
     lastGeo = now;
     reverseGeo(hud.lat, hud.lon);
   }
