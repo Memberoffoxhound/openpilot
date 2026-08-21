@@ -185,6 +185,16 @@ void CameraState::set_camera_exposure(float grey_frac) {
       // Compute optimal time for given gain
       int t = std::clamp(int(std::round(desired_ev / gain)), sensor->exposure_time_min, sensor->exposure_time_max);
 
+      // Cabin only: snap long exposures to 1/120 s so Tesla IR PWM beats less with the rolling shutter.
+      // VTS 0x815 = 2069 lines/frame at 20 fps → 345 lines = 8.33 ms.
+      if (camera.cc.stream_type == VISION_STREAM_CABIN) {
+        const int flicker_lines = 345;
+        if (t >= flicker_lines / 2) {
+          t = std::clamp(((t + flicker_lines / 2) / flicker_lines) * flicker_lines,
+                         flicker_lines, sensor->exposure_time_max);
+        }
+      }
+
       // Only go below recommended gain when absolutely necessary to not overexpose
       if (g < sensor->analog_gain_rec_idx && t > 20 && g < gain_idx) {
         continue;
