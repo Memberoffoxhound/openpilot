@@ -2,17 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="screen-orientation" content="any"/>
 <title>DELAMAIN Live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   :root { color-scheme: dark; --fg: #f2f2f2; --muted: rgba(255,255,255,.62); --line: rgba(255,255,255,.12); --blue: #3e8ceb; --gold: #d4b36a; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; min-height: 100%; min-height: 100dvh; background: #000; color: var(--fg);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  html, body { margin: 0; width: 100%; height: 100%; height: 100dvh; max-width: 100vw;
+    background: #000; color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%; }
   body { overflow: hidden; }
+  .screen { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; }
   button { appearance: none; font: inherit; color: inherit; cursor: pointer; }
   .screen { position: fixed; inset: 0; }
   .hero {
@@ -196,6 +201,62 @@
   body.mode-3d #hint { display: block; }
   #err { position: absolute; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; z-index: 6; background: #000a; }
   #err.show { display: grid; }
+
+  /* Portrait phone: 16:9 stage, dock underneath. Cap so rotate-back still shows map. */
+  #stage { max-height: min(56dvh, calc(100vw * 9 / 16)); }
+  body.mode-3d #stage { max-height: none; }
+
+  /* Landscape phone + any PC window: video | sidebar. UI follows the screen. */
+  @media (orientation: landscape) {
+    body.live #live { flex-direction: row; flex-wrap: nowrap; align-items: stretch; }
+    #bar {
+      position: absolute; left: 0; top: 0; z-index: 6;
+      width: calc(100% - min(36vw, 420px));
+      background: linear-gradient(#000d, #0000);
+      pointer-events: none;
+    }
+    #bar .row, #stats { pointer-events: auto; }
+    #stage {
+      flex: 1 1 auto; width: auto; height: 100%;
+      max-height: none; aspect-ratio: auto;
+    }
+    #mapDock {
+      flex: 0 0 min(36vw, 420px);
+      width: min(36vw, 420px);
+      height: 100%;
+      margin: 8px 8px 8px 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #mapRow { flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #map, #dcamSlot { min-height: 0; }
+    #modes {
+      position: absolute; left: 0; bottom: 0; z-index: 6;
+      width: calc(100% - min(36vw, 420px));
+      background: linear-gradient(#0000, #000a);
+      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    body.mode-3d #bar, body.mode-3d #modes { width: 100%; }
+    body.mode-3d #mapDock {
+      position: absolute; left: 0; top: 0;
+      width: 140px; height: 80px; flex: none; margin: 0;
+    }
+  }
+
+  @media (min-width: 1100px) {
+    #live.screen {
+      max-width: 1600px; width: min(100%, 1600px);
+      left: 50%; right: auto; transform: translateX(-50%);
+    }
+    #stage { border-radius: 12px; overflow: hidden; }
+    #map, #dcamSlot, #trip { border-radius: 12px; }
+    .copy { max-width: 36rem; left: 8%; right: auto; bottom: 12%; padding-right: 24px; }
+    h1 { font-size: clamp(32px, 4vw, 52px); }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    #trip { font-size: 11px; padding: 6px 8px; }
+    #modes button { padding: 8px 14px; font-size: 13px; }
+    #stats { font-size: 10px; }
+  }
 </style>
 </head>
 <body class="boot">
@@ -638,7 +699,17 @@ glCanvas.addEventListener("touchmove", (e) => {
     dragging = false;
   }
 }, { passive: true });
-window.addEventListener("resize", () => { resize(); layoutHud(); });
+window.addEventListener("resize", relayout);
+window.addEventListener("orientationchange", () => setTimeout(relayout, 280));
+if (window.visualViewport) visualViewport.addEventListener("resize", relayout);
+try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch (e) {}
+function relayout() {
+  resize();
+  layoutHud();
+  if (typeof map !== "undefined" && map && map.invalidateSize) {
+    try { map.invalidateSize(); } catch (e) {}
+  }
+}
 
 function mul3(a, b) {
   const r = [[0,0,0],[0,0,0],[0,0,0]];
@@ -711,8 +782,6 @@ function videoBox(video) {
   const w = rw * s, h = rh * s;
   return { x: (cw - w) / 2, y: 0, w, h, vw: rw, vh: rh };
 }
-window.addEventListener("resize", () => { layoutHud(); });
-window.addEventListener("orientationchange", () => { setTimeout(() => { layoutHud(); }, 250); });
 function layoutHud() {
   const box = $("hudBox");
   if (!box) return;
