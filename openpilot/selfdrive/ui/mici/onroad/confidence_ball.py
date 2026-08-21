@@ -10,6 +10,9 @@ from openpilot.common.filter_simple import FirstOrderFilter
 
 BALL_RADIUS = 24
 CARDINALS = "NESW"
+PARKED_MS = 1.0
+YAW_STD_OK_RAD = math.radians(25.0)
+GPS_ACC_OK_DEG = 30.0
 
 
 def draw_circle_gradient(center_x: float, center_y: float, radius: int,
@@ -26,21 +29,53 @@ def draw_circle_gradient(center_x: float, center_y: float, radius: int,
                20, rl.BLACK)
 
 
-def heading_letter() -> str | None:
+def _angle_diff_deg(a: float, b: float) -> float:
+  return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+def _cardinal(bearing_deg: float) -> str:
+  return CARDINALS[int((bearing_deg + 45.0) % 360.0) // 90]
+
+
+def _gps_bearing() -> tuple[float | None, float]:
   sm = ui_state.sm
   try:
-    if sm.recv_frame["gpsLocationExternal"] < ui_state.started_frame:
-      return None
+    if sm.recv_frame["gpsLocationExternal"] < 1:
+      return None, 180.0
     gps = sm["gpsLocationExternal"]
     if hasattr(gps, "hasFix") and not gps.hasFix:
-      return None
+      return None, 180.0
     acc = float(getattr(gps, "bearingAccuracyDeg", 180.0) or 180.0)
-    if acc > 60.0:
-      return None
-    bearing = float(gps.bearingDeg) % 360.0
-    return CARDINALS[int((bearing + 45.0) % 360.0) // 90]
+    return float(gps.bearingDeg) % 360.0, acc
   except Exception:
-    return None
+    return None, 180.0
+
+
+def _localizer_yaw() -> tuple[float | None, float, bool]:
+  sm = ui_state.sm
+  try:
+    if sm.recv_frame["deviceMotion"] < 1:
+      return None, 180.0, False
+    dm = sm["deviceMotion"]
+    ori = dm.orientationNED
+    if not ori.valid:
+      return None, 180.0, False
+    yaw_deg = math.degrees(float(ori.z)) % 360.0
+    std_deg = math.degrees(float(ori.zStd))
+    ok = bool(dm.sensorsOK and dm.inputsOK and std_deg < math.degrees(YAW_STD_OK_RAD))
+    return yaw_deg, std_deg, ok
+  except Exception:
+    return None, 180.0, False
+
+
+def _parked() -> bool:
+  try:
+    cs = ui_state.sm["carState"]
+    if getattr(cs, "standstill", False):
+      return True
+    return float(cs.vEgo) < PARKED_MS
+  except Exception:
+    return True
 
 
 class ConfidenceBall(Widget):
@@ -55,6 +90,8 @@ class ConfidenceBall(Widget):
         break
       self._font_size -= 1
     self._letter_h = measure_text_cached(self._font, "N", self._font_size).y
+    self._q_size = max(22, self._font_size - 10)
+    self._last_heading_deg: float | None = None
 
   def update_filter(self, value: float):
     self._confidence_filter.update(value)
@@ -70,6 +107,48 @@ class ConfidenceBall(Widget):
       self._confidence_filter.update((1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.brakeDisengageProbs or [1])) *
                                                         (1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.steerOverrideProbs or [1])))
 
+  def _heading_state(self) -> tuple[str | None, bool, bool]:
+    """Returns (letter or None, confident, use_placeholder)."""
+    parked = _parked()
+    yaw, yaw_std, yaw_ok = _localizer_yaw()
+    gps_brg, gps_acc = _gps_bearing()
+    heading = None
+    confident = False
+
+    if yaw is not None and yaw_ok:
+      heading = yaw
+      confident = yaw_std < 15.0
+    if not parked and gps_brg is not None and gps_acc < GPS_ACC_OK_DEG:
+      if heading is None or (not confident and _angle_diff_deg(gps_brg, heading) > 45.0):
+        heading = gps_brg
+        confident = True
+      elif _angle_diff_deg(gps_brg, heading) > 90.0 and gps_acc < 15.0:
+        heading = gps_brg
+        confident = True
+
+    if heading is not None and (confident or not parked):
+      self._last_heading_deg = heading
+      return _cardinal(heading), confident, False
+
+    if self._last_heading_deg is not None:
+      return _cardinal(self._last_heading_deg), False, False
+
+    return None, False, True
+
+  def _draw_placeholder(self, cx: float, cy: float) -> None:
+    r = BALL_RADIUS * 0.78
+    col = rl.Color(255, 255, 255, 170)
+    rl.draw_circle_lines(int(cx), int(cy), r, col)
+    # N tick so it reads as a compass, not a hollow ball
+    rl.draw_line_ex(rl.Vector2(cx, cy - r), rl.Vector2(cx, cy - r + 7), 2.5, col)
+    q = "?"
+    sz = measure_text_cached(self._font, q, self._q_size)
+    rl.draw_text_ex(
+      self._font, q,
+      rl.Vector2(cx - sz.x / 2, cy - sz.y / 2),
+      self._q_size, 0, col,
+    )
+
   def _render(self, _):
     content_rect = rl.Rectangle(
       self.rect.x + self.rect.width - SIDE_PANEL_WIDTH,
@@ -83,16 +162,19 @@ class ConfidenceBall(Widget):
     top_pad = 0.0
     if custom_onroad_ui():
       top_pad = 4.0 + self._letter_h + 6.0
-      letter = heading_letter()
-      if letter:
+      letter, confident, placeholder = self._heading_state()
+      if placeholder:
+        self._draw_placeholder(ball_cx, content_rect.y + 2 + self._letter_h / 2)
+      elif letter:
         sz = measure_text_cached(self._font, letter, self._font_size)
+        alpha = 230 if confident else 160
         rl.draw_text_ex(
           self._font,
           letter,
           rl.Vector2(ball_cx - sz.x / 2, content_rect.y + 2),
           self._font_size,
           0,
-          rl.Color(255, 255, 255, 230),
+          rl.Color(255, 255, 255, alpha),
         )
 
     usable = max(1.0, content_rect.height - 2 * status_dot_radius - top_pad)

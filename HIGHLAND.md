@@ -1,6 +1,6 @@
 # DELAMAIN — Highland
 
-**Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds a N/S/E/W heading over the confidence ball and drops the ball under it. Lane color only applies in custom.
+**Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds a N/S/E/W heading over the confidence ball (localizer yaw, GPS while moving; last heading or compass+? if parked with no fix) and drops the ball under it. Lane color only applies in custom.
 
 
 Working branch for Tesla Model 3 Highland (2024+). Version **0.11.2.1**.
