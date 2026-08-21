@@ -1,4 +1,5 @@
 import math
+import os
 import numpy as np
 import time
 import wave
@@ -17,6 +18,7 @@ from openpilot.common.hardware import HARDWARE
 SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
+LUDI_PLAY = "/data/ludicrous_play"
 MIN_VOLUME = 0.1
 ALERT_RAMP_TIME = 4 # seconds to ramp to max volume for warningImmediate
 SELFDRIVE_STATE_TIMEOUT = 5 # 5 seconds
@@ -62,6 +64,13 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
+    self.fx = None
+    self.fx_i = None
+    try:
+      with wave.open(BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav", "r") as wavefile:
+        self.fx = np.frombuffer(wavefile.readframes(wavefile.getnframes()), dtype=np.int16).astype(np.float32) / (2**16 / 2)
+    except Exception:
+      self.fx = None
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -115,7 +124,26 @@ class Soundd:
           self.pending_stop = False
           break
 
-    return ret * self.current_volume
+    out = ret * self.current_volume
+    play = False
+    try:
+      play = open(LUDI_PLAY).read().strip() in ("1", "true")
+    except Exception:
+      play = False
+    if play and self.fx is not None and self.current_alert != AudibleAlert.warningImmediate:
+      self.fx_i = 0
+      try:
+        os.unlink(LUDI_PLAY)
+      except Exception:
+        pass
+    if self.fx is not None and self.fx_i is not None:
+      n = min(frames, len(self.fx) - self.fx_i)
+      if n > 0:
+        out[:n] += self.fx[self.fx_i:self.fx_i + n]
+        self.fx_i += n
+      if self.fx_i >= len(self.fx):
+        self.fx_i = None
+    return np.clip(out, -1.0, 1.0)
 
   def callback(self, data_out: np.ndarray, frames: int, time, status) -> None:
     if status:

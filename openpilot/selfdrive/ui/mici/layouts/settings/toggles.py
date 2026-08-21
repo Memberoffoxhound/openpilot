@@ -11,6 +11,7 @@ from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
   LANE_COLOR_LABELS, ONROAD_UI_LABELS, lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
+  ludicrous_on, set_ludicrous,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.webrtc.helpers import on_air_block_reason
@@ -132,6 +133,30 @@ class LaneColorCycle(BigButton):
     self.set_value(LANE_COLOR_LABELS[nxt])
 
 
+class LudicrousCycle(BigButton):
+  """Star Wars warp + line on hard accel. Off by default."""
+
+  def __init__(self):
+    super().__init__("ludicrous", "")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = "on" if ludicrous_on() else "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    on = not ludicrous_on()
+    set_ludicrous(on)
+    self.set_value("on" if on else "off")
+
+
 class OnAirToggle(Widget):
   """Red On-Air = livestream on. Gray = stock Connect only."""
 
@@ -176,7 +201,8 @@ class ThemeLayoutMici(NavScroller):
     super().__init__()
     self._onroad_ui = OnroadUiCycle()
     self._lane_color = LaneColorCycle()
-    self._scroller.add_widgets([self._onroad_ui, self._lane_color])
+    self._ludicrous = LudicrousCycle()
+    self._scroller.add_widgets([self._onroad_ui, self._ludicrous, self._lane_color])
 
 
 class ExperimentalModeConfirmPage(NavScroller):

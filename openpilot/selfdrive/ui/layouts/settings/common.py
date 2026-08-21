@@ -75,6 +75,37 @@ def set_onroad_ui(mode: int, params: Params | None = None) -> None:
       f.write(str(mode))
 
 
+_LUDI_MODE = "/data/ludicrous_mode"
+_LUDI_PLAY = "/data/ludicrous_play"
+
+
+def ludicrous_on() -> bool:
+  try:
+    return open(_LUDI_MODE, encoding="utf-8").read().strip() in ("1", "true")
+  except Exception:
+    return False
+
+
+def set_ludicrous(on: bool) -> None:
+  with open(_LUDI_MODE, "w", encoding="utf-8") as f:
+    f.write("1" if on else "0")
+
+
+def request_ludicrous_play() -> None:
+  with open(_LUDI_PLAY, "w", encoding="utf-8") as f:
+    f.write("1")
+
+
+def consume_ludicrous_play() -> bool:
+  try:
+    if open(_LUDI_PLAY, encoding="utf-8").read().strip() in ("1", "true"):
+      os.unlink(_LUDI_PLAY)
+      return True
+  except Exception:
+    return False
+  return False
+
+
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
   # rpyCalib is device-frame Euler: roll, pitch, yaw.
   # Pitch/yaw words match stock. +roll is clockwise looking forward (right side down).

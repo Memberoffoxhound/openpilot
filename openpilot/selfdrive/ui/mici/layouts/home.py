@@ -10,6 +10,7 @@ from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.mici.layouts.settings.toggles import (
   draw_on_air_slash, on_air_ui_blocked, try_toggle_on_air,
@@ -24,15 +25,14 @@ WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
-def draw_model3_glyph(x: float, y: float, h: float, color: rl.Color) -> float:
-  """Tesla Model 3 mark: three left-aligned bars, top longest."""
-  bar_h = max(3.0, h * 0.20)
-  gap = max(2.0, (h - 3 * bar_h) / 2.0)
-  w = h * 0.70
-  yy = y
-  for frac in (1.0, 0.72, 0.48):
-    rl.draw_rectangle_rounded(rl.Rectangle(x, yy, w * frac, bar_h), 0.4, 4, color)
-    yy += bar_h + gap
+def draw_tesla_three(x: float, y: float, h: float, color: rl.Color) -> float:
+  """Three equal stadium bars — Tesla Model 3 / TESLA-E mark."""
+  bar_h = max(4.0, h * 0.22)
+  gap = max(3.0, (h - 3 * bar_h) / 2.0)
+  w = h * 0.90
+  for i in range(3):
+    yy = y + i * (bar_h + gap)
+    rl.draw_rectangle_rounded(rl.Rectangle(x, yy, w, bar_h), 1.0, 8, color)
   return w
 
 NetworkType = log.DeviceState.NetworkType
@@ -196,14 +196,13 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._wm_s = UnifiedLabel("S", font_size=WORDMARK_SIZE, font_weight=FontWeight.DISPLAY, wrap_text=False)
-    self._wm_rest = UnifiedLabel("XYPILOT", font_size=WORDMARK_SIZE, font_weight=FontWeight.DISPLAY, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
-    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
+    self._last_txt = ("Last ", "0 mi 0%")
+    self._week_txt = ("Week ", "0 mi 0%")
 
   def _update_state(self):
     if self.is_pressed and not self._is_pressed_prev:
@@ -230,7 +229,7 @@ class MiciHomeLayout(Widget):
     else:
       dist, unit = meters / 1609.344, "mi"
     pct = int(round(100.0 * eng_s / tot_s)) if tot_s > 1 else 0
-    return f"{dist:.1f} {unit} {pct}%"
+    return f"{int(round(dist))} {unit} {pct}%"
 
   def _refresh_trip(self):
     now = time.monotonic()
@@ -241,9 +240,8 @@ class MiciHomeLayout(Widget):
       t = json.loads(open(TRIP_PATH).read())
     except Exception:
       t = {}
-    last = self._fmt_trip(t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0)
-    week = self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_s", 0) or 0, t.get("week_tot_s", 0) or 0)
-    self._version_commit_label.set_text(f"Engaged: Last {last} Weekly {week}")
+    self._last_txt = ("Last ", self._fmt_trip(t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_s", 0) or 0, t.get("week_tot_s", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
@@ -289,12 +287,13 @@ class MiciHomeLayout(Widget):
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    self._wm_s.set_position(text_pos.x, text_pos.y)
-    self._wm_s.render()
-    gx = text_pos.x + self._wm_s.text_width + 2
-    gw = draw_model3_glyph(gx, text_pos.y + 22, 48, LABEL_WHITE)
-    self._wm_rest.set_position(gx + gw + 3, text_pos.y)
-    self._wm_rest.render()
+    font = gui_app.font(FontWeight.DISPLAY)
+    s_sz = measure_text_cached(font, "S", WORDMARK_SIZE)
+    rest_sz = measure_text_cached(font, "XYPILOT", WORDMARK_SIZE)
+    rl.draw_text_ex(font, "S", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
+    gx = text_pos.x + s_sz.x + 6
+    gw = draw_tesla_three(gx, text_pos.y + 22, 50, LABEL_WHITE)
+    rl.draw_text_ex(font, "XYPILOT", rl.Vector2(gx + gw + 6, text_pos.y), WORDMARK_SIZE, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       # release branch
@@ -313,9 +312,17 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      self._version_commit_label.set_max_width(gui_app.width - HOME_PADDING * 2)
-      self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-      self._version_commit_label.render()
+      y2 = version_pos.y + self._date_label.font_size + 7
+      f36 = gui_app.font(FontWeight.ROMAN)
+      ll, lv = self._last_txt
+      wl, wv = self._week_txt
+      rl.draw_text_ex(f36, ll, rl.Vector2(version_pos.x, y2), 36, 0, rl.GRAY)
+      lx = version_pos.x + measure_text_cached(f36, ll, 36).x
+      rl.draw_text_ex(f36, lv, rl.Vector2(lx, y2), 36, 0, LABEL_WHITE)
+      wr = measure_text_cached(f36, wl, 36).x + measure_text_cached(f36, wv, 36).x
+      wx = self.rect.x + self.rect.width - HOME_PADDING - wr
+      rl.draw_text_ex(f36, wl, rl.Vector2(wx, y2), 36, 0, rl.GRAY)
+      rl.draw_text_ex(f36, wv, rl.Vector2(wx + measure_text_cached(f36, wl, 36).x, y2), 36, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(ui_state.experimental_mode)
