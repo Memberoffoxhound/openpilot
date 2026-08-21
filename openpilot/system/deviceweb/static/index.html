@@ -83,7 +83,13 @@
     .toast { position:fixed; left:16px; right:16px; bottom:calc(80px + env(safe-area-inset-bottom)); z-index:30; background:var(--fg); color:var(--bg); border-radius:16px; padding:12px 16px; font-size:14px; }
     .modal { position:fixed; inset:0; z-index:40; background:#000b; display:grid; place-items:end; padding:16px; }
     .sheet { width:100%; max-width:28rem; background:var(--surface); border-radius:20px; padding:20px; margin:0 auto 24px; }
-    .lg-hide { }
+    .field { display:flex; flex-direction:column; gap:6px; padding:14px 16px; border-bottom:1px solid color-mix(in oklab, var(--fg) 10%, transparent); }
+    .field:last-child { border-bottom:0; }
+    .field label { font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+    .field input, .field select { height:44px; border-radius:12px; background:var(--surface-2); border:0; padding:0 12px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .bar { height:6px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
+    .bar i { display:block; height:100%; width:40%; background:var(--fg); animation: pulse 1s linear infinite; }
+    @keyframes pulse { 50% { opacity:.45 } }
     @media (min-width:1100px) {
       aside { display:flex; }
       .lg-hide { display:none; }
@@ -132,8 +138,9 @@ const GROUPS = [
     {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
   ]},
 ];
-const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["updates","Updates"]];
+const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["clips","Clips"],["updates","Updates"]];
 let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
+let routes = [], clipJob = {state:"idle"}, clipTimer = null;
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
@@ -168,7 +175,7 @@ async function loadFiles() {
 }
 function render() {
   const app = document.getElementById("app");
-  const title = {status:"Device", settings:"Settings", files:"Files", updates:"Updates"}[tab];
+  const title = {status:"Device", settings:"Settings", files:"Files", clips:"Clips", updates:"Updates"}[tab];
   app.innerHTML = `
     <aside>
       <div class="brand"><b>DELAMAIN</b><p>LAN console · no lock</p></div>
@@ -191,7 +198,12 @@ function render() {
     ${toast ? `<div class="toast">${esc(toast)}</div>` : ""}
     ${confirmItem ? modal() : ""}
   `;
-  app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab==="files") loadFiles(); else render(); });
+  app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+    tab = b.dataset.tab;
+    if (tab==="files") loadFiles();
+    else if (tab==="clips") loadClips();
+    else render();
+  });
   bind();
 }
 function esc(s){ return String(s??"").replace(/[&<>"]/g, c => ({"&":"&","<":"<",">":">","\"":"""}[c])); }
@@ -199,6 +211,7 @@ function view() {
   if (tab==="status") return statusView();
   if (tab==="settings") return settingsView();
   if (tab==="files") return filesView();
+  if (tab==="clips") return clipsView();
   return updatesView();
 }
 function statusView() {
@@ -255,6 +268,36 @@ function filesView() {
     <div class="crumb">${crumbs.join("")}</div>
     <div class="card">${files.length? files.map(n => `<button class="file" data-open="${esc(n.path)}" data-dir="${n.dir?1:0}"><b>${esc(n.name)}</b><em>${n.dir?"folder":bytes(n.size)}</em></button>`).join("") : `<p class="muted" style="padding:40px;text-align:center">Empty folder.</p>`}</div>
     <p class="tiny">Real disk under /data. Tokens and SSH keys are hidden.</p>
+  </div>`;
+}
+function clipsView() {
+  const sel = clipJob.route || (routes[0] && routes[0].name) || "";
+  const r = routes.find(x => x.name === sel) || routes[0];
+  const maxS = r ? r.seconds : 60;
+  const start = clipJob.start || 0;
+  const end = clipJob.end || Math.min(15, maxS);
+  const running = clipJob.state === "running";
+  return `<div class="wrap">
+    <div class="warn">Clipper HUD on-device. Nelson’s GPU clipper won’t run on a C4 — this is openpilot’s clip tool: same overlay, local routes only, max 30s, offroad only. Turn Off-Air off first.</div>
+    <div class="card">
+      <div class="field"><label>Route</label>
+        <select id="cRoute">${routes.map(x => `<option value="${esc(x.name)}" ${x.name===sel?"selected":""}>${esc(x.name)} · ${x.seconds}s</option>`).join("") || "<option>No routes on disk</option>"}</select>
+      </div>
+      <div class="field"><label>Start (s)</label><input id="cStart" type="number" min="0" value="${start}"/></div>
+      <div class="field"><label>End (s)</label><input id="cEnd" type="number" min="3" max="30" value="${end}"/></div>
+      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "DELAMAIN")}"/></div>
+      <div class="set"><div class="meta"><b>Use qcamera</b><p>Smaller file, faster. Uncheck for full fcamera.</p></div>
+        <button class="tog ${clipJob.qcam!==false?"on":""}" id="cQcam"><i></i></button></div>
+    </div>
+    ${running ? `<div class="card pad"><p class="muted">Rendering HUD… keep the car offroad.</p><div class="bar" style="margin-top:12px"><i></i></div></div>` : ""}
+    ${clipJob.state==="done" ? `<div class="card pad"><p class="muted">Ready${clipJob.size? " · "+Math.round(clipJob.size/1e6)+" MB":""}</p></div>` : ""}
+    ${clipJob.state==="error" ? `<div class="warn">${esc(clipJob.error||"failed")}</div>` : ""}
+    <div class="btns">
+      <button class="btn primary" id="cGo" ${running||!routes.length?"disabled":""}>Render clip</button>
+      ${running ? `<button class="btn" id="cStop">Cancel</button>` : ""}
+      ${clipJob.state==="done" ? `<a class="btn" href="/api/clip/file">Download</a>` : ""}
+    </div>
+    <p class="tiny">Uses tools/clip (pyray HUD + RECORD). Does not talk to comma Connect.</p>
   </div>`;
 }
 function updatesView() {
@@ -326,6 +369,39 @@ function bind() {
   if (no) no.onclick = () => { confirmItem = null; render(); };
   const yes = document.getElementById("yes");
   if (yes) yes.onclick = () => { const k = confirmItem.key; confirmItem = null; save(k, "1"); };
+  const cGo = document.getElementById("cGo");
+  if (cGo) cGo.onclick = startClip;
+  const cStop = document.getElementById("cStop");
+  if (cStop) cStop.onclick = async () => { clipJob = await api("/api/clip/cancel", {method:"POST"}); say("Cancelled"); render(); };
+  const cQ = document.getElementById("cQcam");
+  if (cQ) cQ.onclick = () => { clipJob.qcam = clipJob.qcam===false; render(); };
+}
+async function loadClips() {
+  try {
+    const j = await api("/api/routes");
+    routes = j.routes || [];
+    clipJob = await api("/api/clip");
+  } catch (e) { say(e.message); }
+  render();
+  if (clipJob.state === "running" && !clipTimer) {
+    clipTimer = setInterval(async () => {
+      try { clipJob = await api("/api/clip"); } catch {}
+      if (clipJob.state !== "running") { clearInterval(clipTimer); clipTimer = null; }
+      if (tab==="clips") render();
+    }, 2000);
+  }
+}
+async function startClip() {
+  const route = document.getElementById("cRoute").value;
+  const start = Number(document.getElementById("cStart").value);
+  const end = Number(document.getElementById("cEnd").value);
+  const title = document.getElementById("cTitle").value;
+  const qcam = clipJob.qcam !== false;
+  const j = await api("/api/clip", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({route, start, end, title, qcam})});
+  if (!j.ok) { say(j.error || "could not start"); return; }
+  clipJob = j.job || j;
+  say("Rendering…");
+  loadClips();
 }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
 load();

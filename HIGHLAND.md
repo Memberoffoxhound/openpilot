@@ -115,3 +115,7 @@ The other “model picker” in sunnypilot is the **vehicle platform selector** 
 ## LAN console (deviceweb)
 
 Always-on PWA at `http://<c4-ip>:8088`. No password. Settings, file browser (`/data` only), git fetch/install on Highland, reboot/shutdown. Not on comma Connect — local Wi-Fi only.
+
+## Clips
+
+LAN console **Clips** tab runs `openpilot.tools.clip.run` (clipper-style HUD) on local `/data/media/0` routes. Offroad only, max 30s, aborted if ignition goes on. Not Nelson’s GPU Docker — that does not run on a C4. No comma Connect download.

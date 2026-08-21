@@ -7,7 +7,11 @@ import json
 import mimetypes
 import os
 import posixpath
+import re
 import subprocess
+import sys
+import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,6 +46,23 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | {
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
+DATA_DIR = Path("/data/media/0")
+CLIP_DIR = DATA_DIR / "clips"
+MAX_CLIP_SEC = 30
+SEG_RE = re.compile(
+  r"^(?:(?P<dongle>[0-9a-fA-F]{16})[|_])?(?P<time>\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2})(?:--(?P<seg>\d+))?$"
+)
+
+_clip_lock = threading.Lock()
+_clip_proc: subprocess.Popen | None = None
+_clip_job: dict = {
+  "state": "idle",
+  "error": "",
+  "route": "",
+  "start": 0,
+  "end": 0,
+  "output": "",
+}
 
 
 def _params() -> Params:
@@ -215,6 +236,170 @@ def _apply_update() -> dict:
     return {"ok": False, "error": str(e)}
 
 
+def _clip_gate() -> str | None:
+  p = _params()
+  if not p.get_bool("IsOffroad"):
+    return "Offroad only. Park first."
+  if p.get_bool("IsLiveStreaming") or p.get_bool("LivestreamEnabled"):
+    return "Turn Off-Air off. Clip uses the UI/camera path."
+  if p.get_bool("IsDriverViewEnabled"):
+    return "Exit driver view first."
+  return None
+
+
+def _list_routes() -> list[dict]:
+  if not DATA_DIR.is_dir():
+    return []
+  grouped: dict[str, dict] = {}
+  try:
+    entries = list(os.scandir(DATA_DIR))
+  except OSError:
+    return []
+  for ent in entries:
+    if ent.name == "clips":
+      continue
+    m = SEG_RE.match(ent.name)
+    if not m:
+      continue
+    rid = m.group("time")
+    g = grouped.setdefault(rid, {
+      "name": rid, "segments": 0, "bytes": 0, "has_qcam": False, "has_fcam": False, "dongle": m.group("dongle") or "",
+    })
+    g["segments"] += 1
+    try:
+      if ent.is_dir(follow_symlinks=False):
+        for f in os.scandir(ent.path):
+          try:
+            g["bytes"] += f.stat(follow_symlinks=False).st_size
+          except OSError:
+            pass
+          if f.name.startswith("qcamera"):
+            g["has_qcam"] = True
+          if f.name.startswith("fcamera"):
+            g["has_fcam"] = True
+    except OSError:
+      pass
+  out = list(grouped.values())
+  for g in out:
+    g["seconds"] = max(60, g["segments"] * 60)
+  out.sort(key=lambda x: x["name"], reverse=True)
+  return out[:80]
+
+
+def _clip_status() -> dict:
+  with _clip_lock:
+    j = dict(_clip_job)
+    out = j.get("output") or ""
+  if out and Path(out).is_file():
+    j["size"] = Path(out).stat().st_size
+    j["file"] = out
+  return j
+
+
+def _kill_clip(reason: str = "cancelled") -> None:
+  global _clip_proc
+  with _clip_lock:
+    proc = _clip_proc
+  if proc is not None and proc.poll() is None:
+    proc.terminate()
+    try:
+      proc.wait(timeout=6)
+    except Exception:
+      proc.kill()
+  with _clip_lock:
+    _clip_proc = None
+    if _clip_job["state"] == "running":
+      _clip_job["state"] = "error"
+      _clip_job["error"] = reason
+
+
+def _watch_onroad() -> None:
+  while True:
+    time.sleep(2)
+    try:
+      if not _params().get_bool("IsOffroad"):
+        with _clip_lock:
+          running = _clip_job["state"] == "running"
+        if running:
+          cloudlog.warning("clip aborted: onroad")
+          _kill_clip("aborted — car went onroad")
+    except Exception:
+      pass
+
+
+def _run_clip(route: str, start: int, end: int, title: str, qcam: bool) -> None:
+  global _clip_proc
+  CLIP_DIR.mkdir(parents=True, exist_ok=True)
+  dongle = _params().get("DongleId") or "0000000000000000"
+  route_id = route if "/" in route or "|" in route else f"{dongle}/{route}"
+  out = CLIP_DIR / f"{route.replace('|', '_')}_{start}-{end}.mp4"
+  cmd = [
+    sys.executable, "-m", "openpilot.tools.clip.run",
+    route_id, "-s", str(start), "-e", str(end),
+    "-d", str(DATA_DIR), "-o", str(out), "-f", "9",
+    "-t", title or "DELAMAIN",
+  ]
+  if qcam:
+    cmd.append("--qcam")
+  env = os.environ.copy()
+  env["OFFSCREEN"] = "1"
+  env["RECORD"] = "1"
+  log_path = Path("/tmp/clip.log")
+  with log_path.open("ab") as logf:
+    logf.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(cmd)}\n".encode())
+    try:
+      proc = subprocess.Popen(cmd, cwd=str(OPENPILOT_DIR), env=env, stdout=logf, stderr=logf)
+      with _clip_lock:
+        _clip_proc = proc
+        _clip_job["output"] = str(out)
+      rc = proc.wait()
+      with _clip_lock:
+        if _clip_job["state"] != "running":
+          return
+        if rc == 0 and out.is_file() and out.stat().st_size > 1000:
+          _clip_job["state"] = "done"
+          _clip_job["error"] = ""
+        else:
+          _clip_job["state"] = "error"
+          _clip_job["error"] = f"clip exited {rc}"
+    except Exception as e:
+      with _clip_lock:
+        _clip_job["state"] = "error"
+        _clip_job["error"] = str(e)
+    finally:
+      with _clip_lock:
+        _clip_proc = None
+
+
+def _start_clip(body: dict) -> dict:
+  gate = _clip_gate()
+  if gate:
+    return {"ok": False, "error": gate}
+  route = str(body.get("route") or "")
+  if not SEG_RE.match(route) and not SEG_RE.match(route.replace("|", "_").replace("/", "_")):
+    if not re.match(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}$", route):
+      return {"ok": False, "error": "bad route"}
+  try:
+    start = int(body.get("start") or 0)
+    end = int(body.get("end") or 0)
+  except (TypeError, ValueError):
+    return {"ok": False, "error": "bad times"}
+  if end - start < 3:
+    return {"ok": False, "error": "clip must be at least 3 seconds"}
+  if end - start > MAX_CLIP_SEC:
+    return {"ok": False, "error": f"max {MAX_CLIP_SEC}s on this device"}
+  with _clip_lock:
+    if _clip_job["state"] == "running":
+      return {"ok": False, "error": "already rendering"}
+    _clip_job.update({"state": "running", "error": "", "route": route, "start": start, "end": end, "output": ""})
+  threading.Thread(
+    target=_run_clip,
+    args=(route, start, end, str(body.get("title") or "DELAMAIN"), bool(body.get("qcam"))),
+    daemon=True,
+  ).start()
+  return {"ok": True, "job": _clip_status()}
+
+
 class Handler(BaseHTTPRequestHandler):
   server_version = "DELAMAIN/0.11.2.1"
 
@@ -278,6 +463,24 @@ class Handler(BaseHTTPRequestHandler):
         return
       if path in ("/api/updates", "/api/device/updates"):
         return self._json(200, _info())
+      if path in ("/api/routes", "/api/device/routes"):
+        return self._json(200, {"routes": _list_routes()})
+      if path in ("/api/clip", "/api/device/clip"):
+        return self._json(200, _clip_status())
+      if path in ("/api/clip/file", "/api/device/clip/file"):
+        st = _clip_status()
+        target = _safe_file(st.get("output") or "")
+        if target is None or not target.is_file():
+          return self._json(404, {"error": "no clip"})
+        data = target.read_bytes()
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+        self.end_headers()
+        self.wfile.write(data)
+        return
       return self._static(path)
     except FileNotFoundError:
       self._json(404, {"error": "not found"})
@@ -312,6 +515,11 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/action/shutdown", "/api/device/shutdown"):
         p.put_bool("DoShutdown", True, block=True)
         return self._json(200, {"ok": True})
+      if path in ("/api/clip", "/api/device/clip"):
+        return self._json(200, _start_clip(self._read_json()))
+      if path in ("/api/clip/cancel", "/api/device/clip/cancel"):
+        _kill_clip("cancelled")
+        return self._json(200, _clip_status())
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb POST")
@@ -345,6 +553,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+  threading.Thread(target=_watch_onroad, daemon=True).start()
   httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
   cloudlog.warning(f"deviceweb listening on 0.0.0.0:{PORT}")
   try:
