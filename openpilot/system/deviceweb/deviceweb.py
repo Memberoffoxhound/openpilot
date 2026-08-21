@@ -43,15 +43,15 @@ SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
 }
 WRITE_BOOL = {
-  "IsLdwEnabled", "AlwaysOnDM", "IsMetric", "DisengageOnAccelerator",
-  "RecordFront", "RecordAudio", "LivestreamEnabled", "SshEnabled",
-  "DisablePowerDown", "DisableUpdates", "ShowDebugInfo",
+  "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
+  "AutoLaneChangeEnabled", "IsLdwEnabled", "AlwaysOnDM", "IsMetric",
+  "DisengageOnAccelerator", "RecordFront", "RecordAudio", "LivestreamEnabled",
+  "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
+  "ShowDebugInfo", "JoystickDebugMode",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality"}
-DEVICE_ONLY = {
-  "OpenpilotEnabledToggle", "ExperimentalMode", "AutoLaneChangeEnabled",
-  "JoystickDebugMode", "AdbEnabled", "GsmRoaming", "GsmMetered", "NetworkMetered",
-}
+# networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
+DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
 READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
@@ -215,37 +215,173 @@ def _write_params(body: dict) -> None:
     if k in SECRET_NAMES or k in DEVICE_ONLY:
       continue
     if k in WRITE_BOOL:
-      p.put_bool(k, str(v) in ("1", "true", "True", "yes"), block=True)
+      on = str(v) in ("1", "true", "True", "yes")
+      p.put_bool(k, on, block=True)
+      if k == "ExperimentalMode" and on:
+        p.put_bool("ExperimentalModeConfirmed", True, block=True)
     elif k in WRITE_INT:
       p.put(k, str(int(v)), block=True)
 
 
-def _check_updates() -> dict:
+_update_lock = threading.Lock()
+_update_job: dict = {
+  "state": "idle",
+  "percent": 0,
+  "status": "",
+  "error": "",
+  "eta": None,
+  "available": False,
+}
+_update_cancel = threading.Event()
+
+
+def _set_update(**kwargs) -> None:
+  with _update_lock:
+    _update_job.update(kwargs)
+
+
+def _update_status() -> dict:
+  p = _params()
+  with _update_lock:
+    j = dict(_update_job)
+  j["updaterState"] = p.get("UpdaterState") or "idle"
+  j["updateAvailable"] = bool(p.get_bool("UpdateAvailable") or j.get("available"))
+  j["fetchAvailable"] = p.get_bool("UpdaterFetchAvailable")
+  j["offroad"] = p.get_bool("IsOffroad")
+  return j
+
+
+def _signal_updated(sig: str) -> bool:
+  r = subprocess.run(
+    ["pkill", f"-{sig}", "-f", "openpilot.system.updated.updated"],
+    capture_output=True, timeout=5,
+  )
+  return r.returncode == 0
+
+
+def _git_fetch_progress(branch: str) -> bool:
+  proc = subprocess.Popen(
+    ["git", "-C", str(OPENPILOT_DIR), "fetch", "--progress", "origin", branch],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+  )
+  assert proc.stdout is not None
+  for line in proc.stdout:
+    if _update_cancel.is_set():
+      proc.kill()
+      return False
+    m = re.search(r"(\d+)%", line)
+    if m:
+      pct = 18 + int(int(m.group(1)) * 0.7)
+      _set_update(state="downloading", percent=min(88, pct), status=f"Downloading… {min(88, pct)}%")
+  return proc.wait() == 0
+
+
+def _ready_and_reboot() -> None:
+  _set_update(state="ready", percent=100, status="Update ready. Installing in 10s.", available=True, error="")
+  for left in range(10, 0, -1):
+    if _update_cancel.is_set():
+      _set_update(state="idle", status="Install cancelled.", eta=None, percent=100)
+      return
+    _set_update(eta=left, status=f"Installing in {left}s…")
+    time.sleep(1)
+  _params().put_bool("DoReboot", True, block=True)
+  _set_update(state="rebooting", percent=100, status="Rebooting…", eta=0)
+
+
+def _run_update() -> None:
   p = _params()
   branch = p.get("GitBranch") or "Highland"
   try:
-    _git("fetch", "origin", branch)
+    _set_update(state="checking", percent=8, status="Checking…", error="", eta=None, available=False)
+    _signal_updated("SIGUSR1")
+    t0 = time.monotonic()
+    saw = False
+    while time.monotonic() - t0 < 12:
+      if _update_cancel.is_set():
+        _set_update(state="idle", status="Cancelled")
+        return
+      st = p.get("UpdaterState") or "idle"
+      if st and st != "idle":
+        saw = True
+        _set_update(percent=12, status=st)
+      if p.get_bool("UpdateAvailable") or p.get_bool("UpdaterFetchAvailable"):
+        break
+      time.sleep(0.4)
+
+    if p.get_bool("UpdateAvailable"):
+      _ready_and_reboot()
+      return
+
+    if p.get_bool("UpdaterFetchAvailable") or saw:
+      _set_update(state="downloading", percent=20, status="Downloading…")
+      _signal_updated("SIGHUP")
+      t1 = time.monotonic()
+      while time.monotonic() - t1 < 180:
+        if _update_cancel.is_set():
+          _set_update(state="idle", status="Cancelled")
+          return
+        st = p.get("UpdaterState") or "idle"
+        elapsed = time.monotonic() - t1
+        if st == "downloading...":
+          _set_update(percent=min(80, 20 + int(elapsed * 1.2)), status="Downloading…")
+        elif st == "finalizing update...":
+          _set_update(percent=90, status="Finalizing…")
+        elif p.get_bool("UpdateAvailable") or st == "idle" and elapsed > 4:
+          if p.get_bool("UpdateAvailable"):
+            _ready_and_reboot()
+            return
+          break
+        time.sleep(0.5)
+
+    _set_update(state="downloading", percent=22, status="Fetching origin…")
+    if not _git_fetch_progress(branch):
+      if _update_cancel.is_set():
+        _set_update(state="idle", status="Cancelled")
+        return
+      _set_update(state="error", error="git fetch failed", status="Fetch failed")
+      return
     head = _git("rev-parse", "HEAD")
     remote = _git("rev-parse", f"origin/{branch}")
-    available = head != remote
-    p.put_bool("UpdateAvailable", available, block=True)
-    return {"ok": True, "available": available, "head": head, "remote": remote, "branch": branch}
+    if head == remote:
+      _set_update(state="idle", percent=100, status="Already current.", available=False)
+      p.put_bool("UpdateAvailable", False, block=True)
+      return
+    _set_update(percent=92, status="Applying…")
+    _git("reset", "--hard", f"origin/{branch}")
+    p.put_bool("UpdateAvailable", True, block=True)
+    _ready_and_reboot()
   except Exception as e:
-    return {"ok": False, "error": str(e)}
+    cloudlog.exception("update job")
+    _set_update(state="error", error=str(e), status="Update failed")
+
+
+def _check_updates() -> dict:
+  p = _params()
+  if not p.get_bool("IsOffroad"):
+    return {"ok": False, "error": "Go offroad first."}
+  with _update_lock:
+    if _update_job["state"] in ("checking", "downloading", "finalizing", "ready", "rebooting"):
+      return {"ok": False, "error": "update already running", "job": dict(_update_job)}
+  _update_cancel.clear()
+  threading.Thread(target=_run_update, daemon=True).start()
+  return {"ok": True, "job": _update_status()}
 
 
 def _apply_update() -> dict:
   p = _params()
   if not p.get_bool("IsOffroad"):
     return {"ok": False, "error": "Go offroad first."}
-  branch = p.get("GitBranch") or "Highland"
-  try:
-    _git("fetch", "origin", branch)
-    _git("reset", "--hard", f"origin/{branch}")
-    p.put_bool("DoReboot", True, block=True)
-    return {"ok": True, "rebooting": True}
-  except Exception as e:
-    return {"ok": False, "error": str(e)}
+  if p.get_bool("UpdateAvailable"):
+    _update_cancel.clear()
+    threading.Thread(target=_ready_and_reboot, daemon=True).start()
+    return {"ok": True, "job": _update_status()}
+  return _check_updates()
+
+
+def _cancel_update() -> dict:
+  _update_cancel.set()
+  _set_update(state="idle", status="Cancelled", eta=None)
+  return _update_status()
 
 
 def _clip_gate() -> str | None:
@@ -474,7 +610,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
         return
       if path in ("/api/updates", "/api/device/updates"):
-        return self._json(200, _info())
+        return self._json(200, {**_info(), "job": _update_status()})
       if path in ("/api/routes", "/api/device/routes"):
         return self._json(200, {"routes": _list_routes()})
       if path in ("/api/clip", "/api/device/clip"):
@@ -523,6 +659,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, _check_updates())
       if path in ("/api/updates/apply", "/api/device/updates/apply"):
         return self._json(200, _apply_update())
+      if path in ("/api/updates/cancel", "/api/device/updates/cancel"):
+        return self._json(200, _cancel_update())
       if path in ("/api/action/reboot", "/api/device/reboot"):
         p.put_bool("DoReboot", True, block=True)
         return self._json(200, {"ok": True})

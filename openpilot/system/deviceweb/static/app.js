@@ -1,8 +1,8 @@
 const GROUPS = [
   {id:"toggles", title:"Toggles", items:[
-    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true, deviceOnly:true},
-    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over.", deviceOnly:true},
-    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary.", deviceOnly:true},
+    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true},
+    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over."},
+    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."},
     {key:"IsLdwEnabled", label:"Lane departure warnings", type:"bool", desc:"Alert when you drift over a line without a signal."},
     {key:"AlwaysOnDM", label:"Always-on driver monitor", type:"bool", desc:"Keep DM running when not engaged."},
     {key:"IsMetric", label:"Use metric units", type:"bool", desc:"Show km/h instead of mph."},
@@ -19,7 +19,7 @@ const GROUPS = [
   ]},
   {id:"device", title:"Device", items:[
     {key:"SshEnabled", label:"Enable SSH", type:"bool", desc:"Allow SSH from your GitHub keys."},
-    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4.", deviceOnly:true},
+    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4."},
     {key:"DisablePowerDown", label:"Disable power down", type:"bool", desc:"Keep the device awake after the car is off."},
     {key:"DisableUpdates", label:"Disable updates", type:"bool", desc:"Stop the stock updater from fetching."},
   ]},
@@ -30,12 +30,13 @@ const GROUPS = [
   ]},
   {id:"developer", title:"Developer", items:[
     {key:"ShowDebugInfo", label:"Show debug info", type:"bool", desc:"FPS and touch dots."},
-    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick.", deviceOnly:true},
+    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
   ]},
 ];
 const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
 let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
 let routes = [], clipJob = {state:"idle"}, clipTimer = null;
+let updateJob = {state:"idle", percent:0, status:"", eta:null}, updateTimer = null;
 let statsMonth = new Date();
 let statsFrom = null, statsTo = null, statsJob = {state:"idle"}, statsTimer = null, statsMap = null, statsQcam = true;
 function pad2(n){ return String(n).padStart(2,"0"); }
@@ -109,6 +110,7 @@ function render() {
     if (tab==="files") loadFiles();
     else if (tab==="clips") loadClips();
     else if (tab==="stats") loadStats(false);
+    else if (tab==="updates") pollUpdate();
     else render();
   });
   bind();
@@ -262,15 +264,21 @@ function statsView() {
   </div>`;
 }
 function updatesView() {
+  const job = updateJob || {};
+  const running = ["checking","downloading","finalizing","ready","rebooting"].includes(job.state);
+  const pct = Math.max(0, Math.min(100, job.percent|0));
   return `<div class="wrap">
     <div class="card pad">
       <p class="ghead">Installed</p>
       <h2>${esc(info.version||"0.11.2.1")}</h2>
       <p class="muted" style="margin-top:8px;font-family:var(--mono)">${esc(info.branch||"Highland")} · ${esc((info.commit||"").slice(0,12))}</p>
-      <p class="muted" style="margin-top:16px">${esc(info.updaterNotes||"Check for a newer Highland commit.")}</p>
+      <p class="muted" style="margin-top:16px">${esc(job.status || info.updaterNotes || "Check starts the download. Installs after 10s when ready.")}</p>
+      ${running || pct ? `<div class="bar green" style="margin-top:16px"><i style="width:${pct}%"></i></div>
+      <p class="tiny" style="margin-top:8px">${pct}%${job.eta!=null ? " · reboot in "+job.eta+"s" : ""}</p>` : ""}
+      ${job.error ? `<div class="warn" style="margin-top:12px">${esc(job.error)}</div>` : ""}
       <div class="btns" style="margin-top:20px">
-        <button class="btn primary" id="chk" ${busy?"disabled":""}>${busy?"Working…":"Check for updates"}</button>
-        <button class="btn" id="ins" ${busy||!info.updateAvailable?"disabled":""}>Install</button>
+        <button class="btn primary" id="chk" ${running?"disabled":""}>${running?"Updating…":"Check for updates"}</button>
+        ${running ? `<button class="btn" id="updCancel">Cancel</button>` : ""}
       </div>
     </div>
     <div class="card pad">
@@ -304,23 +312,11 @@ function bind() {
   const live = document.getElementById("openLive");
   if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
   const chk = document.getElementById("chk");
-  if (chk) chk.onclick = async () => {
-    busy = true; render();
-    try {
-      const j = await api("/api/updates/check", {method:"POST"});
-      if (!j.ok) say(j.error || "check failed");
-      else { info.updateAvailable = j.available; info.updaterNotes = j.available ? "A newer commit is on origin/"+j.branch : "Already current."; say(j.available ? "Update available" : "Up to date"); }
-    } catch(e) { say(e.message); }
-    busy = false; info = Object.assign(info, await api("/api/info")); render();
-  };
-  const ins = document.getElementById("ins");
-  if (ins) ins.onclick = async () => {
-    busy = true; render();
-    try {
-      const j = await api("/api/updates/apply", {method:"POST"});
-      say(j.ok ? "Installing. Device will reboot." : (j.error || "failed"));
-    } catch(e) { say(e.message); }
-    busy = false; render();
+  if (chk) chk.onclick = () => startUpdate();
+  const updCancel = document.getElementById("updCancel");
+  if (updCancel) updCancel.onclick = async () => {
+    updateJob = await api("/api/updates/cancel", {method:"POST"});
+    say("Cancelled"); render();
   };
   const reb = document.getElementById("reb");
   if (reb) reb.onclick = async () => { await api("/api/action/reboot", {method:"POST"}); say("Reboot requested."); };
@@ -436,4 +432,32 @@ async function mountStatsMap() {
   map.fitBounds(line.getBounds(), { padding: [24, 24] });
   statsMap = map;
   setTimeout(() => map.invalidateSize(), 80);
+}
+
+async function startUpdate() {
+  const j = await api("/api/updates/check", {method:"POST"});
+  if (!j.ok) { say(j.error || "could not start"); return; }
+  updateJob = j.job || j;
+  say("Checking…");
+  pollUpdate();
+}
+async function pollUpdate() {
+  try {
+    const j = await api("/api/updates");
+    if (j.job) updateJob = j.job;
+    if (j.version) info = Object.assign(info, j);
+  } catch (e) { say(e.message); }
+  if (tab==="updates") render();
+  const running = updateJob && ["checking","downloading","finalizing","ready","rebooting"].includes(updateJob.state);
+  if (running && !updateTimer) {
+    updateTimer = setInterval(async () => {
+      try {
+        const j = await api("/api/updates");
+        if (j.job) updateJob = j.job;
+      } catch {}
+      const still = updateJob && ["checking","downloading","finalizing","ready","rebooting"].includes(updateJob.state);
+      if (!still) { clearInterval(updateTimer); updateTimer = null; }
+      if (tab==="updates") render();
+    }, 700);
+  }
 }

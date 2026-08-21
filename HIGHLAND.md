@@ -124,4 +124,6 @@ LAN console **Clips** tab runs `openpilot.tools.clip.run` (clipper-style HUD) on
 
 LAN console **Stats** tab: calendar range → local qlog parse → miles, engagement %, disengages, GPS trace on OSM (not comma). Offroad to generate; cached reports load anytime. Max 31 days.
 
-Settings that need the C4 confirm UI (experimental, auto lane change, master enable, ADB, cellular) are visible but locked: **Can only be changed on device.**
+Web toggles write Params (ExperimentalMode also sets ExperimentalModeConfirmed). Confirm dialogs stay. Only cellular/metered are locked — networkd owns those, same as sunnylink hiding NetworkMetered.
+
+**Updates:** Check kicks `updated` (SIGUSR1/SIGHUP) then git fetch with a comma-green percent bar. Auto-install (reboot) after 10s. Cancel aborts.

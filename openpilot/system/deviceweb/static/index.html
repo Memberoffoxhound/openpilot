@@ -87,7 +87,8 @@
     .field label { font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
     .field input, .field select { height:44px; max-width:none; border-radius:12px; background:var(--surface-2); border:0; padding:0 12px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
     .bar { height:6px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
-    .bar i { display:block; height:100%; width:40%; background:var(--fg); animation: pulse 1s linear infinite; }
+    .bar.green { background:#14331f; }
+    .bar.green i { background:#51ff00; animation:none; width:0; transition:width .35s linear; }
     .set.locked { opacity:.55; }
     .set.locked .tog, .set.locked select { opacity:.4; }
     .lock { margin:6px 0 0; font-size:11px; color:#c8b48a; }
@@ -119,6 +120,6 @@
     </header>
   </div>
 </div>
-<script src="/app.js?v=4"></script>
+<script src="/app.js?v=5"></script>
 </body>
 </html>
