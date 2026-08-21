@@ -85,13 +85,13 @@ function render() {
   const title = {status:"Device", settings:"Settings", files:"Files", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
   app.innerHTML = `
     <aside>
-      <div class="brand"><b>DELAMAIN</b><p>LAN console · no lock</p></div>
+      <div class="brand"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN console · no lock</p></div>
       <nav>${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
       <div class="ver">${info.version || "0.11.2.1"} · ${info.branch || "Highland"}</div>
     </aside>
     <div class="col">
       <header class="top">
-        <div class="lg-hide"><div class="brand" style="padding:0"><b>DELAMAIN</b><p>LAN · no lock</p></div></div>
+        <div class="lg-hide"><div class="brand" style="padding:0"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN · no lock</p></div></div>
         <div class="lg-show" style="display:none"></div>
         <h1 class="lg-title">${title}</h1>
         <div style="margin-left:auto;display:flex;gap:8px">
@@ -136,7 +136,7 @@ function statusView() {
       ${stat("Network", (info.network||"net").toUpperCase(), bars)}
     </div>
     <div class="card">
-      ${row("Device", info.name||"DELAMAIN")}
+      ${row("Device", info.name||"S3XYPilot")}
       ${row("Version", info.version||"—")}
       ${row("Branch", info.branch||"—")}
       ${row("Commit", (info.commit||"").slice(0,12), true)}
@@ -197,7 +197,7 @@ function clipsView() {
       </div>
       <div class="field"><label>Start (s)</label><input id="cStart" type="number" min="0" value="${start}"/></div>
       <div class="field"><label>End (s)</label><input id="cEnd" type="number" min="3" max="30" value="${end}"/></div>
-      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "DELAMAIN")}"/></div>
+      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "S3XYPilot")}"/></div>
       <div class="set"><div class="meta"><b>Use qcamera</b><p>Smaller file, faster. Uncheck for full fcamera.</p></div>
         <button class="tog ${clipJob.qcam!==false?"on":""}" id="cQcam"><i></i></button></div>
     </div>

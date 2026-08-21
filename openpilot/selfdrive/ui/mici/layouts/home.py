@@ -1,4 +1,5 @@
 import datetime
+import json
 import time
 
 from openpilot.cereal import log
@@ -18,6 +19,21 @@ from openpilot.common.version import RELEASE_BRANCHES
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
+TRIP_PATH = "/data/trip_meter.json"
+WORDMARK_SIZE = 80
+LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
+
+
+def draw_model3_glyph(x: float, y: float, h: float, color: rl.Color) -> float:
+  """Tesla Model 3 mark: three left-aligned bars, top longest."""
+  bar_h = max(3.0, h * 0.20)
+  gap = max(2.0, (h - 3 * bar_h) / 2.0)
+  w = h * 0.70
+  yy = y
+  for frac in (1.0, 0.72, 0.48):
+    rl.draw_rectangle_rounded(rl.Rectangle(x, yy, w * frac, bar_h), 0.4, 4, color)
+    yy += bar_h + gap
+  return w
 
 NetworkType = log.DeviceState.NetworkType
 
@@ -180,12 +196,14 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._openpilot_label = UnifiedLabel("DELAMAIN", font_size=80, font_weight=FontWeight.DISPLAY, max_width=520, wrap_text=False)
+    self._wm_s = UnifiedLabel("S", font_size=WORDMARK_SIZE, font_weight=FontWeight.DISPLAY, wrap_text=False)
+    self._wm_rest = UnifiedLabel("XYPILOT", font_size=WORDMARK_SIZE, font_weight=FontWeight.DISPLAY, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
-    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
+    self._trip_at = 0.0
 
   def _update_state(self):
     if self.is_pressed and not self._is_pressed_prev:
@@ -203,6 +221,29 @@ class MiciHomeLayout(Widget):
           ui_state.params.put("ExperimentalMode", ui_state.experimental_mode, block=True)
         self._mouse_down_t = None
         self._did_long_press = True
+
+    self._refresh_trip()
+
+  def _fmt_trip(self, meters: float, eng_s: float, tot_s: float) -> str:
+    if ui_state.is_metric:
+      dist, unit = meters / 1000.0, "km"
+    else:
+      dist, unit = meters / 1609.344, "mi"
+    pct = int(round(100.0 * eng_s / tot_s)) if tot_s > 1 else 0
+    return f"{dist:.1f} {unit} {pct}%"
+
+  def _refresh_trip(self):
+    now = time.monotonic()
+    if now - self._trip_at < 1.0:
+      return
+    self._trip_at = now
+    try:
+      t = json.loads(open(TRIP_PATH).read())
+    except Exception:
+      t = {}
+    last = self._fmt_trip(t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0)
+    week = self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_s", 0) or 0, t.get("week_tot_s", 0) or 0)
+    self._version_commit_label.set_text(f"Engaged: Last {last} Weekly {week}")
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
@@ -248,13 +289,17 @@ class MiciHomeLayout(Widget):
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    self._openpilot_label.set_position(text_pos.x, text_pos.y)
-    self._openpilot_label.render()
+    self._wm_s.set_position(text_pos.x, text_pos.y)
+    self._wm_s.render()
+    gx = text_pos.x + self._wm_s.text_width + 2
+    gw = draw_model3_glyph(gx, text_pos.y + 22, 48, LABEL_WHITE)
+    self._wm_rest.set_position(gx + gw + 3, text_pos.y)
+    self._wm_rest.render()
 
     if self._version_text is not None:
       # release branch
       release_branch = self._version_text[1] in RELEASE_BRANCHES
-      version_pos = rl.Rectangle(text_pos.x, text_pos.y + self._openpilot_label.font_size + 16, 100, 44)
+      version_pos = rl.Rectangle(text_pos.x, text_pos.y + WORDMARK_SIZE + 16, 100, 44)
       self._version_label.set_text(self._version_text[0])
       self._version_label.set_position(version_pos.x, version_pos.y)
       self._version_label.render()
@@ -268,11 +313,9 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+      self._version_commit_label.set_max_width(gui_app.width - HOME_PADDING * 2)
+      self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
+      self._version_commit_label.render()
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(ui_state.experimental_mode)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LAN device console for DELAMAIN. No auth — bind on the local network only."""
+"""LAN device console for S3XYPilot. No auth — bind on the local network only."""
 
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def _git(*args: str) -> str:
 def _info() -> dict:
   p = _params()
   info = {
-    "name": "DELAMAIN",
+    "name": "S3XYPilot",
     "version": p.get("Version") or "0.11.2.1",
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
@@ -485,7 +485,7 @@ def _run_clip(route: str, start: int, end: int, title: str, qcam: bool) -> None:
     sys.executable, "-m", "openpilot.tools.clip.run",
     route_id, "-s", str(start), "-e", str(end),
     "-d", str(DATA_DIR), "-o", str(out), "-f", "9",
-    "-t", title or "DELAMAIN",
+    "-t", title or "S3XYPilot",
   ]
   if qcam:
     cmd.append("--qcam")
@@ -542,14 +542,14 @@ def _start_clip(body: dict) -> dict:
     _clip_job.update({"state": "running", "error": "", "route": route, "start": start, "end": end, "output": ""})
   threading.Thread(
     target=_run_clip,
-    args=(route, start, end, str(body.get("title") or "DELAMAIN"), bool(body.get("qcam"))),
+    args=(route, start, end, str(body.get("title") or "S3XYPilot"), bool(body.get("qcam"))),
     daemon=True,
   ).start()
   return {"ok": True, "job": _clip_status()}
 
 
 class Handler(BaseHTTPRequestHandler):
-  server_version = "DELAMAIN/0.11.2.1"
+  server_version = "S3XYPilot/0.11.2.1"
 
   def log_message(self, fmt: str, *args) -> None:
     cloudlog.info("deviceweb " + (fmt % args))

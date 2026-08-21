@@ -1,11 +1,11 @@
-# DELAMAIN — Highland
+# S3XYPilot — Highland
 
-**Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds a N/S/E/W heading over the confidence ball (localizer yaw, GPS while moving; last heading or compass+? if parked with no fix) and drops the ball under it. Lane color only applies in custom.
+**Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds an 8-way GPS heading over the confidence ball (`?` without a moving GPS fix) and drops the ball under it. Lane color only applies in custom.
 
 
 Working branch for Tesla Model 3 Highland (2024+). Version **0.11.2.1**.
 
-Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works. The C4 home wordmark is **DELAMAIN**.
+Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works. The C4 home wordmark is **S3XYPilot** (Tesla Model 3 bars for the 3).
 
 Fork of [commaai/openpilot](https://github.com/commaai/openpilot). Tesla car interface: [opendbc Highland](https://github.com/Memberoffoxhound/TeslaPilot-opendbc/tree/Highland).
 

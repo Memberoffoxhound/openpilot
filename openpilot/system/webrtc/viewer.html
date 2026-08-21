@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="screen-orientation" content="any"/>
-<title>DELAMAIN Live</title>
+<title>S3XYPilot Live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   :root { color-scheme: dark; --fg: #f2f2f2; --muted: rgba(255,255,255,.62); --line: rgba(255,255,255,.12); --blue: #3e8ceb; --gold: #d4b36a; }
@@ -29,6 +29,7 @@
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
     padding: 28px 24px calc(36px + env(safe-area-inset-bottom));
   }
+  .m3{display:inline-block;width:.42em;height:.72em;margin:0 .05em;vertical-align:-.06em;background:linear-gradient(currentColor,currentColor) 0 0/100% 22% no-repeat,linear-gradient(currentColor,currentColor) 0 39%/72% 22% no-repeat,linear-gradient(currentColor,currentColor) 0 78%/48% 22% no-repeat}
   .kicker { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
   h1 { margin: 8px 0 10px; font-size: clamp(28px, 7vw, 44px); font-weight: 650; letter-spacing: .04em; }
   .sub { margin: 0; max-width: 28em; font-size: 15px; line-height: 1.45; color: var(--muted); }
@@ -264,7 +265,7 @@
   <img class="hero" src="/static/welcome.jpg" alt=""/>
   <div class="veil"></div>
   <div class="copy">
-    <div class="kicker">DELAMAIN</div>
+    <div class="kicker">S<span class="m3" aria-label="3"></span>XYPilot</div>
     <h1>Welcome to the livestream</h1>
     <p class="sub">Wide cam up front. Driver cam in the corner. 3D if you want to look around.</p>
     <button class="enter" id="enter" type="button">Enter</button>
@@ -274,7 +275,7 @@
   <img class="hero" src="/static/offair.jpg" alt=""/>
   <div class="veil"></div>
   <div class="copy">
-    <div class="kicker">DELAMAIN</div>
+    <div class="kicker">S<span class="m3" aria-label="3"></span>XYPilot</div>
     <h1>Sorry — On-Air is off</h1>
     <p class="sub" id="offMsg">Enable On-Air on the device (home footer, or Settings → livestream). Same Wi-Fi. Then reload.</p>
     <button class="enter ghost" id="retry" type="button">Check again</button>
@@ -282,7 +283,7 @@
 </section>
 <section id="live" class="screen">
   <div id="bar">
-    <div class="row"><b>DELAMAIN</b><span class="sp"></span><span id="st">starting…</span></div>
+    <div class="row"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><span class="sp"></span><span id="st">starting…</span></div>
     <div id="stats"></div>
   </div>
   <div id="stage">
