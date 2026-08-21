@@ -331,6 +331,8 @@ const ROAD_HFOV = 2 * Math.atan(1928 / (2 * 2648));
 const DRIVER_HFOV = WIDE_HFOV;
 const DRIVER_PITCH = 0.35;
 const DRIVER_ROLL = 0.0;
+const DRIVER_YAW = 0.06;
+const DRIVER_VSHIFT = 0.12;
 const VIEW_HFOV = 95 * Math.PI / 180;
 const $ = (id) => document.getElementById(id);
 const st = $("st");
@@ -479,7 +481,7 @@ uniform vec2 uRes;
 uniform float uYaw, uPitch, uFov;
 uniform float uWideH, uRoadH, uDriverH;
 uniform float uWideAspect, uDriverAspect;
-uniform float uHasRoad, uHasDriver, uDriverRoll, uDriverPitch;
+uniform float uHasRoad, uHasDriver, uDriverRoll, uDriverPitch, uDriverYaw, uDriverYShift;
 
 vec2 pinhole(vec3 dir, float hfov, float aspect) {
   float z = dir.z;
@@ -525,11 +527,10 @@ void main() {
   vec3 col = vec3(0.02);
   float wSum = 0.0;
   float heading = abs(atan(dir.x, dir.z));
-  float front = 1.0 - smoothstep(1.00, 1.70, heading);
-  float back  = smoothstep(0.70, 1.35, heading);
+  float fade = smoothstep(1.18, 1.36, heading);
 
   vec2 uvw = sphereUV(dir, uWideH, uWideAspect);
-  float wW = cover(uvw) * front;
+  float wW = cover(uvw) * (1.0 - fade);
   vec3 wideCol = vec3(0.02);
   if (wW > 0.001) {
     wideCol = texture2D(uWide, uvw).rgb;
@@ -538,7 +539,7 @@ void main() {
 
   if (uHasRoad > 0.5) {
     vec2 uvr = pinhole(dir, uRoadH, 16.0/9.0);
-    float wR = cover(uvr) * front * 0.55;
+    float wR = cover(uvr) * (1.0 - fade) * 0.55;
     if (wR > 0.001) {
       col += matchTo(texture2D(uRoad, uvr).rgb, wideCol) * wR;
       wSum += wR;
@@ -547,12 +548,15 @@ void main() {
 
   if (uHasDriver > 0.5) {
     vec3 ddir = vec3(-dir.x, dir.y, -dir.z);
+    float cy2 = cos(uDriverYaw), sy2 = sin(uDriverYaw);
+    ddir = vec3(cy2 * ddir.x + sy2 * ddir.z, ddir.y, -sy2 * ddir.x + cy2 * ddir.z);
     float cr = cos(uDriverRoll), sr = sin(uDriverRoll);
     ddir = vec3(cr * ddir.x - sr * ddir.y, sr * ddir.x + cr * ddir.y, ddir.z);
     float cdp = cos(uDriverPitch), sdp = sin(uDriverPitch);
     ddir = normalize(vec3(ddir.x, ddir.y * cdp + ddir.z * sdp, -ddir.y * sdp + ddir.z * cdp));
     vec2 uvd = sphereUV(ddir, uDriverH, uDriverAspect);
-    float wD = cover(uvd) * back;
+    uvd.y -= uDriverYShift;
+    float wD = cover(uvd) * fade;
     if (wD > 0.001) {
       col += texture2D(uDriver, uvd).rgb * wD;
       wSum += wD;
@@ -614,6 +618,8 @@ function startGL() {
   u.hasDriver = g.getUniformLocation(prog, "uHasDriver");
   u.driverRoll = g.getUniformLocation(prog, "uDriverRoll");
   u.driverPitch = g.getUniformLocation(prog, "uDriverPitch");
+  u.driverYaw = g.getUniformLocation(prog, "uDriverYaw");
+  u.driverYShift = g.getUniformLocation(prog, "uDriverYShift");
   u.wideAspect = g.getUniformLocation(prog, "uWideAspect");
   u.driverAspect = g.getUniformLocation(prog, "uDriverAspect");
   g.uniform1f(u.wideH, WIDE_HFOV);
@@ -621,6 +627,8 @@ function startGL() {
   g.uniform1f(u.driverH, DRIVER_HFOV);
   g.uniform1f(u.driverRoll, DRIVER_ROLL);
   g.uniform1f(u.driverPitch, DRIVER_PITCH);
+  g.uniform1f(u.driverYaw, DRIVER_YAW);
+  g.uniform1f(u.driverYShift, DRIVER_VSHIFT);
   g.uniform1f(u.wideAspect, 16.0/9.0);
   g.uniform1f(u.driverAspect, 16.0/9.0);
   glOn = true;
