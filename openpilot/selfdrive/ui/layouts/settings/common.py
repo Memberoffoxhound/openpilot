@@ -1,4 +1,5 @@
 import math
+import os
 
 from openpilot.cereal import messaging, log
 from openpilot.common.params import Params
@@ -14,6 +15,11 @@ LANE_COLOR_GREEN = 0
 LANE_COLOR_TESLA = 1
 LANE_COLOR_LABELS = ("comma green", "tesla blue")
 
+ONROAD_UI_STOCK = 0
+ONROAD_UI_CUSTOM = 1
+ONROAD_UI_LABELS = ("stock UI", "custom UI")
+_CUSTOM_ONROAD_PATH = "/data/params/d/CustomOnroadUi"
+
 
 def lane_color_mode(params: Params | None = None) -> int:
   params = params or Params()
@@ -27,6 +33,46 @@ def lane_color_label(params: Params | None = None) -> str:
 
 def next_lane_color(params: Params | None = None) -> int:
   return LANE_COLOR_GREEN if lane_color_mode(params) == LANE_COLOR_TESLA else LANE_COLOR_TESLA
+
+
+def _read_onroad_ui_file() -> int:
+  try:
+    raw = open(_CUSTOM_ONROAD_PATH, "r", encoding="utf-8").read().strip()
+    return ONROAD_UI_CUSTOM if raw in ("1", "true") else ONROAD_UI_STOCK
+  except Exception:
+    return ONROAD_UI_STOCK
+
+
+def onroad_ui_mode(params: Params | None = None) -> int:
+  params = params or Params()
+  try:
+    mode = params.get("CustomOnroadUi", return_default=True)
+    return ONROAD_UI_CUSTOM if mode == ONROAD_UI_CUSTOM else ONROAD_UI_STOCK
+  except Exception:
+    return _read_onroad_ui_file()
+
+
+def onroad_ui_label(params: Params | None = None) -> str:
+  return ONROAD_UI_LABELS[onroad_ui_mode(params)]
+
+
+def next_onroad_ui(params: Params | None = None) -> int:
+  return ONROAD_UI_STOCK if onroad_ui_mode(params) == ONROAD_UI_CUSTOM else ONROAD_UI_CUSTOM
+
+
+def custom_onroad_ui(params: Params | None = None) -> bool:
+  return onroad_ui_mode(params) == ONROAD_UI_CUSTOM
+
+
+def set_onroad_ui(mode: int, params: Params | None = None) -> None:
+  mode = ONROAD_UI_CUSTOM if int(mode) == ONROAD_UI_CUSTOM else ONROAD_UI_STOCK
+  params = params or Params()
+  try:
+    params.put("CustomOnroadUi", mode, block=True)
+  except Exception:
+    os.makedirs(os.path.dirname(_CUSTOM_ONROAD_PATH), exist_ok=True)
+    with open(_CUSTOM_ONROAD_PATH, "w", encoding="utf-8") as f:
+      f.write(str(mode))
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:

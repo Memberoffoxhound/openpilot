@@ -1,10 +1,15 @@
 import math
 import pyray as rl
 from openpilot.selfdrive.ui.mici.onroad import SIDE_PANEL_WIDTH
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.common.filter_simple import FirstOrderFilter
+
+BALL_RADIUS = 24
+CARDINALS = "NESW"
 
 
 def draw_circle_gradient(center_x: float, center_y: float, radius: int,
@@ -21,11 +26,35 @@ def draw_circle_gradient(center_x: float, center_y: float, radius: int,
                20, rl.BLACK)
 
 
+def heading_letter() -> str | None:
+  sm = ui_state.sm
+  try:
+    if sm.recv_frame["gpsLocationExternal"] < ui_state.started_frame:
+      return None
+    gps = sm["gpsLocationExternal"]
+    if hasattr(gps, "hasFix") and not gps.hasFix:
+      return None
+    acc = float(getattr(gps, "bearingAccuracyDeg", 180.0) or 180.0)
+    if acc > 60.0:
+      return None
+    bearing = float(gps.bearingDeg) % 360.0
+    return CARDINALS[int((bearing + 45.0) % 360.0) // 90]
+  except Exception:
+    return None
+
+
 class ConfidenceBall(Widget):
   def __init__(self, demo: bool = False):
     super().__init__()
     self._demo = demo
     self._confidence_filter = FirstOrderFilter(-0.5, 0.5, 1 / gui_app.target_fps)
+    self._font = gui_app.font(FontWeight.DISPLAY)
+    self._font_size = 42
+    while self._font_size > 28:
+      if measure_text_cached(self._font, "W", self._font_size).x <= BALL_RADIUS * 2:
+        break
+      self._font_size -= 1
+    self._letter_h = measure_text_cached(self._font, "N", self._font_size).y
 
   def update_filter(self, value: float):
     self._confidence_filter.update(value)
@@ -49,8 +78,25 @@ class ConfidenceBall(Widget):
       self.rect.height,
     )
 
-    status_dot_radius = 24
-    dot_height = (1 - self._confidence_filter.x) * (content_rect.height - 2 * status_dot_radius) + status_dot_radius
+    status_dot_radius = BALL_RADIUS
+    ball_cx = content_rect.x + content_rect.width - status_dot_radius
+    top_pad = 0.0
+    if custom_onroad_ui():
+      top_pad = 4.0 + self._letter_h + 6.0
+      letter = heading_letter()
+      if letter:
+        sz = measure_text_cached(self._font, letter, self._font_size)
+        rl.draw_text_ex(
+          self._font,
+          letter,
+          rl.Vector2(ball_cx - sz.x / 2, content_rect.y + 2),
+          self._font_size,
+          0,
+          rl.Color(255, 255, 255, 230),
+        )
+
+    usable = max(1.0, content_rect.height - 2 * status_dot_radius - top_pad)
+    dot_height = top_pad + (1 - self._confidence_filter.x) * usable + status_dot_radius
     dot_height = self._rect.y + dot_height
 
     # confidence zones
@@ -73,6 +119,5 @@ class ConfidenceBall(Widget):
       top_dot_color = rl.Color(50, 50, 50, 255)
       bottom_dot_color = rl.Color(13, 13, 13, 255)
 
-    draw_circle_gradient(content_rect.x + content_rect.width - status_dot_radius,
-                         dot_height, status_dot_radius,
+    draw_circle_gradient(ball_cx, dot_height, status_dot_radius,
                          top_dot_color, bottom_dot_color)

@@ -9,7 +9,8 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
-  LANE_COLOR_LABELS, lane_color_label, next_lane_color, restart_needed_callback,
+  LANE_COLOR_LABELS, ONROAD_UI_LABELS, lane_color_label, next_lane_color,
+  onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.webrtc.helpers import on_air_block_reason
@@ -83,8 +84,32 @@ class AutoLaneChangeConfirmPage(NavScroller):
     ])
 
 
+class OnroadUiCycle(BigButton):
+  """Tap to switch stock onroad HUD vs custom."""
+
+  def __init__(self):
+    super().__init__("onroad UI", "")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = onroad_ui_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_onroad_ui(self._params)
+    set_onroad_ui(nxt, self._params)
+    self.set_value(ONROAD_UI_LABELS[nxt])
+
+
 class LaneColorCycle(BigButton):
-  """Tap to cycle tesla blue / comma green."""
+  """Tap to cycle tesla blue / comma green. Applied in custom onroad UI."""
 
   def __init__(self):
     super().__init__("lane color", "")
@@ -149,8 +174,9 @@ class ThemeLayoutMici(NavScroller):
 
   def __init__(self):
     super().__init__()
+    self._onroad_ui = OnroadUiCycle()
     self._lane_color = LaneColorCycle()
-    self._scroller.add_widgets([self._lane_color])
+    self._scroller.add_widgets([self._onroad_ui, self._lane_color])
 
 
 class ExperimentalModeConfirmPage(NavScroller):

@@ -1,6 +1,8 @@
 from openpilot.cereal import log
 from openpilot.common.params import Params, UnknownKeyName
-from openpilot.selfdrive.ui.layouts.settings.common import lane_color_label, next_lane_color
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  lane_color_label, next_lane_color, onroad_ui_label, next_onroad_ui, set_onroad_ui,
+)
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -30,7 +32,10 @@ DESCRIPTIONS = {
     "When off, a steering-wheel nudge is required (stock openpilot)."
   ),
   "LaneColor": tr_noop(
-    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot."
+    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot. Applied in custom onroad UI."
+  ),
+  "CustomOnroadUi": tr_noop(
+    "Stock UI is comma's onroad HUD. Custom UI is this fork's onroad overlays, starting with a compass heading."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -117,6 +122,13 @@ class TogglesLayout(Widget):
       icon="speed_limit.png"
     )
 
+    self._onroad_ui_setting = button_item(
+      lambda: tr("Theme: Onroad UI"),
+      lambda: tr(onroad_ui_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["CustomOnroadUi"]),
+      callback=self._cycle_onroad_ui,
+    )
+
     self._lane_color_setting = button_item(
       lambda: tr("Theme: Lane Color"),
       lambda: tr(lane_color_label(self._params)),
@@ -156,6 +168,7 @@ class TogglesLayout(Widget):
       # insert longitudinal personality + ALC cycle after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+        self._toggles["CustomOnroadUi"] = self._onroad_ui_setting
         self._toggles["LaneColor"] = self._lane_color_setting
 
     self._update_experimental_mode_icon()
@@ -228,6 +241,7 @@ class TogglesLayout(Widget):
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
 
+    self._onroad_ui_setting.action_item.set_text(lambda: tr(onroad_ui_label(self._params)))
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
 
   def _render(self, rect):
@@ -286,6 +300,11 @@ class TogglesLayout(Widget):
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
+
+  def _cycle_onroad_ui(self):
+    nxt = next_onroad_ui(self._params)
+    set_onroad_ui(nxt, self._params)
+    self._onroad_ui_setting.action_item.set_text(lambda: tr(onroad_ui_label(self._params)))
 
   def _cycle_lane_color(self):
     nxt = next_lane_color(self._params)

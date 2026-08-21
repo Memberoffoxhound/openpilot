@@ -8,6 +8,7 @@ from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -289,6 +290,8 @@ class ModelRenderer(Widget):
 
   def _engaged_ll_color(self):
     try:
+      if not custom_onroad_ui():
+        return STOCK_LANE_GREEN
       mode = ui_state.params.get("LaneColor", return_default=True)
     except Exception:
       mode = 1

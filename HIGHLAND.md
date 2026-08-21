@@ -1,5 +1,8 @@
 # DELAMAIN — Highland
 
+**Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds a N/S/E/W heading over the confidence ball and drops the ball under it. Lane color only applies in custom.
+
+
 Working branch for Tesla Model 3 Highland (2024+). Version **0.11.2.1**.
 
 Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works. The C4 home wordmark is **DELAMAIN**.

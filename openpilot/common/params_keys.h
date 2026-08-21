@@ -27,6 +27,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"CarParamsPrevRoute", {PERSISTENT, BYTES}},
     {"CompletedTrainingVersion", {PERSISTENT, STRING, "0"}},
     {"ControlsReady", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
+    {"CustomOnroadUi", {PERSISTENT, INT, "0"}},  // 0 = stock onroad HUD; 1 = custom (compass, etc)
     {"CurrentBootlog", {PERSISTENT, STRING}},
     {"CurrentRoute", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, STRING}},
     {"DisableLogging", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
