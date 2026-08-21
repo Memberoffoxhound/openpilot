@@ -196,60 +196,6 @@
     backdrop-filter: blur(8px);
   }
   #modes button.on { background: var(--blue); border-color: var(--blue); }
-  #modes button.rec { border-color: #e02424; color: #ff6b6b; }
-  #modes button.rec.on { background: #e02424; color: #fff; border-color: #e02424; }
-  #recBadge {
-    display: none; position: absolute; top: 10px; left: 10px; z-index: 7;
-    background: #e02424; color: #fff; border-radius: 999px;
-    padding: 4px 10px; font-size: 12px; font-weight: 700; letter-spacing: .12em;
-    align-items: center; gap: 6px;
-  }
-  #recBadge.on { display: flex; }
-  #recBadge i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: recPulse 1s infinite; }
-  @keyframes recPulse { 50% { opacity: .25; } }
-
-  #clips.screen {
-    display: none; flex-direction: column; background: #0b0b0b;
-    z-index: 8; transform: translateX(100%);
-    transition: transform .28s ease;
-  }
-  body.clips #clips { display: flex; transform: translateX(0); }
-  body.clips #live { pointer-events: none; }
-  #clipsHead {
-    display: flex; align-items: center; gap: 10px;
-    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-    border-bottom: 1px solid var(--line);
-  }
-  #clipsHead b { letter-spacing: .2em; font-size: 13px; }
-  #clipsHead .sp { flex: 1; }
-  #clipsHead button, #clipActions button, #clipActions a {
-    border: 1px solid var(--line); background: #1a1a1a; color: #fff;
-    border-radius: 999px; padding: 8px 14px; font-size: 14px; text-decoration: none;
-  }
-  #clipPlayer { display: none; flex-direction: column; background: #000; }
-  #clipPlayer.on { display: flex; }
-  #clipVid { width: 100%; aspect-ratio: 16/9; background: #000; max-height: 46dvh; }
-  #clipScrub { width: 100%; accent-color: var(--blue); }
-  #clipActions {
-    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-    padding: 10px 14px; color: var(--muted); font-size: 13px;
-  }
-  #clipList {
-    flex: 1; overflow: auto; padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .clipRow {
-    display: flex; gap: 12px; align-items: center;
-    background: #141414; border: 1px solid var(--line); border-radius: 14px;
-    padding: 8px; text-align: left; color: inherit; width: 100%;
-  }
-  .clipRow img, .clipRow .ph {
-    width: 112px; height: 63px; object-fit: cover; border-radius: 8px; background: #222; flex: 0 0 auto;
-  }
-  .clipRow .meta { min-width: 0; }
-  .clipRow .when { font-weight: 650; color: #fff; }
-  .clipRow .dur { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  #clipEmpty { text-align: center; color: var(--muted); padding: 40px 20px; line-height: 1.45; }
   #hint { display: none; text-align: center; font-size: 12px; opacity: .45; pointer-events: none;
     padding-bottom: 4px; }
   body.mode-3d #hint { display: block; }
@@ -343,7 +289,6 @@
     <video id="vWide" playsinline webkit-playsinline muted autoplay></video>
     <video id="vRoad" playsinline webkit-playsinline muted autoplay></video>
     <canvas id="gl"></canvas>
-    <div id="recBadge"><i></i><span id="recTime">REC 0:00</span></div>
     <div id="hudLayer">
       <div id="hudBox">
         <canvas id="hudLanes"></canvas>
@@ -376,27 +321,8 @@
   <div id="modes">
     <button id="btnHud" type="button">HUD off</button>
     <button id="btn3d" type="button">3D</button>
-    <button id="btnRec" type="button">REC</button>
-    <button id="btnClips" type="button">Clips</button>
   </div>
   <div id="err"></div>
-</section>
-<section id="clips" class="screen">
-  <div id="clipsHead">
-    <button id="clipsBack" type="button">Live</button>
-    <b>CLIPS</b>
-    <span class="sp"></span>
-  </div>
-  <div id="clipPlayer">
-    <video id="clipVid" playsinline webkit-playsinline controls></video>
-    <div id="clipActions">
-      <span id="clipWhen"></span>
-      <span class="sp"></span>
-      <button id="clipShare" type="button">Download</button>
-      <button id="clipDel" type="button">Delete</button>
-    </div>
-  </div>
-  <div id="clipList"></div>
 </section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -649,8 +575,8 @@ function compile(g, type, src) {
 }
 function startGL() {
   if (glOn) { resize(); return; }
-  gl = glCanvas.getContext("webgl2", { alpha: false, antialias: true, preserveDrawingBuffer: true })
-    || glCanvas.getContext("webgl", { alpha: false, antialias: true, preserveDrawingBuffer: true });
+  gl = glCanvas.getContext("webgl2", { alpha: false, antialias: true, preserveDrawingBuffer: false })
+    || glCanvas.getContext("webgl", { alpha: false, antialias: true, preserveDrawingBuffer: false });
   if (!gl) { showErr("WebGL not available"); return; }
   const g = gl;
   prog = g.createProgram();
@@ -1023,7 +949,7 @@ async function tickHud() {
   } catch (e) {}
 }
 function show(which) {
-  document.body.classList.remove("boot", "off", "live", "clips");
+  document.body.classList.remove("boot", "off", "live");
   document.body.classList.add(which);
 }
 function offCopy(info) {
@@ -1129,249 +1055,6 @@ async function boot() {
 $("enter").onclick = (e) => { e.stopPropagation(); goLive(); };
 $("boot").onclick = () => goLive();
 $("retry").onclick = () => boot();
-
-const REC_MAX_MS = 5 * 60 * 1000;
-const recCanvas = document.createElement("canvas");
-const recCtx = recCanvas.getContext("2d");
-let recorder = null, recChunks = [], recTimer = 0, recRaf = 0, recStarted = 0, recThumb = null;
-
-function recMime() {
-  const c = ["video/mp4", "video/webm;codecs=vp8", "video/webm"];
-  return c.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
-}
-function fmtDur(ms) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-function drawContain(ctx, src, x, y, w, h) {
-  const sw = src.videoWidth || src.width || 0, sh = src.videoHeight || src.height || 0;
-  if (!sw || !sh) return;
-  const sc = Math.min(w / sw, h / sh);
-  const dw = sw * sc, dh = sh * sc;
-  ctx.drawImage(src, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-}
-function recPaint() {
-  if (!recorder || recorder.state !== "recording") return;
-  const w = recCanvas.width, h = recCanvas.height;
-  recCtx.fillStyle = "#000";
-  recCtx.fillRect(0, 0, w, h);
-  if (mode === "3d" && glCanvas && glCanvas.width) {
-    try { recCtx.drawImage(glCanvas, 0, 0, w, h); } catch (e) {}
-  } else {
-    const vid = (hudOn && vRoad && vRoad.videoWidth) ? vRoad : vWide;
-    drawContain(recCtx, vid, 0, 0, w, h);
-    if (hudOn) {
-      const lanes = $("hudLanes");
-      if (lanes && lanes.width) try { recCtx.drawImage(lanes, 0, 0, w, h); } catch (e) {}
-    }
-    if (vDriver && vDriver.videoWidth) {
-      const pw = Math.round(w * 0.28), ph = Math.round(pw * 9 / 16);
-      recCtx.drawImage(vDriver, w - pw - 16, 16, pw, ph);
-    }
-  }
-  recRaf = requestAnimationFrame(recPaint);
-}
-function recDb() {
-  return new Promise((res, rej) => {
-    const q = indexedDB.open("delamain-clips", 1);
-    q.onupgradeneeded = () => q.result.createObjectStore("clips", { keyPath: "id" });
-    q.onsuccess = () => res(q.result);
-    q.onerror = () => rej(q.error);
-  });
-}
-async function saveClip(blob, duration, mime, thumb) {
-  const rec = {
-    id: Date.now(),
-    created: Date.now(),
-    duration,
-    mime: mime || blob.type || "video/webm",
-    size: blob.size,
-    video: blob,
-    thumb,
-  };
-  const db = await recDb();
-  await new Promise((res, rej) => {
-    const tx = db.transaction("clips", "readwrite");
-    tx.objectStore("clips").put(rec);
-    tx.oncomplete = res;
-    tx.onerror = () => rej(tx.error);
-  });
-  return rec;
-}
-async function listClips() {
-  const db = await recDb();
-  return new Promise((res, rej) => {
-    const tx = db.transaction("clips", "readonly");
-    const req = tx.objectStore("clips").getAll();
-    req.onsuccess = () => res((req.result || []).sort((a, b) => b.created - a.created));
-    req.onerror = () => rej(req.error);
-  });
-}
-async function delClip(id) {
-  const db = await recDb();
-  await new Promise((res, rej) => {
-    const tx = db.transaction("clips", "readwrite");
-    tx.objectStore("clips").delete(id);
-    tx.oncomplete = res;
-    tx.onerror = () => rej(tx.error);
-  });
-}
-function recTick() {
-  const ms = Date.now() - recStarted;
-  $("recTime").textContent = "REC " + fmtDur(ms);
-  if (ms >= REC_MAX_MS) stopRec();
-}
-async function startRec() {
-  if (recorder) return;
-  if (!window.MediaRecorder) { showErr("Recording is not supported in this browser"); return; }
-  const mime = recMime();
-  recCanvas.width = 1280;
-  recCanvas.height = 720;
-  recChunks = [];
-  recThumb = null;
-  recStarted = Date.now();
-  recPaint();
-  setTimeout(() => {
-    try {
-      recCanvas.toBlob((b) => { recThumb = b; }, "image/jpeg", 0.7);
-    } catch (e) {}
-  }, 400);
-  const stream = recCanvas.captureStream(20);
-  try {
-    recorder = mime ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 })
-                    : new MediaRecorder(stream);
-  } catch (e) {
-    recorder = new MediaRecorder(stream);
-  }
-  recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
-  recorder.onerror = () => stopRec();
-  recorder.start(500);
-  recTimer = setInterval(recTick, 250);
-  $("btnRec").classList.add("on", "rec");
-  $("btnRec").textContent = "Stop";
-  $("recBadge").classList.add("on");
-  recTick();
-}
-async function stopRec() {
-  if (!recorder) return;
-  const rec = recorder;
-  recorder = null;
-  clearInterval(recTimer);
-  cancelAnimationFrame(recRaf);
-  $("btnRec").classList.remove("on", "rec");
-  $("btnRec").textContent = "REC";
-  $("recBadge").classList.remove("on");
-  const duration = Date.now() - recStarted;
-  const mime = rec.mimeType || recMime();
-  await new Promise((res) => {
-    rec.onstop = res;
-    try { rec.stop(); } catch (e) { res(); }
-  });
-  const blob = new Blob(recChunks, { type: mime || "video/webm" });
-  recChunks = [];
-  if (blob.size < 1000) return;
-  await saveClip(blob, duration, mime, recThumb);
-  renderClipList();
-}
-$("btnRec").onclick = () => { if (recorder) stopRec(); else startRec(); };
-
-function openClips() {
-  document.body.classList.add("clips");
-  renderClipList();
-}
-function closeClips() {
-  document.body.classList.remove("clips");
-  const v = $("clipVid");
-  v.pause();
-  v.removeAttribute("src");
-  v.load();
-  $("clipPlayer").classList.remove("on");
-}
-$("btnClips").onclick = openClips;
-$("clipsBack").onclick = closeClips;
-
-let clipPlaying = null;
-async function renderClipList() {
-  const list = $("clipList");
-  let clips = [];
-  try { clips = await listClips(); } catch (e) { clips = []; }
-  if (!clips.length) {
-    list.innerHTML = `<div id="clipEmpty">No clips yet.<br>Tap REC on the live view, then swipe left or open Clips.</div>`;
-    return;
-  }
-  list.innerHTML = "";
-  for (const c of clips) {
-    const btn = document.createElement("button");
-    btn.className = "clipRow";
-    btn.type = "button";
-    const when = new Date(c.created).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    const img = c.thumb ? `<img alt="" src="${URL.createObjectURL(c.thumb)}"/>` : `<div class="ph"></div>`;
-    btn.innerHTML = `${img}<div class="meta"><div class="when">${when}</div><div class="dur">${fmtDur(c.duration)} · ${Math.round(c.size / 100000) / 10} MB</div></div>`;
-    btn.onclick = () => playClip(c);
-    list.appendChild(btn);
-  }
-}
-function playClip(c) {
-  clipPlaying = c;
-  const url = URL.createObjectURL(c.video);
-  const v = $("clipVid");
-  v.src = url;
-  v.play().catch(() => {});
-  $("clipWhen").textContent = new Date(c.created).toLocaleString();
-  $("clipPlayer").classList.add("on");
-}
-$("clipShare").onclick = async () => {
-  if (!clipPlaying) return;
-  const ext = (clipPlaying.mime || "").includes("mp4") ? "mp4" : "webm";
-  const name = `delamain-${new Date(clipPlaying.created).toISOString().replace(/[:.]/g, "-")}.${ext}`;
-  const file = new File([clipPlaying.video], name, { type: clipPlaying.mime || "video/webm" });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: name });
-      return;
-    }
-  } catch (e) {}
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(clipPlaying.video);
-  a.download = name;
-  a.click();
-};
-$("clipDel").onclick = async () => {
-  if (!clipPlaying) return;
-  await delClip(clipPlaying.id);
-  clipPlaying = null;
-  $("clipPlayer").classList.remove("on");
-  const v = $("clipVid");
-  v.pause(); v.removeAttribute("src"); v.load();
-  renderClipList();
-};
-
-(function bindSwipe() {
-  const live = $("live");
-  const clips = $("clips");
-  let x0 = 0, y0 = 0, edge = false;
-  live.addEventListener("touchstart", (e) => {
-    const t = e.changedTouches[0];
-    x0 = t.clientX; y0 = t.clientY;
-    edge = x0 > window.innerWidth - 36;
-  }, { passive: true });
-  live.addEventListener("touchend", (e) => {
-    const t = e.changedTouches[0];
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    if (edge && dx < -60 && Math.abs(dx) > Math.abs(dy) * 1.2) openClips();
-    else if (!edge && dx < -90 && Math.abs(dx) > Math.abs(dy) * 1.6 && x0 > window.innerWidth * 0.55) openClips();
-  }, { passive: true });
-  clips.addEventListener("touchstart", (e) => {
-    const t = e.changedTouches[0];
-    x0 = t.clientX; y0 = t.clientY;
-  }, { passive: true });
-  clips.addEventListener("touchend", (e) => {
-    const t = e.changedTouches[0];
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    if (dx > 80 && Math.abs(dx) > Math.abs(dy) && x0 < 80) closeClips();
-  }, { passive: true });
-})();
-
 boot();
 </script>
 </body>
