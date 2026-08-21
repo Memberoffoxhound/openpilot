@@ -546,7 +546,7 @@ class Handler(BaseHTTPRequestHandler):
     self._cors()
     self.send_header("Content-Type", ctype)
     self.send_header("Content-Length", str(len(data)))
-    if candidate.name == "index.html":
+    if candidate.name in ("index.html", "app.js"):
       self.send_header("Cache-Control", "no-store")
     self.end_headers()
     self.wfile.write(data)
