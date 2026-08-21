@@ -37,10 +37,6 @@ DESCRIPTIONS = {
     "without a turn signal activated while driving over 31 mph (50 km/h)."
   ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),
-  "DisableIrLed": tr_noop(
-    "Turn off the comma device cabin IR LEDs. Tesla's own IR may still light the driver camera. " +
-    "Use this if the two IR sources flicker against each other at night. Driver monitoring may be worse in the dark."
-  ),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
   "RecordAudio": tr_noop("Record and store microphone audio while driving. The audio will be included in the dashcam video in comma connect."),
@@ -88,12 +84,6 @@ class TogglesLayout(Widget):
       "AlwaysOnDM": (
         lambda: tr("Always-On Driver Monitoring"),
         DESCRIPTIONS["AlwaysOnDM"],
-        "monitoring.png",
-        False,
-      ),
-      "DisableIrLed": (
-        lambda: tr("Disable Cabin IR LEDs"),
-        DESCRIPTIONS["DisableIrLed"],
         "monitoring.png",
         False,
       ),
