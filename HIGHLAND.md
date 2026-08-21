@@ -111,3 +111,7 @@ sunnypilot’s **model picker** (community driving NNs: GWM, DTR, etc.) is **not
 Highland tracks commaai/openpilot **master**, so you get the latest **stock comma** driving model. Community models need a sunnypilot-based fork, not a surgical port.
 
 The other “model picker” in sunnypilot is the **vehicle platform selector** (`car_list.json` / ~350 cars). This fork is Tesla-only; that UI is not useful here.
+
+## LAN console (deviceweb)
+
+Always-on PWA at `http://<c4-ip>:8088`. No password. Settings, file browser (`/data` only), git fetch/install on Highland, reboot/shutdown. Not on comma Connect — local Wi-Fi only.

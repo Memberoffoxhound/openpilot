@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#000000"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>DELAMAIN</title>
+  <link rel="manifest" href="/manifest.webmanifest"/>
+  <link rel="icon" href="/icon.svg"/>
+  <link rel="apple-touch-icon" href="/icon.svg"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"/>
+  <style>
+    :root {
+      --bg:#070708; --surface:#111114; --surface-2:#19191d; --fg:#f3f3f4;
+      --muted:#8e8e96; --faint:#6a6a72; --line:#2c2c32; --ok:#3dd68c; --oled:#000;
+      --display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+      --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+      --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; background:var(--oled); color:var(--fg); font-family:var(--sans); }
+    button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+    input,select { font:inherit; color:inherit; }
+    a { color:inherit; }
+    #app { display:flex; min-height:100dvh; }
+    aside { display:none; width:240px; flex-direction:column; border-right:1px solid color-mix(in oklab, var(--fg) 10%, transparent); background:var(--bg); }
+    .brand { padding: calc(20px + env(safe-area-inset-top)) 20px 16px; }
+    .brand b { font-family:var(--display); font-size:20px; letter-spacing:-.03em; }
+    .brand p { margin:6px 0 0; font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted); }
+    aside nav { display:flex; flex-direction:column; gap:4px; padding:0 12px; flex:1; }
+    aside nav button { height:44px; display:flex; align-items:center; gap:12px; padding:0 12px; border-radius:12px; font-size:14px; font-weight:500; color:var(--muted); }
+    aside nav button.on { background:var(--fg); color:var(--bg); }
+    .ver { padding:0 20px 24px; font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); }
+    .col { flex:1; min-width:0; display:flex; flex-direction:column; }
+    header.top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; padding-top:max(12px, env(safe-area-inset-top)); border-bottom:1px solid color-mix(in oklab, var(--fg) 10%, transparent); }
+    header.top h1 { margin:0; font-family:var(--display); font-size:24px; letter-spacing:-.03em; }
+    .pill { border-radius:999px; padding:4px 10px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; background:var(--surface-2); color:var(--muted); }
+    .pill.ok { background:#3dd68c22; color:var(--ok); }
+    .pill.live { background:#e0242433; color:#ff6b6b; }
+    main { flex:1; overflow:auto; padding:20px 16px calc(88px + env(safe-area-inset-bottom)); }
+    .wrap { max-width:48rem; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+    .warn { background:#16120a; color:#e6d5a2; border-radius:20px; padding:12px 16px; font-size:14px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .stat, .card { background:var(--surface); border-radius:20px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .stat { padding:12px 16px; }
+    .stat .k { display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+    .stat .v { margin-top:8px; font-family:var(--display); font-size:24px; font-weight:600; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+    .row { display:flex; justify-content:space-between; gap:16px; padding:12px 16px; border-bottom:1px solid color-mix(in oklab, var(--fg) 10%, transparent); font-size:14px; }
+    .row:last-child { border-bottom:0; }
+    .row span:first-child { color:var(--muted); }
+    .row .mono { font-family:var(--mono); font-size:13px; }
+    .btns { display:flex; flex-wrap:wrap; gap:8px; }
+    .btn { height:44px; padding:0 16px; border-radius:12px; font-size:14px; font-weight:500; background:var(--surface-2); box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .btn.primary { background:var(--fg); color:var(--bg); box-shadow:none; }
+    .btn:disabled { opacity:.4; }
+    .search { height:48px; display:flex; align-items:center; gap:12px; padding:0 16px; border-radius:20px; background:var(--surface); box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .search input { flex:1; min-width:0; height:100%; background:transparent; border:0; outline:none; }
+    .ghead { margin:0 0 8px 4px; font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); }
+    .set { display:flex; align-items:center; gap:16px; padding:14px 16px; border-bottom:1px solid color-mix(in oklab, var(--fg) 10%, transparent); }
+    .set:last-child { border-bottom:0; }
+    .set .meta { flex:1; min-width:0; }
+    .set .meta b { display:block; font-size:14px; font-weight:500; }
+    .set .meta p { margin:4px 0 0; font-size:12px; color:var(--muted); }
+    .tog { width:48px; height:28px; border-radius:999px; background:var(--surface-2); box-shadow:0 0 0 1px rgba(255,255,255,.08); position:relative; flex-shrink:0; }
+    .tog i { position:absolute; top:2px; left:2px; width:24px; height:24px; border-radius:50%; background:var(--muted); transition:transform .15s, background .15s; }
+    .tog.on { background:var(--fg); }
+    .tog.on i { transform:translateX(20px); background:var(--bg); }
+    select { height:40px; max-width:11rem; border-radius:12px; background:var(--surface-2); border:0; padding:0 8px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .crumb { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:14px; color:var(--muted); }
+    .file { display:flex; width:100%; align-items:center; gap:12px; padding:14px 16px; text-align:left; border-bottom:1px solid color-mix(in oklab, var(--fg) 10%, transparent); }
+    .file:last-child { border-bottom:0; }
+    .file b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; font-size:14px; }
+    .file em { font-family:var(--mono); font-size:11px; color:var(--faint); font-style:normal; }
+    .pad { padding:20px; }
+    .pad h2 { margin:0; font-family:var(--display); font-size:28px; letter-spacing:-.03em; }
+    .muted { color:var(--muted); font-size:14px; }
+    .tiny { color:var(--faint); font-size:12px; }
+    .dock { position:fixed; left:0; right:0; bottom:0; display:flex; border-top:1px solid color-mix(in oklab, var(--fg) 10%, transparent); background:#070708f2; padding-bottom:env(safe-area-inset-bottom); }
+    .dock button { flex:1; height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-size:11px; color:var(--muted); }
+    .dock button.on { color:var(--fg); }
+    .toast { position:fixed; left:16px; right:16px; bottom:calc(80px + env(safe-area-inset-bottom)); z-index:30; background:var(--fg); color:var(--bg); border-radius:16px; padding:12px 16px; font-size:14px; }
+    .modal { position:fixed; inset:0; z-index:40; background:#000b; display:grid; place-items:end; padding:16px; }
+    .sheet { width:100%; max-width:28rem; background:var(--surface); border-radius:20px; padding:20px; margin:0 auto 24px; }
+    .lg-hide { }
+    @media (min-width:1100px) {
+      aside { display:flex; }
+      .lg-hide { display:none; }
+      .dock { display:none; }
+      main { padding-bottom:40px; }
+      .grid { grid-template-columns:repeat(4,1fr); }
+      .toast { bottom:32px; left:50%; right:auto; transform:translateX(-50%); min-width:20rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const GROUPS = [
+  {id:"toggles", title:"Toggles", items:[
+    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true},
+    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over."},
+    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."},
+    {key:"IsLdwEnabled", label:"Lane departure warnings", type:"bool", desc:"Alert when you drift over a line without a signal."},
+    {key:"AlwaysOnDM", label:"Always-on driver monitor", type:"bool", desc:"Keep DM running when not engaged."},
+    {key:"IsMetric", label:"Use metric units", type:"bool", desc:"Show km/h instead of mph."},
+    {key:"DisengageOnAccelerator", label:"Disengage on accelerator", type:"bool", desc:"Cancel openpilot when you press the pedal."},
+    {key:"LongitudinalPersonality", label:"Driving personality", type:"select", desc:"How hard it follows the lead.", options:[["0","Aggressive"],["1","Standard"],["2","Relaxed"]]},
+    {key:"RecordFront", label:"Record cabin camera", type:"bool", desc:"Upload dcam to help DM.", restart:true},
+    {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
+  ]},
+  {id:"theme", title:"Theme", items:[
+    {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
+  ]},
+  {id:"livestream", title:"Livestream", items:[
+    {key:"LivestreamEnabled", label:"On-Air", type:"bool", desc:"Local Wi-Fi viewer. Not on comma Prime LTE."},
+  ]},
+  {id:"device", title:"Device", items:[
+    {key:"SshEnabled", label:"Enable SSH", type:"bool", desc:"Allow SSH from your GitHub keys."},
+    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4."},
+    {key:"DisablePowerDown", label:"Disable power down", type:"bool", desc:"Keep the device awake after the car is off."},
+    {key:"DisableUpdates", label:"Disable updates", type:"bool", desc:"Stop the stock updater from fetching."},
+  ]},
+  {id:"network", title:"Network", items:[
+    {key:"GsmRoaming", label:"Cellular roaming", type:"bool", desc:"Allow the SIM to roam."},
+    {key:"GsmMetered", label:"Metered cellular", type:"bool", desc:"Treat the SIM as a metered connection."},
+    {key:"NetworkMetered", label:"Metered network", type:"bool", desc:"Limit background uploads."},
+  ]},
+  {id:"developer", title:"Developer", items:[
+    {key:"ShowDebugInfo", label:"Show debug info", type:"bool", desc:"FPS and touch dots."},
+    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
+  ]},
+];
+const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["updates","Updates"]];
+let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
+
+async function api(url, opt) {
+  const r = await fetch(url, opt);
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { throw new Error(t || r.statusText); }
+}
+function bytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n/1024).toFixed(0) + " KB";
+  if (n < 1073741824) return (n/1048576).toFixed(1) + " MB";
+  return (n/1073741824).toFixed(1) + " GB";
+}
+function say(m) { toast = m; render(); setTimeout(() => { toast = null; render(); }, 3200); }
+async function load() {
+  try {
+    info = await api("/api/info");
+    params = await api("/api/params");
+  } catch (e) { say(e.message || "device unreachable"); }
+  render();
+}
+async function save(k, v) {
+  params[k] = v;
+  render();
+  await api("/api/params", { method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({[k]: v}) });
+  info = await api("/api/info");
+  render();
+}
+async function loadFiles() {
+  const j = await api("/api/files?path=" + encodeURIComponent(path));
+  files = j.items || [];
+  render();
+}
+function render() {
+  const app = document.getElementById("app");
+  const title = {status:"Device", settings:"Settings", files:"Files", updates:"Updates"}[tab];
+  app.innerHTML = `
+    <aside>
+      <div class="brand"><b>DELAMAIN</b><p>LAN console · no lock</p></div>
+      <nav>${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
+      <div class="ver">${info.version || "0.11.2.1"} · ${info.branch || "Highland"}</div>
+    </aside>
+    <div class="col">
+      <header class="top">
+        <div class="lg-hide"><div class="brand" style="padding:0"><b>DELAMAIN</b><p>LAN · no lock</p></div></div>
+        <div class="lg-show" style="display:none"></div>
+        <h1 class="lg-title">${title}</h1>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <span class="pill ${info.offroad===false?"ok":""}">${info.offroad===false?"onroad":"offroad"}</span>
+          ${info.onAir ? `<span class="pill live">on air</span>` : ""}
+        </div>
+      </header>
+      <main>${view()}</main>
+    </div>
+    <nav class="dock">${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
+    ${toast ? `<div class="toast">${esc(toast)}</div>` : ""}
+    ${confirmItem ? modal() : ""}
+  `;
+  app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab==="files") loadFiles(); else render(); });
+  bind();
+}
+function esc(s){ return String(s??"").replace(/[&<>"]/g, c => ({"&":"&","<":"<",">":">","\"":"""}[c])); }
+function view() {
+  if (tab==="status") return statusView();
+  if (tab==="settings") return settingsView();
+  if (tab==="files") return filesView();
+  return updatesView();
+}
+function statusView() {
+  const bars = "▂▄▆█".slice(0, Math.max(1, info.wifiBars|0)) + "·".repeat(4-Math.max(1, info.wifiBars|0));
+  const pers = ["Aggressive","Standard","Relaxed"][Number(params.LongitudinalPersonality)||1];
+  return `<div class="wrap">
+    <div class="warn">This console has no password. Anyone on this Wi-Fi can read files and change settings. Keep it on your LAN.</div>
+    <div class="grid">
+      ${stat("Temp", info.tempC!=null?info.tempC+"°":"—")}
+      ${stat("Memory", info.memPct!=null?info.memPct+"%":"—")}
+      ${stat("Disk", info.diskFreeGb!=null?info.diskFreeGb+" GB":"—")}
+      ${stat("Network", (info.network||"net").toUpperCase(), bars)}
+    </div>
+    <div class="card">
+      ${row("Device", info.name||"DELAMAIN")}
+      ${row("Version", info.version||"—")}
+      ${row("Branch", info.branch||"—")}
+      ${row("Commit", (info.commit||"").slice(0,12), true)}
+      ${row("Dongle", info.dongle||"—", true)}
+      ${row("Serial", info.serial||"—", true)}
+      ${row("Personality", pers)}
+      ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
+    </div>
+    <div class="btns">
+      <button class="btn" id="openLive">Open livestream</button>
+    </div>
+  </div>`;
+}
+function stat(k,v,h=""){ return `<div class="stat"><div class="k"><span>${k}</span></div><div class="v">${esc(v)}</div>${h?`<div class="tiny" style="margin-top:4px;font-family:var(--mono)">${esc(h)}</div>`:""}</div>`; }
+function row(k,v,mono){ return `<div class="row"><span>${k}</span><span class="${mono?"mono":""}">${esc(v)}</span></div>`; }
+function settingsView() {
+  const query = q.trim().toLowerCase();
+  const groups = GROUPS.map(g => ({...g, items:g.items.filter(it => !query || it.label.toLowerCase().includes(query) || it.key.toLowerCase().includes(query))})).filter(g => g.items.length);
+  return `<div class="wrap">
+    <label class="search"><input id="q" placeholder="Search settings" value="${esc(q)}"/></label>
+    ${groups.map(g => `<section><p class="ghead">${g.title}</p><div class="card">${g.items.map(it => setRow(it)).join("")}</div></section>`).join("")}
+  </div>`;
+}
+function setRow(it) {
+  const val = params[it.key] ?? (it.type==="select" ? it.options[0][0] : "0");
+  const ctl = it.type==="bool"
+    ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}"><i></i></button>`
+    : `<select data-k="${it.key}">${it.options.map(([v,l]) => `<option value="${v}" ${v===val?"selected":""}>${l}</option>`).join("")}</select>`;
+  return `<div class="set"><div class="meta"><b>${esc(it.label)}</b><p>${esc(it.desc)}</p></div>${ctl}</div>`;
+}
+function filesView() {
+  const parts = path.split("/").filter(Boolean);
+  let acc = "";
+  const crumbs = [`<button data-p="">data</button>`].concat(parts.map((p,i) => {
+    acc += "/" + p;
+    return `<span>›</span><button data-p="${esc(acc)}">${esc(p)}</button>`;
+  }));
+  return `<div class="wrap">
+    <div class="crumb">${crumbs.join("")}</div>
+    <div class="card">${files.length? files.map(n => `<button class="file" data-open="${esc(n.path)}" data-dir="${n.dir?1:0}"><b>${esc(n.name)}</b><em>${n.dir?"folder":bytes(n.size)}</em></button>`).join("") : `<p class="muted" style="padding:40px;text-align:center">Empty folder.</p>`}</div>
+    <p class="tiny">Real disk under /data. Tokens and SSH keys are hidden.</p>
+  </div>`;
+}
+function updatesView() {
+  return `<div class="wrap">
+    <div class="card pad">
+      <p class="ghead">Installed</p>
+      <h2>${esc(info.version||"0.11.2.1")}</h2>
+      <p class="muted" style="margin-top:8px;font-family:var(--mono)">${esc(info.branch||"Highland")} · ${esc((info.commit||"").slice(0,12))}</p>
+      <p class="muted" style="margin-top:16px">${esc(info.updaterNotes||"Check for a newer Highland commit.")}</p>
+      <div class="btns" style="margin-top:20px">
+        <button class="btn primary" id="chk" ${busy?"disabled":""}>${busy?"Working…":"Check for updates"}</button>
+        <button class="btn" id="ins" ${busy||!info.updateAvailable?"disabled":""}>Install</button>
+      </div>
+    </div>
+    <div class="card pad">
+      <h2 style="font-size:20px">Power</h2>
+      <p class="muted">Offroad only on the real device.</p>
+      <div class="btns" style="margin-top:16px">
+        <button class="btn" id="reb">Reboot</button>
+        <button class="btn" id="shut">Shutdown</button>
+      </div>
+    </div>
+  </div>`;
+}
+function modal() {
+  return `<div class="modal"><div class="sheet"><b style="font-family:var(--display);font-size:20px">${esc(confirmItem.label)}</b><p class="muted" style="margin-top:12px">${esc(confirmItem.confirm)}</p><div class="btns" style="margin-top:20px;justify-content:flex-end"><button class="btn" id="no">Cancel</button><button class="btn primary" id="yes">Enable</button></div></div></div>`;
+}
+function bind() {
+  const qi = document.getElementById("q");
+  if (qi) qi.oninput = (e) => { q = e.target.value; render(); qi.focus(); qi.setSelectionRange(q.length,q.length); };
+  document.querySelectorAll(".tog").forEach(b => b.onclick = () => {
+    const k = b.dataset.k, n = b.dataset.n;
+    const item = GROUPS.flatMap(g => g.items).find(x => x.key===k);
+    if (item && item.confirm && n==="1") { confirmItem = item; render(); return; }
+    save(k, n); if (item && item.restart) say("Saved. Restart the C4 for this to apply.");
+  });
+  document.querySelectorAll("select[data-k]").forEach(s => s.onchange = () => save(s.dataset.k, s.value));
+  document.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { path = b.dataset.p; loadFiles(); });
+  document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => {
+    if (b.dataset.dir==="1") { path = b.dataset.open; loadFiles(); }
+    else { location.href = "/api/files/raw?path=" + encodeURIComponent(b.dataset.open); }
+  });
+  const live = document.getElementById("openLive");
+  if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
+  const chk = document.getElementById("chk");
+  if (chk) chk.onclick = async () => {
+    busy = true; render();
+    try {
+      const j = await api("/api/updates/check", {method:"POST"});
+      if (!j.ok) say(j.error || "check failed");
+      else { info.updateAvailable = j.available; info.updaterNotes = j.available ? "A newer commit is on origin/"+j.branch : "Already current."; say(j.available ? "Update available" : "Up to date"); }
+    } catch(e) { say(e.message); }
+    busy = false; info = Object.assign(info, await api("/api/info")); render();
+  };
+  const ins = document.getElementById("ins");
+  if (ins) ins.onclick = async () => {
+    busy = true; render();
+    try {
+      const j = await api("/api/updates/apply", {method:"POST"});
+      say(j.ok ? "Installing. Device will reboot." : (j.error || "failed"));
+    } catch(e) { say(e.message); }
+    busy = false; render();
+  };
+  const reb = document.getElementById("reb");
+  if (reb) reb.onclick = async () => { await api("/api/action/reboot", {method:"POST"}); say("Reboot requested."); };
+  const shut = document.getElementById("shut");
+  if (shut) shut.onclick = async () => { await api("/api/action/shutdown", {method:"POST"}); say("Shutdown requested."); };
+  const no = document.getElementById("no");
+  if (no) no.onclick = () => { confirmItem = null; render(); };
+  const yes = document.getElementById("yes");
+  if (yes) yes.onclick = () => { const k = confirmItem.key; confirmItem = null; save(k, "1"); };
+}
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
+load();
+</script>
+</body>
+</html>
