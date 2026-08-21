@@ -119,3 +119,9 @@ Always-on PWA at `http://<c4-ip>:8088`. No password. Settings, file browser (`/d
 ## Clips
 
 LAN console **Clips** tab runs `openpilot.tools.clip.run` (clipper-style HUD) on local `/data/media/0` routes. Offroad only, max 30s, aborted if ignition goes on. Not Nelson’s GPU Docker — that does not run on a C4. No comma Connect download.
+
+## Drive stats
+
+LAN console **Stats** tab: calendar range → local qlog parse → miles, engagement %, disengages, GPS trace on OSM (not comma). Offroad to generate; cached reports load anytime. Max 31 days.
+
+Settings that need the C4 confirm UI (experimental, auto lane change, master enable, ADB, cellular) are visible but locked: **Can only be changed on device.**

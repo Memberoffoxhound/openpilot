@@ -1,1 +1,1 @@
-# LAN device console
+# LAN device console package

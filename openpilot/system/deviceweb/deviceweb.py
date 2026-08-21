@@ -20,6 +20,15 @@ from urllib.parse import parse_qs, unquote, urlparse
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
+try:
+  from openpilot.system.deviceweb import stats as drive_stats
+except ImportError:
+  import importlib.util
+  _stats_spec = importlib.util.spec_from_file_location("deviceweb_stats", Path(__file__).parent / "stats.py")
+  drive_stats = importlib.util.module_from_spec(_stats_spec)
+  assert _stats_spec.loader is not None
+  _stats_spec.loader.exec_module(drive_stats)
+
 PORT = int(os.environ.get("DEVICEWEB_PORT", "8088"))
 STATIC_DIR = Path(__file__).parent / "static"
 OPENPILOT_DIR = Path(os.environ.get("OPENPILOT_PATH", "/data/openpilot"))
@@ -34,13 +43,16 @@ SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
 }
 WRITE_BOOL = {
-  "OpenpilotEnabledToggle", "ExperimentalMode", "AutoLaneChangeEnabled", "IsLdwEnabled",
-  "AlwaysOnDM", "IsMetric", "DisengageOnAccelerator", "RecordFront", "RecordAudio",
-  "LivestreamEnabled", "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
-  "GsmRoaming", "GsmMetered", "NetworkMetered", "ShowDebugInfo", "JoystickDebugMode",
+  "IsLdwEnabled", "AlwaysOnDM", "IsMetric", "DisengageOnAccelerator",
+  "RecordFront", "RecordAudio", "LivestreamEnabled", "SshEnabled",
+  "DisablePowerDown", "DisableUpdates", "ShowDebugInfo",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality"}
-READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | {
+DEVICE_ONLY = {
+  "OpenpilotEnabledToggle", "ExperimentalMode", "AutoLaneChangeEnabled",
+  "JoystickDebugMode", "AdbEnabled", "GsmRoaming", "GsmMetered", "NetworkMetered",
+}
+READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
@@ -200,7 +212,7 @@ def _read_params() -> dict[str, str]:
 def _write_params(body: dict) -> None:
   p = _params()
   for k, v in body.items():
-    if k in SECRET_NAMES:
+    if k in SECRET_NAMES or k in DEVICE_ONLY:
       continue
     if k in WRITE_BOOL:
       p.put_bool(k, str(v) in ("1", "true", "True", "yes"), block=True)
@@ -467,6 +479,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"routes": _list_routes()})
       if path in ("/api/clip", "/api/device/clip"):
         return self._json(200, _clip_status())
+      if path in ("/api/stats", "/api/device/stats"):
+        return self._json(200, drive_stats.status())
       if path in ("/api/clip/file", "/api/device/clip/file"):
         st = _clip_status()
         target = _safe_file(st.get("output") or "")
@@ -520,6 +534,13 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/clip/cancel", "/api/device/clip/cancel"):
         _kill_clip("cancelled")
         return self._json(200, _clip_status())
+      if path in ("/api/stats", "/api/device/stats"):
+        body = self._read_json()
+        start = str(body.get("from") or "")
+        end = str(body.get("to") or "")
+        if not start or not end:
+          start, end = drive_stats.default_range()
+        return self._json(200, drive_stats.start(start, end, p.get_bool("IsOffroad")))
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb POST")

@@ -1,8 +1,8 @@
 const GROUPS = [
   {id:"toggles", title:"Toggles", items:[
-    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true},
-    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over."},
-    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."},
+    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true, deviceOnly:true},
+    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over.", deviceOnly:true},
+    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary.", deviceOnly:true},
     {key:"IsLdwEnabled", label:"Lane departure warnings", type:"bool", desc:"Alert when you drift over a line without a signal."},
     {key:"AlwaysOnDM", label:"Always-on driver monitor", type:"bool", desc:"Keep DM running when not engaged."},
     {key:"IsMetric", label:"Use metric units", type:"bool", desc:"Show km/h instead of mph."},
@@ -19,23 +19,33 @@ const GROUPS = [
   ]},
   {id:"device", title:"Device", items:[
     {key:"SshEnabled", label:"Enable SSH", type:"bool", desc:"Allow SSH from your GitHub keys."},
-    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4."},
+    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4.", deviceOnly:true},
     {key:"DisablePowerDown", label:"Disable power down", type:"bool", desc:"Keep the device awake after the car is off."},
     {key:"DisableUpdates", label:"Disable updates", type:"bool", desc:"Stop the stock updater from fetching."},
   ]},
   {id:"network", title:"Network", items:[
-    {key:"GsmRoaming", label:"Cellular roaming", type:"bool", desc:"Allow the SIM to roam."},
-    {key:"GsmMetered", label:"Metered cellular", type:"bool", desc:"Treat the SIM as a metered connection."},
-    {key:"NetworkMetered", label:"Metered network", type:"bool", desc:"Limit background uploads."},
+    {key:"GsmRoaming", label:"Cellular roaming", type:"bool", desc:"Allow the SIM to roam.", deviceOnly:true},
+    {key:"GsmMetered", label:"Metered cellular", type:"bool", desc:"Treat the SIM as a metered connection.", deviceOnly:true},
+    {key:"NetworkMetered", label:"Metered network", type:"bool", desc:"Limit background uploads.", deviceOnly:true},
   ]},
   {id:"developer", title:"Developer", items:[
     {key:"ShowDebugInfo", label:"Show debug info", type:"bool", desc:"FPS and touch dots."},
-    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
+    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick.", deviceOnly:true},
   ]},
 ];
-const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["clips","Clips"],["updates","Updates"]];
+const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
 let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
 let routes = [], clipJob = {state:"idle"}, clipTimer = null;
+let statsMonth = new Date();
+let statsFrom = null, statsTo = null, statsJob = {state:"idle"}, statsTimer = null, statsMap = null, statsQcam = true;
+function pad2(n){ return String(n).padStart(2,"0"); }
+function isoDay(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+if (!statsFrom) {
+  const t = new Date();
+  statsFrom = t.getFullYear()+"-"+pad2(t.getMonth()+1)+"-01";
+  statsTo = isoDay(t);
+}
+
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
@@ -71,7 +81,7 @@ async function loadFiles() {
 }
 function render() {
   const app = document.getElementById("app");
-  const title = {status:"Device", settings:"Settings", files:"Files", clips:"Clips", updates:"Updates"}[tab];
+  const title = {status:"Device", settings:"Settings", files:"Files", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
   app.innerHTML = `
     <aside>
       <div class="brand"><b>DELAMAIN</b><p>LAN console · no lock</p></div>
@@ -98,6 +108,7 @@ function render() {
     tab = b.dataset.tab;
     if (tab==="files") loadFiles();
     else if (tab==="clips") loadClips();
+    else if (tab==="stats") loadStats(false);
     else render();
   });
   bind();
@@ -108,6 +119,7 @@ function view() {
   if (tab==="settings") return settingsView();
   if (tab==="files") return filesView();
   if (tab==="clips") return clipsView();
+  if (tab==="stats") return statsView();
   return updatesView();
 }
 function statusView() {
@@ -148,10 +160,12 @@ function settingsView() {
 }
 function setRow(it) {
   const val = params[it.key] ?? (it.type==="select" ? it.options[0][0] : "0");
+  const locked = !!it.deviceOnly;
   const ctl = it.type==="bool"
-    ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}"><i></i></button>`
-    : `<select data-k="${it.key}">${it.options.map(([v,l]) => `<option value="${v}" ${v===val?"selected":""}>${l}</option>`).join("")}</select>`;
-  return `<div class="set"><div class="meta"><b>${esc(it.label)}</b><p>${esc(it.desc)}</p></div>${ctl}</div>`;
+    ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}" ${locked?"disabled":""}><i></i></button>`
+    : `<select data-k="${it.key}" ${locked?"disabled":""}>${it.options.map(([v,l]) => `<option value="${v}" ${v===val?"selected":""}>${l}</option>`).join("")}</select>`;
+  const extra = locked ? `<p class="lock">Can only be changed on device.</p>` : "";
+  return `<div class="set ${locked?"locked":""}"><div class="meta"><b>${esc(it.label)}</b><p>${esc(it.desc)}</p>${extra}</div>${ctl}</div>`;
 }
 function filesView() {
   const parts = path.split("/").filter(Boolean);
@@ -194,6 +208,57 @@ function clipsView() {
       ${clipJob.state==="done" ? `<a class="btn" href="/api/clip/file">Download</a>` : ""}
     </div>
     <p class="tiny">Uses tools/clip (pyray HUD + RECORD). Does not talk to comma Connect.</p>
+  </div>`;
+}
+
+function statsView() {
+  const d = new Date(statsMonth.getFullYear(), statsMonth.getMonth(), 1);
+  const startW = (d.getDay() + 6) % 7;
+  const daysIn = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  const label = d.toLocaleString("en-US", {month:"long", year:"numeric"});
+  let cells = "";
+  for (let i=0;i<startW;i++) cells += `<div class="cell empty"></div>`;
+  for (let day=1; day<=daysIn; day++) {
+    const iso = d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(day);
+    let cls = "cell";
+    if (statsFrom && statsTo && iso >= statsFrom && iso <= statsTo) cls += " in";
+    if (iso === statsFrom || iso === statsTo) cls += " end";
+    cells += `<button class="${cls}" data-day="${iso}">${day}</button>`;
+  }
+  const r = (statsJob && statsJob.result) || null;
+  const running = statsJob.state === "running";
+  const metric = params.IsMetric === "1";
+  const dist = r ? (metric ? r.km+" km" : r.miles+" mi") : "—";
+  return `<div class="wrap">
+    <div class="card pad">
+      <div class="calhead">
+        <button class="btn" id="calPrev">Prev</button>
+        <b>${label}</b>
+        <button class="btn" id="calNext">Next</button>
+      </div>
+      <div class="caldows"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+      <div class="cal">${cells}</div>
+      <p class="muted" style="margin-top:12px">${esc(statsFrom||"—")} → ${esc(statsTo||"—")}</p>
+      <div class="btns" style="margin-top:12px">
+        <button class="btn primary" id="statsGo" ${running?"disabled":""}>${running?"Generating…":"Generate report"}</button>
+      </div>
+    </div>
+    ${running ? `<div class="card pad"><p class="muted">Reading qlogs… stay offroad.</p><div class="bar" style="margin-top:12px"><i></i></div></div>` : ""}
+    ${statsJob.state==="error" ? `<div class="warn">${esc(statsJob.error||"failed")}</div>` : ""}
+    ${r ? `<div class="grid">
+      ${stat("Distance", dist)}
+      ${stat("Engaged", (r.engagedPct??0)+"%")}
+      ${stat("Hours", r.hours ?? "—")}
+      ${stat("Routes", r.routes ?? "—")}
+    </div>
+    <div class="card">
+      ${row("Engaged hours", r.engagedHours)}
+      ${row("Disengages", r.disengages)}
+      ${row("Points", (r.points||[]).length)}
+    </div>
+    <div class="card mapwrap"><div id="statsMap"></div>
+      <p class="tiny" style="padding:10px 14px">Trace from onboard GPS. Tiles are OSM, not comma. Scaled to this range.</p>
+    </div>` : `<p class="tiny">Pick a start and end day, then generate. Uses local qlogs only.</p>`}
   </div>`;
 }
 function updatesView() {
@@ -271,6 +336,16 @@ function bind() {
   if (cStop) cStop.onclick = async () => { clipJob = await api("/api/clip/cancel", {method:"POST"}); say("Cancelled"); render(); };
   const cQ = document.getElementById("cQcam");
   if (cQ) cQ.onclick = () => { clipJob.qcam = clipJob.qcam===false; render(); };
+
+  const calPrev = document.getElementById("calPrev");
+  if (calPrev) calPrev.onclick = () => { statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth()-1, 1); render(); };
+  const calNext = document.getElementById("calNext");
+  if (calNext) calNext.onclick = () => { statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth()+1, 1); render(); };
+  document.querySelectorAll("[data-day]").forEach(b => b.onclick = () => pickDay(b.dataset.day));
+  const statsGo = document.getElementById("statsGo");
+  if (statsGo) statsGo.onclick = () => loadStats(true);
+  if (tab==="stats") mountStatsMap();
+
 }
 async function loadClips() {
   try {
@@ -306,3 +381,59 @@ window.onerror = function (msg) {
   var el = document.getElementById("app");
   if (el) el.insertAdjacentHTML("afterbegin", "<div class=\"warn\">"+String(msg)+"</div>");
 };
+
+function pickDay(iso) {
+  if (!statsFrom || (statsFrom && statsTo && statsFrom !== statsTo)) {
+    statsFrom = iso; statsTo = iso;
+  } else if (iso < statsFrom) {
+    statsTo = statsFrom; statsFrom = iso;
+  } else {
+    statsTo = iso;
+  }
+  render();
+}
+async function loadStats(generate) {
+  if (generate) {
+    const j = await api("/api/stats", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({from: statsFrom, to: statsTo})});
+    if (!j.ok) { say(j.error || "could not generate"); return; }
+    statsJob = j.job || j;
+  } else {
+    try { statsJob = await api("/api/stats"); } catch (e) { say(e.message); }
+  }
+  render();
+  if (statsJob.state === "running" && !statsTimer) {
+    statsTimer = setInterval(async () => {
+      try { statsJob = await api("/api/stats"); } catch {}
+      if (statsJob.state !== "running") { clearInterval(statsTimer); statsTimer = null; }
+      if (tab==="stats") render();
+    }, 1500);
+  }
+}
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const c = document.createElement("link");
+    c.rel = "stylesheet";
+    c.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(c);
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    s.onload = res; s.onerror = rej;
+    document.body.appendChild(s);
+  });
+}
+async function mountStatsMap() {
+  const el = document.getElementById("statsMap");
+  const pts = (statsJob.result && statsJob.result.points) || [];
+  if (!el || pts.length < 2) return;
+  try { await loadLeaflet(); } catch { el.innerHTML = "<p class=muted style=padding:16px>Map tiles need internet.</p>"; return; }
+  if (statsMap) { try { statsMap.remove(); } catch(e) {} statsMap = null; }
+  const map = window.L.map(el, { zoomControl: true, attributionControl: true });
+  window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OSM &copy; CARTO", maxZoom: 19
+  }).addTo(map);
+  const line = window.L.polyline(pts, { color: "#3ea7ff", weight: 3, opacity: 0.9 }).addTo(map);
+  map.fitBounds(line.getBounds(), { padding: [24, 24] });
+  statsMap = map;
+  setTimeout(() => map.invalidateSize(), 80);
+}

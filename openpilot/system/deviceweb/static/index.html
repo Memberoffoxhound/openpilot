@@ -88,6 +88,18 @@
     .field input, .field select { height:44px; max-width:none; border-radius:12px; background:var(--surface-2); border:0; padding:0 12px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
     .bar { height:6px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
     .bar i { display:block; height:100%; width:40%; background:var(--fg); animation: pulse 1s linear infinite; }
+    .set.locked { opacity:.55; }
+    .set.locked .tog, .set.locked select { opacity:.4; }
+    .lock { margin:6px 0 0; font-size:11px; color:#c8b48a; }
+    .calhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+    .caldows { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; font-family:var(--mono); font-size:10px; color:var(--muted); text-align:center; margin-bottom:6px; }
+    .cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .cell { height:40px; border-radius:10px; background:var(--surface-2); font-size:13px; }
+    .cell.empty { background:transparent; }
+    .cell.in { background:#1d3a5c; }
+    .cell.end { background:var(--fg); color:var(--bg); }
+    .mapwrap { overflow:hidden; }
+    #statsMap { height:280px; width:100%; background:#0b0b0e; }
     @keyframes pulse { 50% { opacity:.45 } }
     @media (min-width:1100px) {
       aside { display:flex; }
@@ -107,6 +119,6 @@
     </header>
   </div>
 </div>
-<script src="/app.js?v=3"></script>
+<script src="/app.js?v=4"></script>
 </body>
 </html>
