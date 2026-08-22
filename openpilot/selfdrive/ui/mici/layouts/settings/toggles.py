@@ -11,7 +11,7 @@ from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
   LANE_COLOR_LABELS, ONROAD_UI_LABELS, lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
-  ludicrous_on, set_ludicrous,
+  ludicrous_on, set_ludicrous, trigger_ludicrous,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.webrtc.helpers import on_air_block_reason
@@ -157,6 +157,15 @@ class LudicrousCycle(BigButton):
     self.set_value("on" if on else "off")
 
 
+class LudicrousPreview(BigButton):
+  def __init__(self):
+    super().__init__("preview", "tap")
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    trigger_ludicrous(preview=True)
+
+
 class OnAirToggle(Widget):
   """Red On-Air = livestream on. Gray = stock Connect only."""
 
@@ -202,7 +211,8 @@ class ThemeLayoutMici(NavScroller):
     self._onroad_ui = OnroadUiCycle()
     self._lane_color = LaneColorCycle()
     self._ludicrous = LudicrousCycle()
-    self._scroller.add_widgets([self._onroad_ui, self._ludicrous, self._lane_color])
+    self._ludi_preview = LudicrousPreview()
+    self._scroller.add_widgets([self._onroad_ui, self._ludicrous, self._ludi_preview, self._lane_color])
 
 
 class ExperimentalModeConfirmPage(NavScroller):

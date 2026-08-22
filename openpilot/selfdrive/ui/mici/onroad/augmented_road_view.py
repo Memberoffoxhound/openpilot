@@ -1,5 +1,3 @@
-import math
-import time
 import numpy as np
 import pyray as rl
 from openpilot.cereal import log
@@ -16,7 +14,7 @@ from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, MouseEvent
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
-from openpilot.selfdrive.ui.layouts.settings.common import ludicrous_on, request_ludicrous_play
+from openpilot.selfdrive.ui.layouts.settings.common import maybe_trigger_ludicrous
 from openpilot.common.filter_simple import BounceFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -38,66 +36,6 @@ WIDE_CAM_MAX_SPEED = 5.0  # m/s (10 mph)
 ROAD_CAM_MIN_SPEED = 10  # m/s (25 mph)
 
 CAM_Y_OFFSET = 20
-LUDI_MS2 = 3.8
-LUDI_COOLDOWN = 45.0
-
-
-class LudicrousWarp:
-  """Hyperspace streaks. Fades over the road, then back."""
-
-  def __init__(self):
-    self.t0: float | None = None
-    self.last = 0.0
-
-  def maybe_trigger(self):
-    if not ui_state.started:
-      return
-    try:
-      if not ludicrous_on():
-        return
-      a = float(ui_state.sm["carState"].aEgo)
-    except Exception:
-      return
-    now = time.monotonic()
-    if a >= LUDI_MS2 and (now - self.last) > LUDI_COOLDOWN:
-      self.t0 = now
-      self.last = now
-      request_ludicrous_play()
-
-  def draw(self, rect: rl.Rectangle):
-    if self.t0 is None:
-      return
-    t = time.monotonic() - self.t0
-    fade_in, hold, fade_out = 0.18, 0.95, 0.45
-    total = fade_in + hold + fade_out
-    if t > total:
-      self.t0 = None
-      return
-    if t < fade_in:
-      alpha = t / fade_in
-    elif t < fade_in + hold:
-      alpha = 1.0
-    else:
-      alpha = max(0.0, 1.0 - (t - fade_in - hold) / fade_out)
-    cx = rect.x + rect.width * 0.5
-    cy = rect.y + rect.height * 0.5
-    prog = min(1.0, t / (fade_in + hold))
-    n = 56
-    span = max(rect.width, rect.height)
-    for i in range(n):
-      ang = (i / n) * math.tau + t * 0.35
-      inner = 6.0 + prog * 28.0
-      outer = 40.0 + prog * span
-      c, s = math.cos(ang), math.sin(ang)
-      col = rl.Color(210, 230, 255, int(200 * alpha))
-      rl.draw_line_ex(
-        rl.Vector2(cx + inner * c, cy + inner * s),
-        rl.Vector2(cx + outer * c, cy + outer * s),
-        2.2 if i % 3 else 1.2,
-        col,
-      )
-    veil = rl.Color(8, 12, 28, int(40 * alpha))
-    rl.draw_rectangle_rec(rect, veil)
 
 
 class BookmarkIcon(Widget):
@@ -215,7 +153,6 @@ class AugmentedRoadView(CameraView):
     self._alert_renderer = AlertRenderer()
     self._driver_state_renderer = DriverStateRenderer()
     self._confidence_ball = ConfidenceBall()
-    self._warp = LudicrousWarp()
     self._offroad_label = UnifiedLabel("start the car to\nuse openpilot", 54, FontWeight.DISPLAY,
                                        text_color=rl.Color(255, 255, 255, int(255 * 0.9)),
                                        alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
@@ -237,7 +174,7 @@ class AugmentedRoadView(CameraView):
       self._offroad_label.set_text("openpilot can't start\ncheck alerts")
     else:
       self._offroad_label.set_text("start the car to\nuse openpilot")
-    self._warp.maybe_trigger()
+    maybe_trigger_ludicrous()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     # Don't trigger click callback if bookmark was triggered
@@ -278,7 +215,6 @@ class AugmentedRoadView(CameraView):
 
     # Draw all UI overlays
     self._model_renderer.render(self._content_rect)
-    self._warp.draw(self._content_rect)
 
     # Fade out bottom of overlays for looks
     rl.draw_texture_ex(self._fade_texture, rl.Vector2(self._content_rect.x, self._content_rect.y), 0.0, 1.0, rl.WHITE)

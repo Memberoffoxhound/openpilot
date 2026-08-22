@@ -1,6 +1,8 @@
 import math
 import os
+import time
 
+import pyray as rl
 from openpilot.cereal import messaging, log
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -104,6 +106,69 @@ def consume_ludicrous_play() -> bool:
   except Exception:
     return False
   return False
+
+
+LUDI_MS2 = 3.8
+LUDI_COOLDOWN = 45.0
+_warp_t0: float | None = None
+_warp_last = 0.0
+
+
+def trigger_ludicrous(*, preview: bool = False) -> None:
+  """Start warp + sound. Preview ignores cooldown and on-road."""
+  global _warp_t0, _warp_last
+  now = time.monotonic()
+  if not preview and (now - _warp_last) < LUDI_COOLDOWN:
+    return
+  _warp_t0 = now
+  _warp_last = now
+  request_ludicrous_play()
+
+
+def maybe_trigger_ludicrous() -> None:
+  if not ui_state.started or not ludicrous_on():
+    return
+  try:
+    a = float(ui_state.sm["carState"].aEgo)
+  except Exception:
+    return
+  if a >= LUDI_MS2:
+    trigger_ludicrous(preview=False)
+
+
+def draw_ludicrous_warp(rect: rl.Rectangle) -> None:
+  global _warp_t0
+  if _warp_t0 is None:
+    return
+  t = time.monotonic() - _warp_t0
+  fade_in, hold, fade_out = 0.18, 0.95, 0.45
+  total = fade_in + hold + fade_out
+  if t > total:
+    _warp_t0 = None
+    return
+  if t < fade_in:
+    alpha = t / fade_in
+  elif t < fade_in + hold:
+    alpha = 1.0
+  else:
+    alpha = max(0.0, 1.0 - (t - fade_in - hold) / fade_out)
+  cx = rect.x + rect.width * 0.5
+  cy = rect.y + rect.height * 0.5
+  prog = min(1.0, t / (fade_in + hold))
+  span = max(rect.width, rect.height)
+  n = 56
+  for i in range(n):
+    ang = (i / n) * math.tau + t * 0.35
+    inner = 6.0 + prog * 28.0
+    outer = 40.0 + prog * span
+    c, s = math.cos(ang), math.sin(ang)
+    rl.draw_line_ex(
+      rl.Vector2(cx + inner * c, cy + inner * s),
+      rl.Vector2(cx + outer * c, cy + outer * s),
+      2.2 if i % 3 else 1.2,
+      rl.Color(210, 230, 255, int(200 * alpha)),
+    )
+  rl.draw_rectangle_rec(rect, rl.Color(8, 12, 28, int(40 * alpha)))
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
