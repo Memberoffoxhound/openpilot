@@ -198,11 +198,13 @@ def _load_clip():
     n = getattr(im, "n_frames", 1)
     for i in range(n):
       im.seek(i)
-      frames.append(im.convert("RGB").tobytes())
+      frames.append(im.convert("RGBA").tobytes())
     w, h = im.size
+    # Texture must be RGBA — gen_image_color is R8G8B8A8. RGB tobytes painted black.
     img = rl.gen_image_color(w, h, rl.BLACK)
     tex = rl.load_texture_from_image(img)
     rl.unload_image(img)
+    rl.update_texture(tex, frames[0])
     _clip = {"frames": frames, "w": w, "h": h, "dt": 1.0 / 12.0, "tex": tex, "n": n}
     return _clip
   except Exception:

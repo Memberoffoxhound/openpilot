@@ -11,7 +11,8 @@ from openpilot.common.filter_simple import FirstOrderFilter
 BALL_RADIUS = 24
 CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 PARKED_MS = 1.0
-GPS_ACC_OK_DEG = 30.0
+GPS_ACC_OK_DEG = 90.0
+YAW_STD_OK_RAD = math.radians(25.0)
 
 
 def draw_circle_gradient(center_x: float, center_y: float, radius: int,
@@ -107,12 +108,28 @@ class ConfidenceBall(Widget):
                                                         (1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.steerOverrideProbs or [1])))
 
   def _heading_state(self) -> tuple[str | None, bool, bool]:
-    """GPS-only. ? placeholder if parked or no accurate moving fix."""
+    """GPS when it has a fix; IMU if GPS is junk. Last heading when parked. ? only if none."""
     parked = _parked()
     gps_brg, gps_acc = _gps_bearing()
-    if (not parked) and gps_brg is not None and gps_acc < GPS_ACC_OK_DEG:
-      self._last_heading_deg = gps_brg
-      return _cardinal(gps_brg), True, False
+    yaw, yaw_std, yaw_ok = _localizer_yaw()
+    heading = None
+    confident = False
+    if gps_brg is not None and gps_acc < GPS_ACC_OK_DEG:
+      heading = gps_brg
+      confident = gps_acc < 45.0
+      if yaw_ok and yaw is not None and gps_acc > 35.0 and _angle_diff_deg(gps_brg, yaw) > 50.0:
+        heading = yaw
+        confident = yaw_std < 15.0
+    elif yaw_ok and yaw is not None:
+      heading = yaw
+      confident = yaw_std < 15.0
+    if heading is not None and not parked:
+      self._last_heading_deg = heading
+      return _cardinal(heading), confident, False
+    if self._last_heading_deg is not None:
+      return _cardinal(self._last_heading_deg), False, False
+    if heading is not None:
+      return _cardinal(heading), False, False
     return None, False, True
 
   def _draw_placeholder(self, cx: float, cy: float) -> None:
