@@ -6,7 +6,6 @@ from opendbc.car.structs import car
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
-from openpilot.system.webrtc.helpers import livestream_network_ok
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
@@ -60,13 +59,7 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
-  if not params.get_bool("IsLiveStreaming"):
-    return False
-  if started:
-    # onroad LAN viewer only, and not comma Prime LTE
-    return params.get_bool("LivestreamEnabled") and livestream_network_ok(params)
-  # offroad Connect: athenad set IsLiveStreaming. Do not apply On-Air/Prime gates.
-  return True
+  return params.get_bool("IsLiveStreaming")
 
 def or_(*fns):
   return lambda *args: operator.or_(*(fn(*args) for fn in fns))
@@ -123,7 +116,7 @@ procs = [
 
   # debug procs
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
-  PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", always_run),  # Highland: stay up onroad so Connect can reconnect
+  PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
   PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", always_run),  # LAN settings/files/updates PWA, no auth
   PythonProcess("tesla_energy_log", "openpilot.selfdrive.tesla_energy_log", always_run),  # trip meter + Party energy jsonl
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),

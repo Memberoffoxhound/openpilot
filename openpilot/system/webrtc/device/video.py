@@ -82,28 +82,20 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
 
   async def recv(self):
     while True:
+      # while video is disabled, pause here without returning
       if not self.video_enabled:
         await asyncio.sleep(0.005)
         continue
 
       msg = messaging.recv_one_or_none(self._sock)
-      if msg is None:
-        await asyncio.sleep(0.005)
-        continue
+      if msg is not None:
+        if not self._seen_keyframe and (getattr(msg, msg.which()).idx.flags & V4L2_BUF_FLAG_KEYFRAME):
+          self._seen_keyframe = True
+          self.params.put("LivestreamRequestKeyframe", False, block=False)
+        break
+      await asyncio.sleep(0.005)
 
-      flags = getattr(msg, msg.which()).idx.flags
-      is_kf = bool(flags & V4L2_BUF_FLAG_KEYFRAME)
-      if not self._seen_keyframe:
-        if not is_kf:
-          now = time.monotonic()
-          if now - getattr(self, "_kf_ask", 0.0) > 0.5:
-            self.request_keyframe()
-            self._kf_ask = now
-          await asyncio.sleep(0.005)
-          continue
-        self._seen_keyframe = True
-        self.params.put("LivestreamRequestKeyframe", False, block=False)
+    self._pts =  ((time.monotonic_ns() - self._t0_ns) * self._clock_rate) // 1_000_000_000
+    self.log_debug("track sending frame %d", self._pts)
 
-      self._pts = ((time.monotonic_ns() - self._t0_ns) * self._clock_rate) // 1_000_000_000
-      self.log_debug("track sending frame %d", self._pts)
-      return EncodedVideoFrame(self._build_frame_data(msg), self._pts)
+    return EncodedVideoFrame(self._build_frame_data(msg), self._pts)

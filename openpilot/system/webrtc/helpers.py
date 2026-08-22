@@ -2,36 +2,8 @@ import time
 import requests
 from dataclasses import asdict, dataclass, field
 
-from openpilot.common.params import Params
-
 
 WEBRTCD_PORT = 5001
-
-# PrimeType from prime_state.py. Magenta/Blue/Purple include comma cellular data.
-# Lite is bring-your-own SIM.
-_COMMA_DATA_PRIME = {1, 3, 4, 5}  # MAGENTA, BLUE, MAGENTA_NEW, PURPLE
-
-
-def livestream_network_ok(params: Params | None = None) -> bool:
-  """Wi-Fi / unmetered, or cellular on a non-Prime (BYO) SIM. Not comma's LTE plan."""
-  params = params or Params()
-  if not params.get_bool("NetworkMetered"):
-    return True
-  try:
-    prime = int(params.get("PrimeType") or 0)
-  except (TypeError, ValueError):
-    prime = 0
-  return prime not in _COMMA_DATA_PRIME
-
-
-def on_air_block_reason(params: Params | None = None, network_none: bool = False) -> str | None:
-  """Why On-Air cannot enable. None = allowed. 'offline' | 'prime'."""
-  if network_none:
-    return "offline"
-  if livestream_network_ok(params):
-    return None
-  return "prime"
-
 
 @dataclass
 class StreamRequestBody:
@@ -53,10 +25,10 @@ def post_stream_request(body: StreamRequestBody) -> dict:
   except requests.ConnectTimeout as e:
     raise Exception("device took too long to respond.") from e
   except requests.ConnectionError as e:
-    raise Exception("livestream encoder is not up yet. retry in a few seconds.") from e
+    raise Exception("turn car ignition off to use livestreaming.") from e
 
 
-def wait_for_webrtcd(max_retries: float = 30) -> None:
+def wait_for_webrtcd(max_retries: float = 10) -> None:
   attempts = 0
   while attempts < max_retries:
     try:

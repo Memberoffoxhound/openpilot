@@ -45,7 +45,7 @@ SECRET_NAMES = {
 WRITE_BOOL = {
   "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
   "AutoLaneChangeEnabled", "IsLdwEnabled", "AlwaysOnDM", "IsMetric",
-  "DisengageOnAccelerator", "RecordFront", "RecordAudio", "LivestreamEnabled",
+  "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode",
 }
@@ -123,7 +123,6 @@ def _info() -> dict:
     "serial": p.get("HardwareSerial") or "",
     "offroad": p.get_bool("IsOffroad"),
     "engaged": p.get_bool("IsEngaged"),
-    "onAir": p.get_bool("LivestreamEnabled"),
     "tempC": None,
     "memPct": None,
     "diskFreeGb": None,
@@ -388,8 +387,8 @@ def _clip_gate() -> str | None:
   p = _params()
   if not p.get_bool("IsOffroad"):
     return "Offroad only. Park first."
-  if p.get_bool("IsLiveStreaming") or p.get_bool("LivestreamEnabled"):
-    return "Turn Off-Air off. Clip uses the UI/camera path."
+  if p.get_bool("IsLiveStreaming"):
+    return "Turn Connect live off. Clip uses the UI/camera path."
   if p.get_bool("IsDriverViewEnabled"):
     return "Exit driver view first."
   return None

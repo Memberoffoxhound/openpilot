@@ -15,58 +15,8 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   ludicrous_files_ok,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.webrtc.helpers import on_air_block_reason
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
-ON_AIR_SLASH = rl.Color(224, 36, 36, 255)
-ON_AIR_SLASH_EDGE = rl.Color(255, 255, 255, 235)
-
-
-def _network_is_none() -> bool:
-  try:
-    return ui_state.sm["deviceState"].networkType == log.DeviceState.NetworkType.none
-  except Exception:
-    return True
-
-
-def on_air_ui_blocked() -> str | None:
-  return on_air_block_reason(ui_state.params, network_none=_network_is_none())
-
-
-def draw_on_air_slash(x: float, y: float, w: float, h: float) -> None:
-  inset = max(4.0, min(w, h) * 0.14)
-  p1 = rl.Vector2(x + inset, y + inset)
-  p2 = rl.Vector2(x + w - inset, y + h - inset)
-  rl.draw_line_ex(p1, p2, max(5.0, h * 0.14), ON_AIR_SLASH_EDGE)
-  rl.draw_line_ex(p1, p2, max(3.5, h * 0.09), ON_AIR_SLASH)
-
-
-def try_toggle_on_air() -> None:
-  params = ui_state.params
-  want_on = not params.get_bool("LivestreamEnabled")
-  if want_on:
-    reason = on_air_ui_blocked()
-    if reason:
-      gui_app.push_widget(OnAirBlockedPage(reason))
-      return
-  params.put_bool("LivestreamEnabled", want_on, block=True)
-
-
-class OnAirBlockedPage(NavScroller):
-  def __init__(self, reason: str):
-    super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    if reason == "prime":
-      cards = [
-        GreyBigButton("On-Air", "comma Prime LTE", warn),
-        GreyBigButton("", "You think Hotz wants to pay for your influence?"),
-        GreyBigButton("", "Get yer own connection!"),
-      ]
-    else:
-      cards = [
-        GreyBigButton("On-Air", "no internet connection", warn),
-      ]
-    self._scroller.add_widgets(cards)
 
 
 class AutoLaneChangeConfirmPage(NavScroller):
@@ -211,43 +161,6 @@ class BucklePreview(BigButton):
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
     request_buckle_play()
-
-
-class OnAirToggle(Widget):
-  """Red On-Air = livestream on. Gray = stock Connect only."""
-
-  def __init__(self):
-    super().__init__()
-    self._params = Params()
-    self._on = gui_app.texture("icons_mici/on_air_on.png", 280, 112)
-    self._off = gui_app.texture("icons_mici/on_air_off.png", 280, 112)
-    self.set_rect(rl.Rectangle(0, 0, 220, 180))
-    self.set_click_callback(self._toggle)
-
-  def _toggle(self):
-    try_toggle_on_air()
-
-  def _render(self, _):
-    txt = self._on if self._params.get_bool("LivestreamEnabled") else self._off
-    max_w = max(40.0, self.rect.width - 24)
-    scale = min(1.0, max_w / max(1, txt.width))
-    w, h = txt.width * scale, txt.height * scale
-    x = self.rect.x + (self.rect.width - w) / 2
-    y = self.rect.y + (self.rect.height - h) / 2
-    src = rl.Rectangle(0, 0, txt.width, txt.height)
-    dest = rl.Rectangle(x, y, w, h)
-    rl.draw_texture_pro(txt, src, dest, rl.Vector2(0, 0), 0.0, rl.WHITE)
-    if on_air_ui_blocked():
-      draw_on_air_slash(x, y, w, h)
-
-
-class LivestreamLayoutMici(NavScroller):
-  def __init__(self):
-    super().__init__()
-    self._scroller.add_widgets([
-      OnAirToggle(),
-      GreyBigButton("", "Local Wi-Fi viewer · 720p WebRTC.\nPhone: port 5001. Not comma's servers."),
-    ])
 
 
 class ThemeLayoutMici(NavScroller):

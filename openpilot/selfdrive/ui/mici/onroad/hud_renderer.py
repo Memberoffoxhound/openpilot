@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_letter, trip_pct
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -128,7 +129,6 @@ class HudRenderer(Widget):
     self._txt_egpu_green: rl.Texture = gui_app.texture('icons_mici/egpu_green.png', 60, 44)
     self._txt_egpu_orange: rl.Texture = gui_app.texture('icons_mici/egpu_orange.png', 60, 44)
     self._txt_egpu_crossed: rl.Texture = gui_app.texture('icons_mici/egpu_crossed.png', 60, 52)
-    self._txt_on_air: rl.Texture = gui_app.texture('icons_mici/on_air_on.png', 80, 32)
     self._egpu_icon: rl.Texture | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
@@ -196,7 +196,8 @@ class HudRenderer(Widget):
       self._draw_model_source(rect)
 
     self._draw_steering_wheel(rect)
-    self._draw_on_air(rect)
+    self._draw_engaged_pct(rect)
+    self._draw_compass(rect)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
@@ -275,12 +276,64 @@ class HudRenderer(Widget):
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
       rl.draw_texture_ex(self._txt_exclamation_point, rl.Vector2(exclamation_pos_x, exclamation_pos_y), 0.0, 1.0, rl.WHITE)
 
-  def _draw_on_air(self, rect: rl.Rectangle) -> None:
-    if not ui_state.params.get_bool("LivestreamEnabled"):
+  def _draw_compass(self, rect: rl.Rectangle) -> None:
+    # Top-right of the video, same row as DM (y+10, 16px inset). Stays in content_rect.
+    if not custom_onroad_ui():
       return
-    icon = self._txt_on_air
-    pos = rl.Vector2(rect.x + (rect.width - icon.width) / 2, rect.y + 8)
-    rl.draw_texture_ex(icon, pos, 0.0, 1.0, rl.Color(255, 255, 255, 92))
+    a = int(self._wheel_alpha_filter.x)
+    if a < 3:
+      return
+    letter = heading_letter()
+    if not letter:
+      return
+    size = 50
+    sz = measure_text_cached(self._font_display, letter, size)
+    if sz.x > 50:
+      size = int(size * 50 / sz.x)
+      sz = measure_text_cached(self._font_display, letter, size)
+    cx = rect.x + rect.width - 16 - 25
+    cy = rect.y + 10 + 25
+    rl.draw_text_ex(
+      self._font_display, letter,
+      rl.Vector2(cx - sz.x / 2, cy - sz.y / 2),
+      size, 0, rl.Color(255, 255, 255, a),
+    )
+
+  def _draw_engaged_pct(self, rect: rl.Rectangle) -> None:
+    # Wheel-sized 50x50, bottom-right of the video. This trip only.
+    if not custom_onroad_ui():
+      return
+    a = int(self._wheel_alpha_filter.x)
+    if a < 3:
+      return
+    pct = f"{trip_pct()}%"
+    box = 50.0
+    cx = rect.x + rect.width - 21 - box / 2
+    cy = rect.y + rect.height - 14 - box / 2 + self._wheel_y_filter.x
+    vsz = FONT_SIZES.max_speed
+    vs = measure_text_cached(self._font_display, pct, vsz)
+    while (vs.x > box or vs.y > box * 0.7) and vsz > 12:
+      vsz -= 1
+      vs = measure_text_cached(self._font_display, pct, vsz)
+    label = "ENGD"
+    lsz = 12
+    ls = measure_text_cached(self._font_semi_bold, label, lsz)
+    while ls.x > min(box, vs.x + 2) and lsz > 6:
+      lsz -= 1
+      ls = measure_text_cached(self._font_semi_bold, label, lsz)
+    gap = 1.0
+    total = vs.y + gap + ls.y
+    if total > box:
+      scale = box / total
+      vsz = max(10, int(vsz * scale))
+      lsz = max(6, int(lsz * scale))
+      vs = measure_text_cached(self._font_display, pct, vsz)
+      ls = measure_text_cached(self._font_semi_bold, label, lsz)
+      total = vs.y + gap + ls.y
+    top = cy - total / 2
+    col = rl.Color(255, 255, 255, a)
+    rl.draw_text_ex(self._font_display, pct, rl.Vector2(cx - vs.x / 2, top), vsz, 0, col)
+    rl.draw_text_ex(self._font_semi_bold, label, rl.Vector2(cx - ls.x / 2, top + vs.y + gap), lsz, 0, col)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

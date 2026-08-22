@@ -790,30 +790,26 @@ def getNetworkMetered() -> bool:
 
 @dispatcher.add_method
 def startStream(sdp: str, enabled: bool) -> dict:
-  from openpilot.system.webrtc.helpers import StreamRequestBody, post_stream_request, wait_for_webrtcd, livestream_network_ok
+  from openpilot.system.webrtc.helpers import StreamRequestBody, post_stream_request, wait_for_webrtcd
   params = Params()
-  if not livestream_network_ok(params):
-    raise Exception("Livestream is limited to Wi-Fi or a non-Prime SIM.")
-  if not params.get_bool("IsOffroad") and not params.get_bool("LivestreamEnabled"):
-    raise Exception("On-Air is off. Enable livestream in settings.")
   bridge_services_in = []
 
-  # webrtcd stays up onroad (Highland); flip IsLiveStreaming so encoderd --stream starts.
+  # stale car params case taken care of by webrtcd being shut off on ignition
   cp_bytes = params.get("CarParamsPersistent")
   if cp_bytes is not None:
     with car.CarParams.from_bytes(cp_bytes) as CP:
       if CP.notCar:
         bridge_services_in.append("testJoystick")
 
-  # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
-  # Dashcam encoderd pauses while this is set (see process_config.dashcam_encoder).
-  # webrtcd clears IsLiveStreaming when the session ends.
-  params.put_bool("IsLiveStreaming", True)
-  try:
-    wait_for_webrtcd()
-  except TimeoutError:
-    cloudlog.event("athena.startStream.webrtcd_start_timeout", error=True)
-    raise
+  if params.get_bool("IsOffroad"):
+    # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
+    # webrtcd clears IsLiveStreaming when the session ends
+    params.put_bool("IsLiveStreaming", True)
+    try:
+      wait_for_webrtcd()
+    except TimeoutError:
+      cloudlog.event("athena.startStream.webrtcd_offroad_start_timeout", error=True)
+      raise
 
   return post_stream_request(StreamRequestBody(sdp, ["wideRoad"], enabled, bridge_services_in, ["carState", "deviceState"]))
 

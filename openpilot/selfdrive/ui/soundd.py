@@ -13,7 +13,7 @@ from openpilot.common.utils import retry
 from openpilot.common.swaglog import cloudlog
 
 from openpilot.system import micd
-from openpilot.common.hardware import HARDWARE
+from openpilot.selfdrive.ui.layouts.settings.common import buckle_once
 
 SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
@@ -275,7 +275,7 @@ class Soundd:
 
         if sm.updated['carState'] and _flag(BUCKLE_MODE):
           unlatched = bool(sm['carState'].seatbeltUnlatched)
-          if self.prev_unlatched is True and unlatched is False:
+          if self.prev_unlatched is True and unlatched is False and buckle_once():
             with open(BUCKLE_PLAY, "w") as f:
               f.write("1")
           self.prev_unlatched = unlatched

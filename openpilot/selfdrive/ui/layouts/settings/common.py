@@ -68,6 +68,29 @@ def custom_onroad_ui(params: Params | None = None) -> bool:
   return onroad_ui_mode(params) == ONROAD_UI_CUSTOM
 
 
+CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+
+def heading_letter() -> str | None:
+  sm = ui_state.sm
+  try:
+    if sm.recv_frame["gpsLocationExternal"] > 0:
+      gps = sm["gpsLocationExternal"]
+      if not (hasattr(gps, "hasFix") and not gps.hasFix):
+        return CARDINALS[int((float(gps.bearingDeg) + 22.5) % 360.0) // 45]
+  except Exception:
+    pass
+  try:
+    if sm.recv_frame["deviceMotion"] > 0:
+      ori = sm["deviceMotion"].orientationNED
+      if ori.valid:
+        yaw = math.degrees(float(ori.z)) % 360.0
+        return CARDINALS[int((yaw + 22.5) % 360.0) // 45]
+  except Exception:
+    pass
+  return None
+
+
 def set_onroad_ui(mode: int, params: Params | None = None) -> None:
   mode = ONROAD_UI_CUSTOM if int(mode) == ONROAD_UI_CUSTOM else ONROAD_UI_STOCK
   params = params or Params()
@@ -156,12 +179,47 @@ _STARS = tuple(
   (i * 2.399963, (i * 0.618034) % 1.0, 0.55 + (i % 7) * 0.22, 1.1 + (i % 5) * 0.35)
   for i in range(120)
 )
+_seen_offroad = False
+_mid_drive_boot = False
+_ludi_drive = False
+_buckle_drive = False
+
+
+def tick_egg_drive() -> None:
+  """Arm easter eggs only after this process has seen offroad. Reboot mid-drive stays silent."""
+  global _seen_offroad, _mid_drive_boot, _ludi_drive, _buckle_drive
+  if not ui_state.started:
+    _seen_offroad = True
+    _mid_drive_boot = False
+    _ludi_drive = False
+    _buckle_drive = False
+    return
+  if not _seen_offroad:
+    _mid_drive_boot = True
+
+
+def eggs_live() -> bool:
+  return bool(ui_state.started and _seen_offroad and not _mid_drive_boot)
+
+
+def buckle_once() -> bool:
+  global _buckle_drive
+  tick_egg_drive()
+  if not eggs_live() or _buckle_drive:
+    return False
+  _buckle_drive = True
+  return True
 
 
 def trigger_ludicrous(*, preview: bool = False) -> bool:
-  global _warp_t0, _warp_last
+  global _warp_t0, _warp_last, _ludi_drive
   if not ludicrous_files_ok():
     return False
+  if not preview:
+    tick_egg_drive()
+    if not eggs_live() or _ludi_drive:
+      return True
+    _ludi_drive = True
   now = time.monotonic()
   if not preview and (now - _warp_last) < LUDI_COOLDOWN:
     return True
@@ -172,7 +230,10 @@ def trigger_ludicrous(*, preview: bool = False) -> bool:
 
 
 def maybe_trigger_ludicrous() -> None:
-  if not ui_state.started or not ludicrous_on():
+  if not ludicrous_on():
+    return
+  tick_egg_drive()
+  if not eggs_live():
     return
   try:
     a = float(ui_state.sm["carState"].aEgo)
@@ -223,11 +284,30 @@ def draw_ludicrous_warp(rect: rl.Rectangle) -> None:
     rl.draw_circle(int(cx), int(cy), int(18 + flash * 70), rl.Color(190, 220, 255, int(55 * flash * a)))
 
 
+def _day_id() -> str:
+  try:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("America/Chicago"))
+    return f"{now.year:04d}-{now.month:02d}-{now.day:02d}"
+  except Exception:
+    st = time.localtime()
+    return f"{st.tm_year:04d}-{st.tm_mon:02d}-{st.tm_mday:02d}"
+
+
 def _sunday_id() -> str:
-  now = time.localtime()
-  sun = time.mktime(now) - ((now.tm_wday + 1) % 7) * 86400
-  st = time.localtime(sun)
-  return f"{st.tm_year:04d}-{st.tm_mon:02d}-{st.tm_mday:02d}"
+  """Local Sunday date. Device TZ is UTC; week boundary is America/Chicago."""
+  try:
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("America/Chicago"))
+    sun = now - timedelta(days=(now.weekday() + 1) % 7)
+    return f"{sun.year:04d}-{sun.month:02d}-{sun.day:02d}"
+  except Exception:
+    now = time.localtime()
+    sun = time.mktime(now) - ((now.tm_wday + 1) % 7) * 86400
+    st = time.localtime(sun)
+    return f"{st.tm_year:04d}-{st.tm_mon:02d}-{st.tm_mday:02d}"
 
 
 _trip: dict | None = None
@@ -238,7 +318,8 @@ _trip_flush = 0.0
 def _load_trip() -> dict:
   t = {"trip_m": 0.0, "eng_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
        "last_m": 0.0, "last_eng_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
-       "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": ""}
+       "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": "",
+       "today_m": 0.0, "today_eng_m": 0.0, "day_id": ""}
   try:
     t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
@@ -262,7 +343,7 @@ def _save_trip(t: dict) -> None:
 
 
 def tick_trip() -> None:
-  """Last/Week from stock carState.vEgo + selfdriveState.enabled. UI-thread."""
+  """Today/Week from stock carState.vEgo + selfdriveState.enabled. UI-thread."""
   global _trip, _trip_t, _trip_flush
   now = time.monotonic()
   if _trip is None:
@@ -276,12 +357,11 @@ def tick_trip() -> None:
   if _trip.get("week_id") != wid:
     _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
     _trip["week_id"] = wid
+  did = _day_id()
+  if _trip.get("day_id") != did:
+    _trip["today_m"] = _trip["today_eng_m"] = 0.0
+    _trip["day_id"] = did
   if route and route != _trip.get("route"):
-    if _trip.get("trip_m", 0) > 50 or _trip.get("tot_s", 0) > 5:
-      _trip["last_m"] = _trip["trip_m"]
-      _trip["last_eng_m"] = _trip.get("eng_m", 0.0)
-      _trip["last_eng_s"] = _trip["eng_s"]
-      _trip["last_tot_s"] = _trip["tot_s"]
     _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
     _trip["route"] = route
     _save_trip(_trip)
@@ -296,10 +376,12 @@ def tick_trip() -> None:
     if v > 0.15:
       _trip["trip_m"] += v * dt
       _trip["week_m"] += v * dt
+      _trip["today_m"] = _trip.get("today_m", 0.0) + v * dt
       try:
         if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
           _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
           _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
+          _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
           _trip["eng_s"] += dt
           _trip["week_eng_s"] += dt
       except Exception:
@@ -307,6 +389,15 @@ def tick_trip() -> None:
   if now - _trip_flush > 1.0:
     _save_trip(_trip)
     _trip_flush = now
+
+
+def trip_pct() -> int:
+  t = _trip
+  if t is None:
+    return 0
+  m = float(t.get("trip_m") or 0)
+  e = float(t.get("eng_m") or 0)
+  return int(round(100.0 * e / m)) if m > 1 else 0
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:

@@ -12,9 +12,6 @@ from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_SCALE
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.ui.mici.layouts.settings.toggles import (
-  draw_on_air_slash, on_air_ui_blocked, try_toggle_on_air,
-)
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
@@ -151,25 +148,6 @@ class NetworkIcon(Widget):
     rl.draw_texture_ex(draw_net_txt, rl.Vector2(draw_x, draw_y), 0.0, 1.0, rl.Color(255, 255, 255, int(255 * 0.9)))
 
 
-class OnAirIcon(Widget):
-  """Home footer On-Air badge. Red = on, gray = off. Tap handled by MiciHomeLayout."""
-
-  def __init__(self):
-    super().__init__()
-    self._on = gui_app.texture("icons_mici/on_air_on.png", 120, 48)
-    self._off = gui_app.texture("icons_mici/on_air_off.png", 120, 48)
-    self.set_rect(rl.Rectangle(0, 0, 120, 48))
-    self.set_enabled(False)
-
-  def _render(self, _):
-    txt = self._on if ui_state.params.get_bool("LivestreamEnabled") else self._off
-    y = self.rect.y + (self.rect.height - txt.height) / 2
-    x = self.rect.x
-    rl.draw_texture_ex(txt, rl.Vector2(x, y), 0.0, 1.0, rl.WHITE)
-    if on_air_ui_blocked():
-      draw_on_air_slash(x, y, txt.width, txt.height)
-
-
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -184,7 +162,6 @@ class MiciHomeLayout(Widget):
     self._version_text = self._get_version_text()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
-    self._on_air_icon = OnAirIcon()
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -196,7 +173,6 @@ class MiciHomeLayout(Widget):
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
       self._experimental_icon,
-      self._on_air_icon,
       self._egpu_icon,
       self._egpu_icon_gray,
       self._body_icon,
@@ -208,8 +184,8 @@ class MiciHomeLayout(Widget):
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
-    self._last_txt = ("Last ", "0 mi 0%")
-    self._week_txt = ("Week ", "0 mi 0%")
+    self._last_txt = ("Today ", "0mi 0%")
+    self._week_txt = ("Week ", "0mi 0%")
 
   def _update_state(self):
     if self.is_pressed and not self._is_pressed_prev:
@@ -236,7 +212,7 @@ class MiciHomeLayout(Widget):
     else:
       dist, unit = meters / 1609.344, "mi"
     pct = int(round(100.0 * eng_m / meters)) if meters > 1 else 0
-    return f"{int(round(dist))} {unit} {pct}%"
+    return f"{int(round(dist))}{unit} {pct}%"
 
   def _refresh_trip(self):
     now = time.monotonic()
@@ -247,11 +223,7 @@ class MiciHomeLayout(Widget):
       t = json.loads(open(TRIP_PATH).read())
     except Exception:
       t = {}
-    if (t.get("trip_m") or 0) > 10:
-      last = (t.get("trip_m", 0) or 0, t.get("eng_m", 0) or 0)
-    else:
-      last = (t.get("last_m", 0) or 0, t.get("last_eng_m", 0) or 0)
-    self._last_txt = ("Last ", self._fmt_trip(*last))
+    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_eng_m", 0) or 0))
     self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_m", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
@@ -264,10 +236,6 @@ class MiciHomeLayout(Widget):
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self._did_long_press:
-      r = self._on_air_icon.rect
-      if r.x <= mouse_pos.x <= r.x + r.width and r.y <= mouse_pos.y <= r.y + r.height:
-        try_toggle_on_air()
-        return
       relative_x = mouse_pos.x - self.rect.x
       has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
       if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:

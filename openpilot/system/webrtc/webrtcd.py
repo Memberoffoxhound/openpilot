@@ -3,6 +3,7 @@
 from abc import abstractmethod
 from collections.abc import Callable
 import os
+import socket
 import time
 import capnp
 import argparse
@@ -14,25 +15,33 @@ import logging
 import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from typing import Any
 
-from openpilot.system.webrtc.helpers import StreamRequestBody, on_air_block_reason
+from openpilot.system.webrtc.helpers import StreamRequestBody
 from openpilot.system.webrtc.schema import generate_field
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.cereal import messaging, log
 
 SESSION_TIMEOUT_SECONDS = 300
-VIEWER_HTML = Path(__file__).with_name("viewer.html")
-STATIC_DIR = Path(__file__).parent / "static"
 
 
 # ice candidate parser for logging
 def _ice_candidates(sdp: str) -> list[str]:
   return [line.removeprefix("a=") for line in sdp.splitlines() if line.startswith("a=candidate:")]
 
+# socket trick: route lookup for 8.8.8.8 (nothing is sent or actually connected to)
+# return the source interfaces IP which is the default interface of the device
+def _default_route_ip() -> str | None:
+  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  try:
+    s.connect(("8.8.8.8", 53))  # selects a route, sends nothing
+    return s.getsockname()[0]
+  except OSError:
+    return None
+  finally:
+    s.close()
 
 class AsyncTaskRunner:
   def __init__(self):
@@ -141,7 +150,7 @@ class DynamicPubMaster(messaging.PubMaster):
 
 
 class LivestreamBitrateController(AsyncTaskRunner):
-  bitrates = [2_000_000, 4_000_000, int(os.environ.get("STREAM_BITRATE", 6_000_000))]
+  bitrates = [500_000, 1_500_000, int(os.environ.get("STREAM_BITRATE", 5_000_000))]
   label_to_bitrate = { "high": bitrates[2], "med": bitrates[1], "low": bitrates[0]}
   sample_interval = 0.2
   high_level = 0.1 # drop immediately
@@ -218,16 +227,13 @@ class LivestreamBitrateController(AsyncTaskRunner):
 class StreamSession:
   shared_pub_master = DynamicPubMaster([])
 
-  def __init__(self, body: StreamRequestBody, lan: bool = False):
+  def __init__(self, body: StreamRequestBody):
     from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
     from teleoprtc.builder import WebRTCAnswerBuilder
 
     self.identifier = str(uuid.uuid4())
     self.params = Params()
-    self.lan = lan
-    # Highland: don't pin ICE to the current default-route IP. Binding to wifi
-    # makes the peer connection die the instant the device switches to LTE onroad.
-    builder = WebRTCAnswerBuilder(body.sdp, bind_address=None)
+    builder = WebRTCAnswerBuilder(body.sdp, bind_address=_default_route_ip())
 
     self.enabled = body.enabled
     self.video_tracks = []
@@ -313,28 +319,7 @@ class StreamSession:
     except Exception:
       self.logger.exception("Cereal incoming proxy failure")
 
-  async def _watch_network(self):
-    # Connect (loopback) is stock: never apply On-Air / Prime gates.
-    if not self.lan:
-      return
-    while True:
-      await asyncio.sleep(2.0)
-      reason = None
-      if on_air_block_reason(self.params):
-        reason = "Livestream is limited to Wi-Fi or a non-Prime SIM."
-      elif not self.params.get_bool("LivestreamEnabled"):
-        reason = "On-Air is off."
-      if reason is None:
-        continue
-      try:
-        self.stream.get_messaging_channel().send(json.dumps({"type": "disconnect", "data": reason}))
-      except Exception:
-        pass
-      await self.stream.stop()
-      return
-
   async def run_normal_session(self):
-    watch = asyncio.create_task(self._watch_network())
     try:
       await asyncio.wait_for(self.stream.wait_for_disconnection(), timeout=SESSION_TIMEOUT_SECONDS)
     except TimeoutError:
@@ -343,8 +328,6 @@ class StreamSession:
         self.stream.get_messaging_channel().send(json.dumps({"type": "disconnect", "data": "Session timed out"}))
       except Exception:
         pass
-    finally:
-      watch.cancel()
 
   async def run_body_session(self):
     await self.stream.wait_for_disconnection()
@@ -399,295 +382,22 @@ class StreamSession:
 
 
 class ServerState:
-  RESUME_S = 30.0
-
   def __init__(self):
     self.streams: dict[str, StreamSession] = {}
     self.stream_lock = asyncio.Lock()
     self.teardown: asyncio.TimerHandle | None = None
-    self.loop: asyncio.AbstractEventLoop | None = None
-    self.params = Params()
-    self.sm = messaging.SubMaster([
-      "deviceState", "carState", "selfdriveState", "modelV2",
-      "extrinsicsCalibration", "radarState",
-    ])
-    self._gps_fix: tuple[float | None, float | None, float | None] = (None, None, None)
-    try:
-      self._gps_socks = [
-        messaging.sub_sock("gpsLocation", conflate=True, timeout=0),
-        messaging.sub_sock("gpsLocationExternal", conflate=True, timeout=0),
-      ]
-    except Exception:
-      self._gps_socks = []
-    try:
-      self._ds_sock = messaging.sub_sock("deviceState", conflate=True, timeout=0)
-    except Exception:
-      self._ds_sock = None
-    self.block_reason: str | None = None
-    self._forced_off = False
-    self._resume_deadline = 0.0
-    self.trip_t0 = time.monotonic()
-    self.trip_last = self.trip_t0
-    self.trip_eng = 0.0
-    self.trip_miles = 0.0
-    self.hud: dict[str, Any] = {}
-    self.hud_lock = threading.Lock()
-    self.hud_last = 0.0
-    threading.Thread(target=self._pump, name="hud-pump", daemon=True).start()
-    threading.Thread(target=self._net_watch, name="onair-net", daemon=True).start()
-
-  def touch_hud(self) -> None:
-    self.hud_last = time.monotonic()
-
-  def _network_none(self) -> bool:
-    try:
-      if self._ds_sock is None:
-        return False
-      msg = messaging.recv_one_or_none(self._ds_sock)
-      if msg is not None:
-        self._last_nt = msg.deviceState.networkType
-      nt = getattr(self, "_last_nt", None)
-      return nt == log.DeviceState.NetworkType.none
-    except Exception:
-      return False
-
-  def _stop_streams_async(self) -> None:
-    """Drop LAN viewer sessions only. Never touch Connect (loopback)."""
-    loop = self.loop
-    if loop is None:
-      return
-
-    async def _stop():
-      async with self.stream_lock:
-        for sid, session in list(self.streams.items()):
-          if not getattr(session, "lan", False):
-            continue
-          try:
-            ch = session.stream.get_messaging_channel()
-            ch.send(json.dumps({"type": "disconnect", "data": "On-Air network lost."}))
-          except Exception:
-            pass
-          await session.stop()
-          self.streams.pop(sid, None)
-      if not self.streams:
-        schedule_teardown(self)
-
-    asyncio.run_coroutine_threadsafe(_stop(), loop)
-
-  def _net_watch(self) -> None:
-    self._last_nt = None
-    while True:
-      try:
-        time.sleep(0.4)
-        none = self._network_none()
-        reason = on_air_block_reason(self.params, network_none=none)
-        self.block_reason = reason
-        on = self.params.get_bool("LivestreamEnabled")
-        now = time.monotonic()
-        if on and reason:
-          self.params.put_bool("LivestreamEnabled", False)
-          self._forced_off = True
-          self._resume_deadline = now + self.RESUME_S
-          self._stop_streams_async()
-        elif self._forced_off and reason is None and now <= self._resume_deadline:
-          self.params.put_bool("LivestreamEnabled", True)
-          self._forced_off = False
-          self._resume_deadline = 0.0
-        elif self._forced_off and now > self._resume_deadline:
-          self._forced_off = False
-          self._resume_deadline = 0.0
-      except Exception:
-        time.sleep(1.0)
-
-  def _pump(self) -> None:
-    while True:
-      try:
-        if time.monotonic() - self.hud_last > 20:
-          time.sleep(0.4)
-          continue
-        self.sm.update(50)
-        self._poll_gps_socks()
-        snap = self.build_hud()
-        with self.hud_lock:
-          self.hud = snap
-      except Exception:
-        time.sleep(0.15)
-
-  def _poll_gps_socks(self) -> None:
-    for sock in self._gps_socks:
-      try:
-        msg = messaging.recv_one_or_none(sock)
-        if msg is None:
-          continue
-        g = getattr(msg, msg.which())
-        lat, lon = float(g.latitude), float(g.longitude)
-        if abs(lat) < 0.01 and abs(lon) < 0.01:
-          continue
-        hdg = float(getattr(g, "bearingDeg", 0.0) or 0.0) or None
-        self._gps_fix = (lat, lon, hdg)
-      except Exception:
-        continue
-
-  @staticmethod
-  def _xyz(line, step: int = 2, cap: int = 48) -> list[list[float]]:
-    try:
-      xs, ys, zs = list(line.x), list(line.y), list(line.z)
-    except Exception:
-      return []
-    pts = []
-    for i in range(0, min(len(xs), len(ys), len(zs)), step):
-      pts.append([float(xs[i]), float(ys[i]), float(zs[i])])
-      if len(pts) >= cap:
-        break
-    return pts
-
-  def _read_gps(self) -> tuple[float | None, float | None, float | None]:
-    if self._gps_fix[0] is not None:
-      return self._gps_fix
-    sm = self.sm
-    best: tuple[float | None, float | None, float | None] = (None, None, None)
-    for name in ("gpsLocation", "gpsLocationExternal"):
-      try:
-        g = sm[name]
-        lat, lon = float(getattr(g, "latitude", 0) or 0), float(getattr(g, "longitude", 0) or 0)
-        if abs(lat) < 0.2 and abs(lon) < 0.2:
-          continue
-        hdg = float(getattr(g, "bearingDeg", 0.0) or 0.0) or None
-        best = (lat, lon, hdg)
-        if getattr(g, "hasFix", False) or abs(lat) > 1:
-          self._gps_fix = best
-          return best
-      except Exception:
-        continue
-    if best[0] is None:
-      try:
-        raw = Params().get("LastGPSPosition")
-        if raw:
-          if isinstance(raw, (bytes, bytearray)):
-            raw = raw.decode(errors="ignore")
-          lat = lon = None
-          try:
-            j = json.loads(raw)
-            lat = float(j.get("latitude") or j.get("lat") or 0)
-            lon = float(j.get("longitude") or j.get("lon") or 0)
-          except Exception:
-            parts = [p.strip() for p in raw.replace(";", ",").split(",")]
-            if len(parts) >= 2:
-              lat, lon = float(parts[0]), float(parts[1])
-          if lat is not None and (abs(lat) > 0.2 or abs(lon) > 0.2):
-            return lat, lon, None
-      except Exception:
-        pass
-    return best
-
-  def build_hud(self) -> dict[str, Any]:
-    params = self.params
-    sm = self.sm
-    out: dict[str, Any] = {
-      "onAir": params.get_bool("LivestreamEnabled"),
-      "metric": params.get_bool("IsMetric"),
-      "laneColor": 1,
-      "enabled": False,
-      "experimental": False,
-      "speed": 0.0,
-      "setSpeed": None,
-      "steerDeg": 0.0,
-      "alert": "",
-      "rpy": [0.0, 0.0, 0.0],
-      "wideRpy": [0.0, 0.0, 0.0],
-      "height": 1.22,
-      "path": [],
-      "lanes": [],
-      "edges": [],
-      "laneProbs": [],
-      "lead": None,
-      "lat": None,
-      "lon": None,
-      "hdg": None,
-      "tripMiles": round(self.trip_miles, 2),
-      "engagedPct": 0.0,
-    }
-    try:
-      lc = params.get("LaneColor") or 1
-      out["laneColor"] = int(lc)
-    except Exception:
-      pass
-
-    def got(name: str) -> bool:
-      try:
-        return bool(sm.seen.get(name) or sm.recv_frame.get(name, 0))
-      except Exception:
-        return False
-
-    try:
-      if got("carState"):
-        cs = sm["carState"]
-        v = cs.vEgoCluster if cs.vEgoCluster else cs.vEgo
-        out["speed"] = float(v)
-        out["steerDeg"] = float(cs.steeringAngleDeg)
-        cruise = float(cs.vCruiseCluster or 0.0)
-        if 0 < cruise < 255:
-          out["setSpeed"] = cruise
-      if got("selfdriveState"):
-        ss = sm["selfdriveState"]
-        out["enabled"] = bool(ss.enabled)
-        out["experimental"] = bool(ss.experimentalMode)
-        a1 = str(getattr(ss, "alertText1", "") or "")
-        a2 = str(getattr(ss, "alertText2", "") or "")
-        out["alert"] = a1 if a1 else a2
-      if got("extrinsicsCalibration"):
-        cal = sm["extrinsicsCalibration"]
-        rpy = list(getattr(cal, "rpyCalib", []) or [])
-        if len(rpy) == 3:
-          out["rpy"] = [float(x) for x in rpy]
-        wr = list(getattr(cal, "wideFromDeviceEuler", []) or [])
-        if len(wr) == 3:
-          out["wideRpy"] = [float(x) for x in wr]
-        h = list(getattr(cal, "height", []) or [])
-        if h:
-          out["height"] = float(h[0])
-      if got("modelV2"):
-        m = sm["modelV2"]
-        out["path"] = self._xyz(m.position)
-        out["lanes"] = [self._xyz(ll) for ll in m.laneLines]
-        out["edges"] = [self._xyz(e) for e in m.roadEdges]
-        out["laneProbs"] = [float(p) for p in list(m.laneLineProbs)[:4]]
-      if got("radarState"):
-        lead = sm["radarState"].leadOne
-        if lead and lead.present:
-          out["lead"] = {"d": float(lead.dRel), "y": float(lead.yRel), "v": float(lead.vRel)}
-      lat, lon, hdg = self._read_gps()
-      out["lat"], out["lon"], out["hdg"] = lat, lon, hdg
-    except Exception:
-      pass
-    now = time.monotonic()
-    dt = max(0.0, now - self.trip_last)
-    self.trip_last = now
-    self.trip_miles += abs(float(out["speed"] or 0.0)) * dt / 1609.344
-    if out["enabled"]:
-      self.trip_eng += dt
-    total = max(now - self.trip_t0, 1e-3)
-    out["tripMiles"] = round(self.trip_miles, 2)
-    out["engagedPct"] = round(100.0 * self.trip_eng / total, 1)
-    return out
 
 
+# if nothing connects for 5 seconds, tear down livestreaming processes
 def schedule_teardown(state: ServerState):
-  loop = state.loop
-  if loop is None:
-    return
+  if state.teardown is not None:
+    state.teardown.cancel()
 
-  def arm():
-    if state.teardown is not None:
-      state.teardown.cancel()
+  def clear():
+    if not state.streams:
+      Params().put_bool("IsLiveStreaming", False)
 
-    def clear():
-      if not state.streams:
-        Params().put_bool("IsLiveStreaming", False)
-
-    state.teardown = loop.call_later(60.0, clear)
-
-  loop.call_soon_threadsafe(arm)
+  state.teardown = asyncio.get_running_loop().call_later(5.0, clear)
 
 
 def _json_response(obj: Any, status: int = 200) -> tuple[int, bytes, str]:
@@ -698,22 +408,12 @@ def _text_response(text: str, status: int = 200) -> tuple[int, bytes, str]:
   return (status, text.encode(), "text/plain; charset=utf-8")
 
 
-async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: str, lan: bool = False) -> tuple[int, bytes, str]:
-  if content_type and not content_type.startswith("application/json"):
+async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: str) -> tuple[int, bytes, str]:
+  if content_type != "application/json":
     return _json_response({"error": "unsupported media type"}, status=415)
 
   stream_dict = state.streams
   body = StreamRequestBody(**json.loads(raw_body))
-  params = Params()
-  # LAN viewer only. Connect (athenad → 127.0.0.1) is stock and must not see our gates.
-  if lan:
-    reason = state.block_reason or on_air_block_reason(params)
-    if reason:
-      return _json_response({"error": reason, "message": "Livestream is limited to Wi-Fi or a non-Prime SIM."}, status=403)
-    if not params.get_bool("LivestreamEnabled"):
-      return _json_response({"error": "onair", "message": "On-Air is off."}, status=403)
-  params.put_bool("IsLiveStreaming", True)
-  state.touch_hud()
 
   async with state.stream_lock:
     # don't remove existing connection on prewarm request
@@ -731,7 +431,7 @@ async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: s
       await s.stop()
       stream_dict.pop(sid, None)
 
-    session = StreamSession(body, lan=lan)
+    session = StreamSession(body)
     stream_dict[session.identifier] = session
     try:
       answer = await asyncio.wait_for(session.get_answer(), timeout=30)
@@ -799,39 +499,17 @@ async def on_shutdown(state: ServerState):
 class WebrtcdHandler(BaseHTTPRequestHandler):
   protocol_version = "HTTP/1.1"
 
+  # path -> allowed methods (aiohttp registered POST /stream, POST /notify, GET /schema + its auto HEAD)
   _routes = {
-    "/": ("GET", "HEAD"),
-    "/index.html": ("GET", "HEAD"),
-    "/info": ("GET", "HEAD"),
-    "/hud": ("GET", "HEAD"),
-    "/watch": ("POST",),
     "/schema": ("GET", "HEAD"),
     "/stream": ("POST",),
     "/notify": ("POST",),
   }
 
-  def __init__(self, *args, **kwargs):
-    self.params = Params()
-    super().__init__(*args, **kwargs)
-
-  def _loopback(self) -> bool:
-    return self.client_address[0] in ("127.0.0.1", "::1")
-
-  def _can_stream(self) -> bool:
-    # Connect/athenad always hits loopback. On-Air only gates the LAN viewer.
-    if self._loopback():
-      return True
-    return self.params.get_bool("LivestreamEnabled") and self.server.state.block_reason is None
-
-  def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
+  def _send(self, status: int, body: bytes, content_type: str) -> None:
     self.send_response(status)
     self.send_header("Content-Type", content_type)
     self.send_header("Content-Length", str(len(body)))
-    self.send_header("Cache-Control", "no-store")
-    self.send_header("Access-Control-Allow-Origin", "*")
-    if extra:
-      for k, v in extra.items():
-        self.send_header(k, v)
     self.end_headers()
     if self.command != "HEAD":
       self.wfile.write(body)
@@ -843,110 +521,27 @@ class WebrtcdHandler(BaseHTTPRequestHandler):
   def _run(self, coro) -> tuple[int, bytes, str]:
     return asyncio.run_coroutine_threadsafe(coro, self.server.loop).result()
 
-  def _static(self, path: str) -> tuple[int, bytes, str]:
-    rel = path[len("/static/"):]
-    if not rel or ".." in rel or rel.startswith("/"):
-      return _json_response({"error": "not found"}, status=404)
-    fp = (STATIC_DIR / rel).resolve()
-    if not str(fp).startswith(str(STATIC_DIR.resolve())) or not fp.is_file():
-      return _json_response({"error": "not found"}, status=404)
-    ext = fp.suffix.lower()
-    ctype = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(ext, "application/octet-stream")
-    return (200, fp.read_bytes(), ctype)
-
-  def _snapshot(self) -> dict[str, Any]:
-    self.server.state.touch_hud()
-    params = self.params
-    temp = mem = None
-    strength = 0
-    ntype = "none"
-    try:
-      sm = self.server.state.sm
-      if sm.recv_frame.get("deviceState", 0) > 0:
-        ds = sm["deviceState"]
-        temps = list(getattr(ds, "cpuTempC", None) or [])
-        if temps:
-          temp = round(float(max(temps)), 1)
-        mem = int(getattr(ds, "memoryUsagePercent", 0) or 0)
-        ns = ds.networkStrength
-        strength = int(getattr(ns, "raw", 0) or 0)
-        ntype = str(ds.networkType).split(".")[-1]
-    except Exception:
-      pass
-    on_air = params.get_bool("LivestreamEnabled")
-    reason = self.server.state.block_reason
-    if reason is None and not on_air:
-      reason = "onair"
-    net_ok = self.server.state.block_reason is None
-    metered = params.get_bool("NetworkMetered")
-    nt = getattr(self.server.state, "_last_nt", None)
-    if nt is not None:
-      ntype = str(nt).split(".")[-1]
-    br = params.get("LivestreamEncoderBitrate") or 0
-    try:
-      kbps = int(br) // 1000
-    except (TypeError, ValueError):
-      kbps = 0
-    return {
-      "ok": True,
-      "onAir": on_air,
-      "networkOk": net_ok,
-      "metered": metered,
-      "reason": reason,
-      "kbps": kbps,
-      "viewers": len(self.server.state.streams),
-      "tempC": temp,
-      "memPct": mem,
-      "wifiBars": strength,
-      "network": ntype,
-    }
-
-  def _hud_snapshot(self) -> dict[str, Any]:
-    self.server.state.touch_hud()
-    with self.server.state.hud_lock:
-      snap = dict(self.server.state.hud)
-    return snap or {"onAir": False, "lat": None, "lon": None, "tripMiles": 0, "engagedPct": 0}
-
   def _dispatch_request(self) -> None:
     parsed = urlparse(self.path)
-    path = parsed.path
+    allowed = self._routes.get(parsed.path)
+
     try:
-      if path in ("/", "/index.html"):
-        html = VIEWER_HTML.read_bytes()
-        result = (200, html, "text/html; charset=utf-8")
-      elif path.startswith("/static/"):
-        result = self._static(path)
-      elif path == "/info":
-        result = _json_response(self._snapshot())
-      elif path == "/hud":
-        result = _json_response(self._hud_snapshot())
-      elif not self._can_stream() and path not in ("/schema",):
-        result = _json_response({"error": "onair", "message": "On-Air is off. Enable livestream in settings."}, status=403)
-      elif path == "/watch":
-        if self.command != "POST":
-          result = _json_response({"error": "method not allowed"}, status=405)
+      if allowed is None:
+        result = _json_response({"error": "not found"}, status=404)
+      elif self.command not in allowed:
+        result = _json_response({"error": "method not allowed"}, status=405)
+      elif parsed.path == "/schema":
+        services = parse_qs(parsed.query).get("services", [""])[0]
+        result = self._run(handle_get_schema(self.server.state, services))
+      elif parsed.path == "/stream":
+        result = self._run(handle_get_stream(self.server.state, self._read_body(), self.headers.get_content_type()))
+      else:  # /notify
+        try:
+          payload = json.loads(self._read_body())
+        except Exception:
+          result = _json_response({"error": "bad request"}, status=400)
         else:
-          self.params.put_bool("IsLiveStreaming", True)
-          schedule_teardown(self.server.state)
-          result = _json_response({"ok": True})
-      else:
-        allowed = self._routes.get(path)
-        if allowed is None:
-          result = _json_response({"error": "not found"}, status=404)
-        elif self.command not in allowed:
-          result = _json_response({"error": "method not allowed"}, status=405)
-        elif path == "/schema":
-          services = parse_qs(parsed.query).get("services", [""])[0]
-          result = self._run(handle_get_schema(self.server.state, services))
-        elif path == "/stream":
-          result = self._run(handle_get_stream(self.server.state, self._read_body(), self.headers.get_content_type(), lan=not self._loopback()))
-        else:
-          try:
-            payload = json.loads(self._read_body())
-          except Exception:
-            result = _json_response({"error": "bad request"}, status=400)
-          else:
-            result = self._run(handle_post_notify(self.server.state, payload))
+          result = self._run(handle_post_notify(self.server.state, payload))
     except Exception as e:
       logging.getLogger("webrtcd").exception("Unhandled error handling %s", self.path)
       result = _json_response({"error": "exception", "message": f"{type(e).__name__}: {e}"}, status=500)
@@ -1011,7 +606,6 @@ def webrtcd_thread(host: str, port: int):
   loop = asyncio.new_event_loop()
   asyncio.set_event_loop(loop)
   state = ServerState()
-  state.loop = loop
 
   server = WebrtcdHTTPServer((host, port), WebrtcdHandler)
   server.state = state
@@ -1043,7 +637,7 @@ def webrtcd_thread(host: str, port: int):
 
 def main():
   parser = argparse.ArgumentParser(description="WebRTC daemon")
-  parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to listen on")
+  parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to listen on")
   parser.add_argument("--port", type=int, default=5001, help="Port to listen on")
   args = parser.parse_args()
 

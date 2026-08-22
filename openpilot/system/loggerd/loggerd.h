@@ -28,7 +28,7 @@ const int SEGMENT_LENGTH = LOGGERD_TEST ? atoi(getenv("LOGGERD_SEGMENT_LENGTH"))
 
 inline int livestream_width() {
   switch (Hardware::get_device_type()) {
-    case cereal::InitData::DeviceType::TIZI: return 1280;
+    case cereal::InitData::DeviceType::TIZI: return 1152;
     case cereal::InitData::DeviceType::MICI: return 1280;
     default: return -1;
   }
@@ -65,7 +65,7 @@ struct EncoderSettings {
   }
 
   static EncoderSettings StreamEncoderSettings() {
-    int _stream_bitrate = getenv("STREAM_BITRATE") ? atoi(getenv("STREAM_BITRATE")) : 6'000'000;
+    int _stream_bitrate = getenv("STREAM_BITRATE") ? atoi(getenv("STREAM_BITRATE")) : 5'000'000;
     return EncoderSettings{.encode_type = cereal::EncodeIndex::Type::QCAMERA_H264, .bitrate = _stream_bitrate , .gop_size = 5};
   }
 };
