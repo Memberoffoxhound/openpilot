@@ -60,6 +60,8 @@ _services: dict[str, tuple] = {
   "cameraOdometry": (True, 20., 10),
   "thumbnail": (True, 1 / 60., 1),
   "onroadEvents": (True, 1., 1),
+  "selfdriveStateSP": (True, 100., 10),
+  "onroadEventsSP": (True, 1., 1),
   "carParams": (True, 0.02, 1),
   "narrowRoadCameraState": (True, 20., 20),
   "cabinCameraState": (True, 20., 20),
