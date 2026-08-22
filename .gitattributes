@@ -15,4 +15,3 @@ openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
 
 # Official 2021 Kia wordmark (KiaBrandLogo, white RGB). Keep as a blob so C4 clones do not need LFS.
 openpilot/selfdrive/assets/icons_mici/kia.png -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/icons_mici/mads.png -filter=lfs -diff=lfs -merge=lfs -text

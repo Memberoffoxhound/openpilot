@@ -32,13 +32,6 @@ DESCRIPTIONS = {
     "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary. " +
     "When off, a steering-wheel nudge is required (stock openpilot)."
   ),
-  "Mads": tr_noop(
-    "MADS (Modular Assistive Driving System) decouples steering from gas and brake. " +
-    "On Hyundai and Kia, the steering-wheel LFA button toggles steering on and off. " +
-    "SET or RES also engages speed control. Cancel cruise or press the gas to drop speed control; steering stays on. " +
-    "Brake still disengages. Main cruise off or a steering override also ends steering. " +
-    "Requires openpilot longitudinal. Off on stock TACC/SCC. You are still responsible for the vehicle."
-  ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
@@ -76,12 +69,6 @@ class TogglesLayout(Widget):
         lambda: tr("Auto Lane Change"),
         DESCRIPTIONS["AutoLaneChangeEnabled"],
         "warning.png",
-        False,
-      ),
-      "Mads": (
-        lambda: tr("MADS"),
-        DESCRIPTIONS["Mads"],
-        "chffr_wheel.png",
         False,
       ),
       "IsLdwEnabled": (
@@ -196,16 +183,12 @@ class TogglesLayout(Widget):
         self._toggles["ExperimentalMode"].action_item.set_enabled(True)
         self._toggles["ExperimentalMode"].set_description(e2e_description)
         self._long_personality_setting.action_item.set_enabled(True)
-        self._toggles["Mads"].action_item.set_enabled(True)
       else:
         # no long for now
         self._toggles["ExperimentalMode"].action_item.set_enabled(False)
         self._toggles["ExperimentalMode"].action_item.set_state(False)
         self._long_personality_setting.action_item.set_enabled(False)
-        self._toggles["Mads"].action_item.set_enabled(False)
-        self._toggles["Mads"].action_item.set_state(False)
         self._params.remove("ExperimentalMode")
-        self._params.remove("Mads")
 
         unavailable = tr("Experimental mode is currently unavailable on this car since the car's stock ACC is used for longitudinal control.")
 
@@ -267,9 +250,6 @@ class TogglesLayout(Widget):
     if param == "AutoLaneChangeEnabled":
       self._handle_alc_toggle(state)
       return
-    if param == "Mads":
-      self._handle_mads_toggle(state)
-      return
 
     self._params.put_bool(param, state, block=True)
     if self._toggle_defs[param][3]:
@@ -289,25 +269,6 @@ class TogglesLayout(Widget):
       gui_app.push_widget(dlg)
     else:
       self._params.put_bool("AutoLaneChangeEnabled", False, block=True)
-
-  def _handle_mads_toggle(self, state: bool):
-    if not ui_state.has_longitudinal_control:
-      self._toggles["Mads"].action_item.set_state(False)
-      self._params.put_bool("Mads", False, block=True)
-      return
-    if state:
-      def confirm_callback(result: DialogResult):
-        if result == DialogResult.CONFIRM:
-          self._params.put_bool("Mads", True, block=True)
-        else:
-          self._toggles["Mads"].action_item.set_state(False)
-
-      content = (f"<h1>{tr('MADS')}</h1><br>" +
-                 f"<p>{tr(DESCRIPTIONS['Mads'])}</p>")
-      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
-      gui_app.push_widget(dlg)
-    else:
-      self._params.put_bool("Mads", False, block=True)
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)

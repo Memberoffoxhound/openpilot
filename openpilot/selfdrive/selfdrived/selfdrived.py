@@ -127,8 +127,6 @@ class SelfdriveD:
     self.not_running_prev = None
     self.experimental_mode = False
     self.personality = self.params.get("LongitudinalPersonality", return_default=True)
-    self.mads = False
-    self.mads_long = True
     self.recalibrating_seen = False
     self.dm_lockout_set = False
     self.dm_uncertain_alerted = False
@@ -462,43 +460,6 @@ class SelfdriveD:
         self.params.put('LongitudinalPersonality', self.personality)
         self.events.add(EventName.personalityChanged)
 
-    self._update_mads(CS)
-
-  def _update_mads(self, CS):
-    # MADS: Hyundai/Kia LFA wheel toggles lat. Long is SET/RES. Cancel/gas drops long only.
-    # Brake still disengages — stock panda clears controls_allowed.
-    if not self.mads:
-      self.mads_long = True
-      return
-
-    lkas = any(be.type == ButtonType.lkas and be.pressed for be in CS.buttonEvents)
-
-    if self.events.has(EventName.pcmEnable) or self.events.has(EventName.buttonEnable):
-      self.mads_long = True
-
-    if lkas:
-      if not self.enabled:
-        self.events.remove(EventName.wrongCarMode)
-        self.events.remove(EventName.pedalPressed)
-        self.events.remove(EventName.preEnableStandstill)
-        self.events.add(EventName.buttonEnable)
-        self.mads_long = False
-      elif self.mads_long:
-        self.mads_long = False
-      else:
-        self.events.add(EventName.pcmDisable)
-    elif self.enabled and self.events.has(EventName.buttonCancel):
-      self.events.remove(EventName.buttonCancel)
-      self.mads_long = False
-    elif self.enabled and self.events.has(EventName.pedalPressed) and CS.gasPressed and not CS.brakePressed:
-      self.events.remove(EventName.pedalPressed)
-      self.mads_long = False
-
-    if self.enabled and not self.mads_long:
-      self.events.add(EventName.gasPressedOverride)
-    if not self.enabled and not lkas:
-      self.mads_long = True
-
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
@@ -606,9 +567,6 @@ class SelfdriveD:
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
-      self.mads = self.params.get_bool("Mads") and self.CP.openpilotLongitudinalControl
-      if not self.CP.openpilotLongitudinalControl and self.params.get_bool("Mads"):
-        self.params.remove("Mads")
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
       time.sleep(0.1)
 
