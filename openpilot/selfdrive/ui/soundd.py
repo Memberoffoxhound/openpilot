@@ -34,6 +34,11 @@ SHOT_WAVS = (
   "/data/shutter.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/shutter.wav",
 )
+EIGHTY_WAVS = (
+  "/data/88mph.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/88mph.wav",
+)
+DRIVE_GEARS = ("drive", "reverse")
 
 
 def load_wav(*paths) -> np.ndarray | None:
@@ -123,8 +128,12 @@ class Soundd:
     self.load_sounds()
     self.oneshots: list[list] = []  # [np.ndarray, index]
     self.prev_unlatched: bool | None = None
+    self.prev_drive_gear: bool | None = None
     self._seen_offroad = False
     self._buckle_played = False
+    self._eighty_played = False
+    self._play_eighty = False
+    self._wav_eighty = load_wav(*EIGHTY_WAVS)
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -195,6 +204,10 @@ class Soundd:
         if w is not None:
           self.oneshots.append([w, 0])
         _clear(SHOT_PLAY)
+      if self._play_eighty:
+        if self._wav_eighty is not None:
+          self.oneshots.append([self._wav_eighty, 0])
+        self._play_eighty = False
     live = []
     sr = float(SAMPLE_RATE)
     for arr, i in self.oneshots:
@@ -288,18 +301,27 @@ class Soundd:
         if not started:
           self._seen_offroad = True
           self._buckle_played = False
+          self._eighty_played = False
 
-        if sm.updated['carState'] and _flag(BUCKLE_MODE):
-          unlatched = bool(sm['carState'].seatbeltUnlatched)
-          latched = self.prev_unlatched is True and unlatched is False
-          # Once per drive. Silent if soundd started mid-drive (never saw offroad).
-          if latched and self._seen_offroad and not self._buckle_played:
-            self._buckle_played = True
-            try:
-              open(BUCKLE_PLAY, "w").write("1")
-            except OSError:
-              pass
-          self.prev_unlatched = unlatched
+        if sm.updated['carState']:
+          if _flag(BUCKLE_MODE):
+            unlatched = bool(sm['carState'].seatbeltUnlatched)
+            latched = self.prev_unlatched is True and unlatched is False
+            # Once per drive. Silent if soundd started mid-drive (never saw offroad).
+            if latched and self._seen_offroad and not self._buckle_played:
+              self._buckle_played = True
+              try:
+                open(BUCKLE_PLAY, "w").write("1")
+              except OSError:
+                pass
+            self.prev_unlatched = unlatched
+
+          in_drive = str(sm['carState'].gearShifter) in DRIVE_GEARS
+          if (in_drive and self.prev_drive_gear is False and self._seen_offroad
+              and not self._eighty_played):
+            self._eighty_played = True
+            self._play_eighty = True
+          self.prev_drive_gear = in_drive
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:
