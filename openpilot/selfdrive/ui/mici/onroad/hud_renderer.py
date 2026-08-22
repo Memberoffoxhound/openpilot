@@ -132,15 +132,12 @@ class HudRenderer(Widget):
     self._egpu_icon: rl.Texture | None = None
     self._txt_compass_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
-    self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
-    self._txt_compass_fan90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 78, 78)
     self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
     self._wheel_y_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps)
     self._heading_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps, initialized=False)
     self._compass_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
-    self._compass90_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
 
     self._set_speed_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
     self._egpu_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -323,7 +320,6 @@ class HudRenderer(Widget):
     engaged = ui_state.status != UIStatus.DISENGAGED and custom_onroad_ui()
     set_a = float(self._set_speed_alpha_filter.x)
     self._compass_fade.update(1.0 if engaged and set_a < 1e-2 else 0.0)
-    self._compass90_fade.update(1.0 if engaged else 0.0)
 
     a = int(255 * 0.9 * self._compass_fade.x)
     if custom_onroad_ui() and a >= 3:
@@ -334,14 +330,6 @@ class HudRenderer(Widget):
       cy = (dm_cy + wheel_cy) / 2
       self._paint_compass(cx, cy, size, fan, a, heading, letter,
                           self._txt_compass_bg, self._txt_compass_fan, 28)
-
-    a90 = int(255 * 0.9 * self._compass90_fade.x)
-    if custom_onroad_ui() and a90 >= 3:
-      size, fan = 90, 78
-      cx = rect.x + rect.width - 16 - size / 2
-      cy = rect.y + 10 + size / 2
-      self._paint_compass(cx, cy, size, fan, a90, heading, letter,
-                          self._txt_compass_bg90, self._txt_compass_fan90, 42)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""
