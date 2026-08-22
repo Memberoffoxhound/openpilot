@@ -107,6 +107,12 @@ class Events:
       ret.append(event)
     return ret
 
+  def has(self, event_name: int) -> bool:
+    return event_name in self.events
+
+  def remove(self, event_name: int) -> None:
+    self.events = [e for e in self.events if e != event_name]
+
 
 class Alert:
   def __init__(self,

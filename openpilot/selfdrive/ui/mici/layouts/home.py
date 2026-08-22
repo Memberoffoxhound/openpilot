@@ -1,4 +1,5 @@
 import datetime
+import json
 import time
 
 from openpilot.cereal import log
@@ -16,7 +17,9 @@ from openpilot.common.version import RELEASE_BRANCHES
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
-LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
+TRIP_PATH = "/data/trip_meter.json"
+LABEL_WHITE = rl.Color(255, 255, 255, 255)
+TEXT_DIM = rl.Color(220, 220, 220, 255)
 
 NetworkType = log.DeviceState.NetworkType
 
@@ -177,6 +180,7 @@ class MiciHomeLayout(Widget):
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
     self._long_badge = LongModeBadge()
+    self._mads_icon = IconWidget("icons_mici/mads.png", (48, 48))
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -189,6 +193,7 @@ class MiciHomeLayout(Widget):
       NetworkIcon(),
       self._long_badge,
       self._experimental_icon,
+      self._mads_icon,
       self._egpu_icon,
       self._egpu_icon_gray,
       self._body_icon,
@@ -197,12 +202,15 @@ class MiciHomeLayout(Widget):
 
     self._openpilot_label = UnifiedLabel("openpilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
-    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._large_version_label = UnifiedLabel("", font_size=64, text_color=TEXT_DIM, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._date_label = UnifiedLabel("", font_size=36, text_color=TEXT_DIM, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._branch_label = UnifiedLabel("", font_size=36, text_color=TEXT_DIM, font_weight=FontWeight.ROMAN, scroll=True)
+    self._trip_at = 0.0
+    self._last_txt = ("Today ", "0mi 0%")
+    self._week_txt = ("Week ", "0mi 0%")
 
   def _update_state(self):
+    self._refresh_trip()
     if self.is_pressed and not self._is_pressed_prev:
       self._mouse_down_t = time.monotonic()
     elif not self.is_pressed and self._is_pressed_prev:
@@ -218,6 +226,26 @@ class MiciHomeLayout(Widget):
           ui_state.params.put("ExperimentalMode", ui_state.experimental_mode, block=True)
         self._mouse_down_t = None
         self._did_long_press = True
+
+  def _fmt_trip(self, meters: float, eng_m: float) -> str:
+    if ui_state.is_metric:
+      dist, unit = meters / 1000.0, "km"
+    else:
+      dist, unit = meters / 1609.344, "mi"
+    pct = int(round(100.0 * eng_m / meters)) if meters > 1 else 0
+    return f"{int(round(dist))}{unit} {pct}%"
+
+  def _refresh_trip(self):
+    now = time.monotonic()
+    if now - self._trip_at < 1.0:
+      return
+    self._trip_at = now
+    try:
+      t = json.loads(open(TRIP_PATH).read())
+    except Exception:
+      t = {}
+    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_eng_m", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_m", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
@@ -279,14 +307,36 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+      y2 = version_pos.y + self._date_label.font_size + 7
+      f = gui_app.font(FontWeight.ROMAN)
+      ll, lv = self._last_txt
+      wl, wv = self._week_txt
+      avail = self.rect.width - HOME_PADDING * 2
+      lsz = 36
+      while lsz > 22:
+        vsz = max(18, lsz - 6)
+        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
+             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
+        if w <= avail:
+          break
+        lsz -= 1
+      vsz = max(18, lsz - 6)
+      x = version_pos.x
+      vy = y2 + (lsz - vsz)
+      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, TEXT_DIM)
+      x += measure_text_cached(f, ll, lsz).x
+      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      x += measure_text_cached(f, lv, vsz).x + 16
+      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, TEXT_DIM)
+      x += measure_text_cached(f, wl, lsz).x
+      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
+    op_long = bool(ui_state.has_longitudinal_control)
+    mads_on = op_long and ui_state.params.get_bool("Mads")
     self._experimental_icon.set_visible(ui_state.experimental_mode)
+    self._mads_icon.set_visible(mads_on)
+    self._mads_icon._opacity = 1.0 if ui_state.engaged else 0.45
     self._egpu_icon.set_visible(ui_state.sm["deviceState"].chestnutPresent and ui_state.usbgpu_compiled)
     self._egpu_icon_gray.set_visible(ui_state.sm["deviceState"].chestnutPresent and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)

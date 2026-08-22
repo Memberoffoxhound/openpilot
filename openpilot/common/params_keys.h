@@ -78,6 +78,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"LastUpdateRouteCount", {PERSISTENT, INT, "0"}},
     {"LastUpdateTime", {PERSISTENT, TIME}},
     {"LastUpdateUptimeOnroad", {PERSISTENT, FLOAT, "0.0"}},
+    {"Mads", {PERSISTENT, BOOL, "0"}},
     // TODO: rename the Live* learner cache keys to match their Cereal services, with migration for persisted values.
     {"LiveDelay", {PERSISTENT, BYTES}},
     {"LiveParametersV2", {PERSISTENT, BYTES}},

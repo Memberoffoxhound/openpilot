@@ -29,6 +29,25 @@ class AutoLaneChangeConfirmPage(NavScroller):
     ])
 
 
+class MadsConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+    accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                         lambda: self.dismiss(on_confirm))
+    self._scroller.add_widgets([
+      GreyBigButton("enabling\nMADS", "scroll to continue", warn),
+      GreyBigButton("", "Modular Assistive Driving System decouples steering from gas and brake."),
+      GreyBigButton("", "openpilot can keep steering while you control speed with the pedals."),
+      GreyBigButton("", "Cancel cruise or press the gas to drop speed control. Steering stays on."),
+      GreyBigButton("", "Brake still disengages. Main cruise off or a steering override also ends it."),
+      GreyBigButton("", "MADS needs openpilot longitudinal. It is off on stock TACC/SCC."),
+      GreyBigButton("", "You are still responsible for the vehicle and agree to intervene."),
+      accept,
+    ])
+
+
 class ExperimentalModeConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
@@ -63,6 +82,8 @@ class TogglesLayoutMici(NavScroller):
                                        toggle_callback=self._on_experimental_mode)
     self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
                              toggle_callback=self._on_alc)
+    self._mads_btn = BigToggle("MADS", initial_state=ui_state.params.get_bool("Mads"),
+                              toggle_callback=self._on_mads)
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -72,6 +93,7 @@ class TogglesLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       self._alc_btn,
+      self._mads_btn,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -86,6 +108,7 @@ class TogglesLayoutMici(NavScroller):
     self._refresh_toggles = (
       ("ExperimentalMode", self._experimental_btn),
       ("AutoLaneChangeEnabled", self._alc_btn),
+      ("Mads", self._mads_btn),
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
@@ -125,12 +148,15 @@ class TogglesLayoutMici(NavScroller):
       if ui_state.has_longitudinal_control:
         self._experimental_btn.set_visible(True)
         self._personality_toggle.set_visible(True)
+        self._mads_btn.set_enabled(True)
       else:
-        # no long for now
         self._experimental_btn.set_visible(False)
         self._experimental_btn.set_checked(False)
         self._personality_toggle.set_visible(False)
+        self._mads_btn.set_checked(False)
+        self._mads_btn.set_enabled(False)
         ui_state.params.remove("ExperimentalMode")
+        ui_state.params.remove("Mads")
 
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
@@ -147,6 +173,22 @@ class TogglesLayoutMici(NavScroller):
       gui_app.push_widget(AutoLaneChangeConfirmPage(on_confirm))
     else:
       ui_state.params.put_bool("AutoLaneChangeEnabled", False, block=True)
+
+  def _on_mads(self, state: bool):
+    if not ui_state.has_longitudinal_control:
+      self._mads_btn.set_checked(False)
+      ui_state.params.put_bool("Mads", False, block=True)
+      return
+    if state:
+      self._mads_btn.set_checked(False)
+
+      def on_confirm():
+        ui_state.params.put_bool("Mads", True, block=True)
+        self._mads_btn.set_checked(True)
+
+      gui_app.push_widget(MadsConfirmPage(on_confirm))
+    else:
+      ui_state.params.put_bool("Mads", False, block=True)
 
   def _on_experimental_mode(self, state: bool):
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):
