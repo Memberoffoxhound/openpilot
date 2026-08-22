@@ -1,3 +1,5 @@
+> User-facing README: [README.md](README.md). This file is the Highland working notes.
+
 # S3XYPilot — Highland
 
 **Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds an 8-way GPS heading over the confidence ball (`?` without a moving GPS fix) and drops the ball under it. Lane color only applies in custom. Theme → ludicrous plays a warp overlay + line on hard accel (off by default).
