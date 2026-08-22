@@ -83,14 +83,12 @@ class ConfidenceBall(Widget):
     super().__init__()
     self._demo = demo
     self._confidence_filter = FirstOrderFilter(-0.5, 0.5, 1 / gui_app.target_fps)
+    # Same tau as HUD wheel / set-speed fade on engage.
+    self._heading_alpha = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
     self._font = gui_app.font(FontWeight.DISPLAY)
-    self._font_size = 26
-    while self._font_size > 20:
-      if measure_text_cached(self._font, "NW", self._font_size).x <= (BALL_RADIUS * 2 - 4):
-        break
-      self._font_size -= 1
+    self._font_size = 32
     self._letter_h = measure_text_cached(self._font, "N", self._font_size).y
-    self._q_size = max(22, self._font_size - 10)
+    self._q_size = 24
     self._last_heading_deg: float | None = None
 
   def update_filter(self, value: float):
@@ -106,6 +104,8 @@ class ConfidenceBall(Widget):
     else:
       self._confidence_filter.update((1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.brakeDisengageProbs or [1])) *
                                                         (1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.steerOverrideProbs or [1])))
+    want = 1.0 if custom_onroad_ui() and ui_state.status == UIStatus.ENGAGED else 0.0
+    self._heading_alpha.update(want)
 
   def _heading_state(self) -> tuple[str | None, bool, bool]:
     """GPS when it has a fix; IMU if GPS is junk. Last heading when parked. ? only if none."""
@@ -132,11 +132,10 @@ class ConfidenceBall(Widget):
       return _cardinal(heading), False, False
     return None, False, True
 
-  def _draw_placeholder(self, cx: float, cy: float) -> None:
+  def _draw_placeholder(self, cx: float, cy: float, a: float = 1.0) -> None:
     r = BALL_RADIUS * 0.78
-    col = rl.Color(255, 255, 255, 170)
+    col = rl.Color(255, 255, 255, int(170 * a))
     rl.draw_circle_lines(int(cx), int(cy), r, col)
-    # N tick so it reads as a compass, not a hollow ball
     rl.draw_line_ex(rl.Vector2(cx, cy - r), rl.Vector2(cx, cy - r + 7), 2.5, col)
     q = "?"
     sz = measure_text_cached(self._font, q, self._q_size)
@@ -157,14 +156,15 @@ class ConfidenceBall(Widget):
     status_dot_radius = BALL_RADIUS
     ball_cx = content_rect.x + content_rect.width - status_dot_radius
     top_pad = 0.0
-    if custom_onroad_ui():
-      top_pad = 4.0 + self._letter_h + 6.0
+    a = self._heading_alpha.x
+    if custom_onroad_ui() and a > 0.01:
+      top_pad = (4.0 + self._letter_h + 6.0) * a
       letter, confident, placeholder = self._heading_state()
       if placeholder:
-        self._draw_placeholder(ball_cx, content_rect.y + 2 + self._letter_h / 2)
+        self._draw_placeholder(ball_cx, content_rect.y + 2 + self._letter_h / 2, a)
       elif letter:
         sz = measure_text_cached(self._font, letter, self._font_size)
-        alpha = 230 if confident else 160
+        alpha = int((230 if confident else 160) * a)
         rl.draw_text_ex(
           self._font,
           letter,
