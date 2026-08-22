@@ -22,6 +22,8 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
+from openpilot.selfdrive.mads.mads import ModularAssistiveDrivingSystem
+from openpilot.selfdrive.mads.events import EventsSP
 
 from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware import HARDWARE
@@ -72,7 +74,7 @@ class SelfdriveD:
     self.big_model_ready_t = 0.
 
     # Setup sockets
-    self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents'])
+    self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents', 'selfdriveStateSP', 'onroadEventsSP'])
 
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
@@ -109,10 +111,13 @@ class SelfdriveD:
       self.params.remove("AlphaLongitudinalEnabled")
     if not self.CP.openpilotLongitudinalControl:
       self.params.remove("ExperimentalMode")
+      self.params.remove("Mads")
 
     self.CS_prev = car.CarState.new_message()
     self.AM = AlertManager()
     self.events = Events()
+    self.events_sp = EventsSP()
+    self.events_sp_prev = []
 
     self.initialized = False
     self.enabled = False
@@ -150,10 +155,13 @@ class SelfdriveD:
     elif self.CP.passive:
       self.events.add(EventName.dashcamMode, static=True)
 
+    self.mads = ModularAssistiveDrivingSystem(self)
+
   def update_events(self, CS):
     """Compute onroadEvents from carState"""
 
     self.events.clear()
+    self.events_sp.clear()
 
     if self.sm['controlsState'].lateralControlState.which() == 'debugState':
       self.events.add(EventName.joystickDebug)
@@ -517,7 +525,9 @@ class SelfdriveD:
     pers = LONGITUDINAL_PERSONALITY_MAP[self.personality]
     alerts = self.events.create_alerts(self.state_machine.current_alert_types, [self.CP, CS, self.sm, self.is_metric,
                                                                                 self.state_machine.soft_disable_timer, pers])
-    self.AM.add_many(self.sm.frame, alerts)
+    alerts_sp = self.events_sp.create_alerts(self.state_machine.current_alert_types, [self.CP, CS, self.sm, self.is_metric,
+                                                                                      self.state_machine.soft_disable_timer, pers])
+    self.AM.add_many(self.sm.frame, alerts + alerts_sp)
     self.AM.process_alerts(self.sm.frame, clear_event_types)
 
   def publish_selfdriveState(self, CS):
@@ -550,11 +560,30 @@ class SelfdriveD:
       self.pm.send('onroadEvents', ce_send)
     self.events_prev = self.events.names.copy()
 
+    ss_sp_msg = messaging.new_message('selfdriveStateSP')
+    ss_sp_msg.valid = True
+    ss_sp = ss_sp_msg.selfdriveStateSP
+    mads = ss_sp.mads
+    mads.state = self.mads.state_machine.state
+    mads.enabled = self.mads.enabled
+    mads.active = self.mads.active
+    mads.available = self.mads.enabled_toggle
+    self.pm.send('selfdriveStateSP', ss_sp_msg)
+
+    if (self.sm.frame % int(1. / DT_CTRL) == 0) or (self.events_sp.names != self.events_sp_prev):
+      ce_send_sp = messaging.new_message('onroadEventsSP')
+      ce_send_sp.valid = True
+      ce_send_sp.onroadEventsSP.events = self.events_sp.to_msg()
+      self.pm.send('onroadEventsSP', ce_send_sp)
+    self.events_sp_prev = self.events_sp.names.copy()
+
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
+    if not self.CP.notCar:
+      self.mads.update(CS)
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)
@@ -568,6 +597,7 @@ class SelfdriveD:
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+      self.mads.read_params()
       time.sleep(0.1)
 
   def run(self):
