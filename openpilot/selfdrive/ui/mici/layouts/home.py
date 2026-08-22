@@ -148,6 +148,46 @@ class NetworkIcon(Widget):
     rl.draw_texture_ex(draw_net_txt, rl.Vector2(draw_x, draw_y), 0.0, 1.0, rl.Color(255, 255, 255, int(255 * 0.9)))
 
 
+class LongModeBadge(Widget):
+  """Footer badge: Tesla or comma logo + vertical LONG. 48px tall like experimental."""
+  H = 48
+  LOGO_W = 48
+  COL_W = 14
+
+  def __init__(self):
+    super().__init__()
+    self._comma = gui_app.texture("icons_mici/settings/comma_icon.png", 27, 48)
+    self._tesla = gui_app.texture("icons_mici/tesla_t.png", 48, 48)
+    self._font = gui_app.font(FontWeight.BOLD)
+    self._op = False
+    self.set_rect(rl.Rectangle(0, 0, float(self.LOGO_W + 4 + self.COL_W), float(self.H)))
+    self.set_enabled(False)
+
+  def _update_state(self):
+    self._op = bool(ui_state.has_longitudinal_control)
+
+  def _render(self, _) -> None:
+    x, y = self.rect.x, self.rect.y
+    if self._op:
+      tex = self._comma
+      col = LABEL_WHITE
+    else:
+      tex = self._tesla
+      col = LABEL_WHITE
+    tx = x + (self.LOGO_W - tex.width) / 2
+    ty = y + (self.H - tex.height) / 2
+    rl.draw_texture_ex(tex, rl.Vector2(tx, ty), 0.0, 1.0, rl.WHITE)
+    letters = "LONG"
+    lsz = 11
+    sizes = [measure_text_cached(self._font, ch, lsz) for ch in letters]
+    gap = max(0.0, (self.H - sum(s.y for s in sizes)) / (len(letters) + 1))
+    lx = x + self.LOGO_W + 2
+    cy = y + gap
+    for ch, sz in zip(letters, sizes):
+      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, col)
+      cy += sz.y + gap
+
+
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -162,6 +202,7 @@ class MiciHomeLayout(Widget):
     self._version_text = self._get_version_text()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
+    self._long_badge = LongModeBadge()
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -172,6 +213,7 @@ class MiciHomeLayout(Widget):
     self._status_bar_layout = HBoxLayout([
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
+      self._long_badge,
       self._experimental_icon,
       self._egpu_icon,
       self._egpu_icon_gray,
