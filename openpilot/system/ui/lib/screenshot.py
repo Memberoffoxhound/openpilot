@@ -26,17 +26,21 @@ class ScreenShotter:
         self._t = time.monotonic()
         self._pos = (e.pos.x, e.pos.y)
         self._fired = False
-      if e.left_released:
-        self._t = None
-      if e.left_down and self._t is not None and not self._fired and self._pos is not None:
+      if e.left_down and self._pos is not None:
         if abs(e.pos.x - self._pos[0]) > MOVE_PX or abs(e.pos.y - self._pos[1]) > MOVE_PX:
           self._t = None
-          continue
-        if time.monotonic() - self._t >= HOLD_S:
-          self._fired = True
-          self._t = None
-          self.pending = True
-          return True
+      if e.left_released:
+        self._t = None
+    # Clock, not lift. Still finger + no events still fires at 3s.
+    if self._t is not None and not self._fired and (time.monotonic() - self._t) >= HOLD_S:
+      self._fired = True
+      self._t = None
+      self.pending = True
+      try:
+        open(SHOT_PLAY, "w").write("1")
+      except OSError:
+        pass
+      return True
     return False
 
   def capture(self, render_texture=None) -> str | None:
@@ -55,10 +59,6 @@ class ScreenShotter:
       rl.export_image(out, path)
       rl.unload_image(img)
       rl.unload_image(out)
-      try:
-        open(SHOT_PLAY, "w").write("1")
-      except OSError:
-        pass
       self.flash = 1.0
       self.pending = False
       return path
