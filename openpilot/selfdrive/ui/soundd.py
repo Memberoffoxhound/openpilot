@@ -14,7 +14,6 @@ from openpilot.common.utils import retry
 from openpilot.common.swaglog import cloudlog
 
 from openpilot.system import micd
-from openpilot.selfdrive.ui.layouts.settings.common import buckle_once
 
 SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
@@ -124,6 +123,8 @@ class Soundd:
     self.load_sounds()
     self.oneshots: list[list] = []  # [np.ndarray, index]
     self.prev_unlatched: bool | None = None
+    self._seen_offroad = False
+    self._buckle_played = False
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -266,7 +267,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'carState'])
+    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'carState', 'deviceState'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
@@ -283,11 +284,21 @@ class Soundd:
 
         self.get_audible_alert(sm)
 
+        started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
+        if not started:
+          self._seen_offroad = True
+          self._buckle_played = False
+
         if sm.updated['carState'] and _flag(BUCKLE_MODE):
           unlatched = bool(sm['carState'].seatbeltUnlatched)
-          if self.prev_unlatched is True and unlatched is False and buckle_once():
-            with open(BUCKLE_PLAY, "w") as f:
-              f.write("1")
+          latched = self.prev_unlatched is True and unlatched is False
+          # Once per drive. Silent if soundd started mid-drive (never saw offroad).
+          if latched and self._seen_offroad and not self._buckle_played:
+            self._buckle_played = True
+            try:
+              open(BUCKLE_PLAY, "w").write("1")
+            except OSError:
+              pass
           self.prev_unlatched = unlatched
 
         # Ramp up immediate warning sound over 4s
