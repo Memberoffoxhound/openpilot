@@ -8,7 +8,7 @@ Working branch. Version **0.11.12.24**. Repo name is `openpilot` so `installer.c
 
 ## Onroad
 
-Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue lanes, 8-way GPS compass (top-right of the video, same row as DM), this-trip **ENGD** % (bottom-right, wheel-sized). Compass is GPS-backed and only draws while engaged.
+Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue lanes, 60px DM-style compass on the left between DM and the wheel (green fan = heading, letter in the hub, torque-bar ring). Compass is GPS-backed and only draws while engaged.
 
 Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
 

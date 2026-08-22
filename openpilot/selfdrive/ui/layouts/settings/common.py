@@ -72,24 +72,30 @@ def custom_onroad_ui(params: Params | None = None) -> bool:
 CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 
-def heading_letter() -> str | None:
+def heading_deg() -> float | None:
   sm = ui_state.sm
   try:
     if sm.recv_frame["gpsLocationExternal"] > 0:
       gps = sm["gpsLocationExternal"]
       if not (hasattr(gps, "hasFix") and not gps.hasFix):
-        return CARDINALS[int((float(gps.bearingDeg) + 22.5) % 360.0) // 45]
+        return float(gps.bearingDeg) % 360.0
   except Exception:
     pass
   try:
     if sm.recv_frame["deviceMotion"] > 0:
       ori = sm["deviceMotion"].orientationNED
       if ori.valid:
-        yaw = math.degrees(float(ori.z)) % 360.0
-        return CARDINALS[int((yaw + 22.5) % 360.0) // 45]
+        return math.degrees(float(ori.z)) % 360.0
   except Exception:
     pass
   return None
+
+
+def heading_letter() -> str | None:
+  deg = heading_deg()
+  if deg is None:
+    return None
+  return CARDINALS[int((deg + 22.5) % 360.0) // 45]
 
 
 def set_onroad_ui(mode: int, params: Params | None = None) -> None:
