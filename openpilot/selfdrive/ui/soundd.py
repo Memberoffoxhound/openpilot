@@ -136,6 +136,7 @@ class Soundd:
     self._eighty_played = False
     self._play_eighty = False
     self._wav_eighty = load_wav(*EIGHTY_WAVS)
+    self._wav_buckle = load_wav(*BUCKLE_WAVS)
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -197,23 +198,22 @@ class Soundd:
           self.oneshots.append([w, 0])
         _clear(LUDI_PLAY)
       if _flag(BUCKLE_PLAY):
-        w = load_wav(*BUCKLE_WAVS)
-        if w is not None:
-          self.oneshots.append([w, 0])
+        if self._wav_buckle is not None:
+          self.oneshots.append([self._wav_buckle, 0])
         _clear(BUCKLE_PLAY)
       if _flag(SHOT_PLAY):
         w = load_wav(*SHOT_WAVS)
         if w is not None:
           self.oneshots.append([w, 0])
         _clear(SHOT_PLAY)
-      if self._play_eighty:
+      if _flag(DELOREAN_PLAY):
+        self._play_eighty = True
+        _clear(DELOREAN_PLAY)
+      buckle_busy = self._wav_buckle is not None and any(arr is self._wav_buckle for arr, _ in self.oneshots)
+      if self._play_eighty and not buckle_busy:
         if self._wav_eighty is not None:
           self.oneshots.append([self._wav_eighty, 0])
         self._play_eighty = False
-      if _flag(DELOREAN_PLAY):
-        if self._wav_eighty is not None:
-          self.oneshots.append([self._wav_eighty, 0])
-        _clear(DELOREAN_PLAY)
     live = []
     sr = float(SAMPLE_RATE)
     for arr, i in self.oneshots:
