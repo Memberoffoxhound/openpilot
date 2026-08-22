@@ -10,7 +10,7 @@ from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from importlib.resources import as_file
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_SCALE, FONT_DIR
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.common.version import RELEASE_BRANCHES
@@ -23,19 +23,10 @@ WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
-def _glyph_ink(font: rl.Font, ch: str, font_size: int) -> tuple[float, float, float, float, float]:
-  """offsetX, offsetY, width, height, advance — pixels at the drawn size."""
-  scale = (font_size * FONT_SCALE) / float(font.baseSize)
-  idx = rl.get_glyph_index(font, ord(ch))
-  g = font.glyphs[idx]
-  rec = font.recs[idx]
-  return g.offsetX * scale, g.offsetY * scale, rec.width * scale, rec.height * scale, g.advanceX * scale
-
-
 def _wordmark_font() -> rl.Font:
-  """Dies/KAYOver TESLA.ttf for S3XYPILOT. Falls back to Inter DISPLAY."""
+  """Dies/KAYOver TESLA.ttf for SEXYPILOT. Falls back to Inter DISPLAY."""
   try:
-    chars = "SXYPILOT"
+    chars = "SEXYPILOT"
     cps = sorted(map(ord, chars))
     buf = rl.ffi.new("int[]", cps)
     with as_file(FONT_DIR) as fs:
@@ -48,14 +39,6 @@ def _wordmark_font() -> rl.Font:
     pass
   return gui_app.font(FontWeight.DISPLAY)
 
-
-def draw_tesla_three(x: float, y: float, w: float, h: float, color: rl.Color) -> float:
-  """Tesla E: three equal stadiums. Slight inverted-trapezoid via pill ends."""
-  bar_h = max(3.0, h * 0.26)
-  gap = max(2.0, (h - 3 * bar_h) / 2.0)
-  for i in range(3):
-    rl.draw_rectangle_rounded(rl.Rectangle(x, y + i * (bar_h + gap), w, bar_h), 0.85, 8, color)
-  return w
 
 NetworkType = log.DeviceState.NetworkType
 
@@ -322,15 +305,7 @@ class MiciHomeLayout(Widget):
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    font = self._wordmark_font
-    s_ox, s_oy, s_w, s_h, s_adv = _glyph_ink(font, "S", WORDMARK_SIZE)
-    x_ox, _x_oy, _x_w, _x_h, _x_adv = _glyph_ink(font, "X", WORDMARK_SIZE)
-    letter_gap = max(2.0, (s_adv + x_ox) - (s_ox + s_w))
-    bar_w = max(s_w * 1.05, s_h * 0.62)
-    rl.draw_text_ex(font, "S", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
-    gx = text_pos.x + s_ox + s_w + letter_gap
-    draw_tesla_three(gx, text_pos.y + s_oy, bar_w, s_h, LABEL_WHITE)
-    rl.draw_text_ex(font, "XYPILOT", rl.Vector2(gx + bar_w + letter_gap - x_ox, text_pos.y), WORDMARK_SIZE, 0, LABEL_WHITE)
+    rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       # release branch
