@@ -27,6 +27,11 @@ DESCRIPTIONS = {
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
     "without a turn signal activated while driving over 31 mph (50 km/h)."
   ),
+  "AutoLaneChangeEnabled": tr_noop(
+    "Auto Lane Change uses the car's stock blind spot monitoring to check for a vehicle in the adjacent lane prior to merging. " +
+    "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary. " +
+    "When off, a steering-wheel nudge is required (stock openpilot)."
+  ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
@@ -58,6 +63,12 @@ class TogglesLayout(Widget):
         lambda: tr("Disengage on Accelerator Pedal"),
         DESCRIPTIONS["DisengageOnAccelerator"],
         "disengage_on_accelerator.png",
+        False,
+      ),
+      "AutoLaneChangeEnabled": (
+        lambda: tr("Auto Lane Change"),
+        DESCRIPTIONS["AutoLaneChangeEnabled"],
+        "warning.png",
         False,
       ),
       "IsLdwEnabled": (
@@ -236,10 +247,28 @@ class TogglesLayout(Widget):
     if param == "ExperimentalMode":
       self._handle_experimental_mode_toggle(state)
       return
+    if param == "AutoLaneChangeEnabled":
+      self._handle_alc_toggle(state)
+      return
 
     self._params.put_bool(param, state, block=True)
     if self._toggle_defs[param][3]:
       self._params.put_bool("OnroadCycleRequested", True, block=True)
+
+  def _handle_alc_toggle(self, state: bool):
+    if state:
+      def confirm_callback(result: DialogResult):
+        if result == DialogResult.CONFIRM:
+          self._params.put_bool("AutoLaneChangeEnabled", True, block=True)
+        else:
+          self._toggles["AutoLaneChangeEnabled"].action_item.set_state(False)
+
+      content = (f"<h1>{tr('Auto Lane Change')}</h1><br>" +
+                 f"<p>{tr(DESCRIPTIONS['AutoLaneChangeEnabled'])}</p>")
+      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
+      gui_app.push_widget(dlg)
+    else:
+      self._params.put_bool("AutoLaneChangeEnabled", False, block=True)
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
