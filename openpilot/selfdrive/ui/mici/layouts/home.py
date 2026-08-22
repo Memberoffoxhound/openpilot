@@ -304,7 +304,7 @@ class MiciHomeLayout(Widget):
 
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
-    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
+    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 2)
     # C4 is 536px. TESLA.ttf @ 80 is ~580px of ink.
     wm = 60 if self.rect.width < 1000 else WORDMARK_SIZE
     rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, wm, 0, LABEL_WHITE)
