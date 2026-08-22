@@ -34,8 +34,9 @@ DESCRIPTIONS = {
   ),
   "Mads": tr_noop(
     "MADS (Modular Assistive Driving System) decouples steering from gas and brake. " +
-    "openpilot can keep steering while you control speed. Cancel cruise or press the gas to drop speed control; " +
-    "steering stays on. Brake still disengages. Main cruise off or a steering override also ends steering. " +
+    "On Hyundai and Kia, the steering-wheel LFA button toggles steering on and off. " +
+    "SET or RES also engages speed control. Cancel cruise or press the gas to drop speed control; steering stays on. " +
+    "Brake still disengages. Main cruise off or a steering override also ends steering. " +
     "Requires openpilot longitudinal. Off on stock TACC/SCC. You are still responsible for the vehicle."
   ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),

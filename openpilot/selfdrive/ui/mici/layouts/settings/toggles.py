@@ -39,9 +39,9 @@ class MadsConfirmPage(NavScroller):
     self._scroller.add_widgets([
       GreyBigButton("enabling\nMADS", "scroll to continue", warn),
       GreyBigButton("", "Modular Assistive Driving System decouples steering from gas and brake."),
-      GreyBigButton("", "openpilot can keep steering while you control speed with the pedals."),
-      GreyBigButton("", "Cancel cruise or press the gas to drop speed control. Steering stays on."),
-      GreyBigButton("", "Brake still disengages. Main cruise off or a steering override also ends it."),
+      GreyBigButton("", "On Hyundai and Kia, the steering-wheel LFA button toggles steering on and off."),
+      GreyBigButton("", "SET or RES engages speed control too. Cancel cruise or gas drops speed control only."),
+      GreyBigButton("", "Steering stays on while you control the pedals. Brake still disengages."),
       GreyBigButton("", "MADS needs openpilot longitudinal. It is off on stock TACC/SCC."),
       GreyBigButton("", "You are still responsible for the vehicle and agree to intervene."),
       accept,

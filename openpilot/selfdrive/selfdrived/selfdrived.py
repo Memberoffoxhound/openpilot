@@ -462,21 +462,42 @@ class SelfdriveD:
         self.params.put('LongitudinalPersonality', self.personality)
         self.events.add(EventName.personalityChanged)
 
-    # MADS: keep lateral when cruise is cancelled or the gas is pressed.
-    # Brake still disengages — stock panda drops controls_allowed on brake.
-    if self.mads:
-      if self.events.has(EventName.pcmEnable) or self.events.has(EventName.buttonEnable):
-        self.mads_long = True
-      elif self.enabled and self.events.has(EventName.buttonCancel):
-        self.events.remove(EventName.buttonCancel)
-        self.mads_long = False
-      elif self.enabled and self.events.has(EventName.pedalPressed) and CS.gasPressed and not CS.brakePressed:
-        self.events.remove(EventName.pedalPressed)
-        self.mads_long = False
-      if self.enabled and not self.mads_long:
-        self.events.add(EventName.gasPressedOverride)
+    self._update_mads(CS)
+
+  def _update_mads(self, CS):
+    # MADS: Hyundai/Kia LFA wheel toggles lat. Long is SET/RES. Cancel/gas drops long only.
+    # Brake still disengages — stock panda clears controls_allowed.
+    if not self.mads:
+      self.mads_long = True
+      return
+
+    lkas = any(be.type == ButtonType.lkas and be.pressed for be in CS.buttonEvents)
+
+    if self.events.has(EventName.pcmEnable) or self.events.has(EventName.buttonEnable):
+      self.mads_long = True
+
+    if lkas:
       if not self.enabled:
-        self.mads_long = True
+        self.events.remove(EventName.wrongCarMode)
+        self.events.remove(EventName.pedalPressed)
+        self.events.remove(EventName.preEnableStandstill)
+        self.events.add(EventName.buttonEnable)
+        self.mads_long = False
+      elif self.mads_long:
+        self.mads_long = False
+      else:
+        self.events.add(EventName.pcmDisable)
+    elif self.enabled and self.events.has(EventName.buttonCancel):
+      self.events.remove(EventName.buttonCancel)
+      self.mads_long = False
+    elif self.enabled and self.events.has(EventName.pedalPressed) and CS.gasPressed and not CS.brakePressed:
+      self.events.remove(EventName.pedalPressed)
+      self.mads_long = False
+
+    if self.enabled and not self.mads_long:
+      self.events.add(EventName.gasPressedOverride)
+    if not self.enabled and not lkas:
+      self.mads_long = True
 
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
