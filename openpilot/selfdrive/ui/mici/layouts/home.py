@@ -230,12 +230,12 @@ class MiciHomeLayout(Widget):
 
     self._refresh_trip()
 
-  def _fmt_trip(self, meters: float, eng_s: float, tot_s: float) -> str:
+  def _fmt_trip(self, meters: float, eng_m: float) -> str:
     if ui_state.is_metric:
       dist, unit = meters / 1000.0, "km"
     else:
       dist, unit = meters / 1609.344, "mi"
-    pct = int(round(100.0 * eng_s / tot_s)) if tot_s > 1 else 0
+    pct = int(round(100.0 * eng_m / meters)) if meters > 1 else 0
     return f"{int(round(dist))} {unit} {pct}%"
 
   def _refresh_trip(self):
@@ -247,13 +247,12 @@ class MiciHomeLayout(Widget):
       t = json.loads(open(TRIP_PATH).read())
     except Exception:
       t = {}
-    # Live outing if this route has started; otherwise the previous one.
-    if (t.get("tot_s") or 0) > 1:
-      last = (t.get("trip_m", 0) or 0, t.get("eng_s", 0) or 0, t.get("tot_s", 0) or 0)
+    if (t.get("trip_m") or 0) > 10:
+      last = (t.get("trip_m", 0) or 0, t.get("eng_m", 0) or 0)
     else:
-      last = (t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0)
+      last = (t.get("last_m", 0) or 0, t.get("last_eng_m", 0) or 0)
     self._last_txt = ("Last ", self._fmt_trip(*last))
-    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_s", 0) or 0, t.get("week_tot_s", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_m", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
@@ -331,13 +330,14 @@ class MiciHomeLayout(Widget):
       f36 = gui_app.font(FontWeight.ROMAN)
       ll, lv = self._last_txt
       wl, wv = self._week_txt
-      rl.draw_text_ex(f36, ll, rl.Vector2(version_pos.x, y2), 36, 0, rl.GRAY)
-      lx = version_pos.x + measure_text_cached(f36, ll, 36).x
-      rl.draw_text_ex(f36, lv, rl.Vector2(lx, y2), 36, 0, LABEL_WHITE)
-      wr = measure_text_cached(f36, wl, 36).x + measure_text_cached(f36, wv, 36).x
-      wx = self.rect.x + self.rect.width - HOME_PADDING - wr
-      rl.draw_text_ex(f36, wl, rl.Vector2(wx, y2), 36, 0, rl.GRAY)
-      rl.draw_text_ex(f36, wv, rl.Vector2(wx + measure_text_cached(f36, wl, 36).x, y2), 36, 0, LABEL_WHITE)
+      x = version_pos.x
+      rl.draw_text_ex(f36, ll, rl.Vector2(x, y2), 36, 0, rl.GRAY)
+      x += measure_text_cached(f36, ll, 36).x
+      rl.draw_text_ex(f36, lv, rl.Vector2(x, y2), 36, 0, LABEL_WHITE)
+      x += measure_text_cached(f36, lv, 36).x + 20
+      rl.draw_text_ex(f36, wl, rl.Vector2(x, y2), 36, 0, rl.GRAY)
+      x += measure_text_cached(f36, wl, 36).x
+      rl.draw_text_ex(f36, wv, rl.Vector2(x, y2), 36, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(ui_state.experimental_mode)

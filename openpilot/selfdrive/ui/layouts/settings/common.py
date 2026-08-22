@@ -266,13 +266,21 @@ _trip_flush = 0.0
 
 
 def _load_trip() -> dict:
-  t = {"trip_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
-       "last_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
-       "week_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": ""}
+  t = {"trip_m": 0.0, "eng_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
+       "last_m": 0.0, "last_eng_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
+       "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": ""}
   try:
     t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
     pass
+  # One-time seed: old files only had time-based engaged seconds.
+  for m_key, e_key, es_key, ts_key in (
+    ("trip_m", "eng_m", "eng_s", "tot_s"),
+    ("last_m", "last_eng_m", "last_eng_s", "last_tot_s"),
+    ("week_m", "week_eng_m", "week_eng_s", "week_tot_s"),
+  ):
+    if not t.get(e_key) and t.get(m_key) and (t.get(ts_key) or 0) > 1:
+      t[e_key] = float(t[m_key]) * float(t.get(es_key, 0) or 0) / float(t[ts_key])
   return t
 
 
@@ -296,14 +304,15 @@ def tick_trip() -> None:
   route = params.get("CurrentRoute") or ""
   wid = _sunday_id()
   if _trip.get("week_id") != wid:
-    _trip["week_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
+    _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
     _trip["week_id"] = wid
   if route and route != _trip.get("route"):
-    if _trip.get("tot_s", 0) > 5:
+    if _trip.get("trip_m", 0) > 50 or _trip.get("tot_s", 0) > 5:
       _trip["last_m"] = _trip["trip_m"]
+      _trip["last_eng_m"] = _trip.get("eng_m", 0.0)
       _trip["last_eng_s"] = _trip["eng_s"]
       _trip["last_tot_s"] = _trip["tot_s"]
-    _trip["trip_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
+    _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
     _trip["route"] = route
     _save_trip(_trip)
   try:
@@ -312,17 +321,19 @@ def tick_trip() -> None:
   except Exception:
     offroad, cs_ok = True, False
   if (not offroad) and cs_ok:
-    v = float(ui_state.sm["carState"].vEgo)
-    _trip["trip_m"] += v * dt
+    v = max(0.0, float(ui_state.sm["carState"].vEgo))
     _trip["tot_s"] += dt
-    _trip["week_m"] += v * dt
-    _trip["week_tot_s"] += dt
-    try:
-      if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
-        _trip["eng_s"] += dt
-        _trip["week_eng_s"] += dt
-    except Exception:
-      pass
+    if v > 0.15:
+      _trip["trip_m"] += v * dt
+      _trip["week_m"] += v * dt
+      try:
+        if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
+          _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
+          _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
+          _trip["eng_s"] += dt
+          _trip["week_eng_s"] += dt
+      except Exception:
+        pass
   if now - _trip_flush > 1.0:
     _save_trip(_trip)
     _trip_flush = now
