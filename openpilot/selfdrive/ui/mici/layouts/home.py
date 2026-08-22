@@ -9,7 +9,7 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_SCALE
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.mici.layouts.settings.toggles import (
@@ -25,14 +25,21 @@ WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
-def draw_tesla_three(x: float, y: float, h: float, color: rl.Color) -> float:
-  """Three equal stadium bars — Tesla Model 3 / TESLA-E mark."""
-  bar_h = max(4.0, h * 0.22)
-  gap = max(3.0, (h - 3 * bar_h) / 2.0)
-  w = h * 0.90
+def _glyph_ink(font: rl.Font, ch: str, font_size: int) -> tuple[float, float, float, float, float]:
+  """offsetX, offsetY, width, height, advance — pixels at the drawn size."""
+  scale = (font_size * FONT_SCALE) / float(font.baseSize)
+  idx = rl.get_glyph_index(font, ord(ch))
+  g = font.glyphs[idx]
+  rec = font.recs[idx]
+  return g.offsetX * scale, g.offsetY * scale, rec.width * scale, rec.height * scale, g.advanceX * scale
+
+
+def draw_tesla_three(x: float, y: float, w: float, h: float, color: rl.Color) -> float:
+  """Three equal stadiums, Tesla E proportions, occupying the letter ink box."""
+  bar_h = max(3.0, h * 0.235)
+  gap = max(2.0, (h - 3 * bar_h) / 2.0)
   for i in range(3):
-    yy = y + i * (bar_h + gap)
-    rl.draw_rectangle_rounded(rl.Rectangle(x, yy, w, bar_h), 1.0, 8, color)
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y + i * (bar_h + gap), w, bar_h), 1.0, 8, color)
   return w
 
 NetworkType = log.DeviceState.NetworkType
@@ -288,12 +295,15 @@ class MiciHomeLayout(Widget):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
     font = gui_app.font(FontWeight.DISPLAY)
-    s_sz = measure_text_cached(font, "S", WORDMARK_SIZE)
-    rest_sz = measure_text_cached(font, "XYPILOT", WORDMARK_SIZE)
+    s_ox, s_oy, _s_w, s_h, s_adv = _glyph_ink(font, "S", WORDMARK_SIZE)
+    _e_ox, _e_oy, e_w, e_h, e_adv = _glyph_ink(font, "E", WORDMARK_SIZE)
     rl.draw_text_ex(font, "S", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
-    gx = text_pos.x + s_sz.x + 6
-    gw = draw_tesla_three(gx, text_pos.y + 22, 50, LABEL_WHITE)
-    rl.draw_text_ex(font, "XYPILOT", rl.Vector2(gx + gw + 6, text_pos.y), WORDMARK_SIZE, 0, LABEL_WHITE)
+    gx = text_pos.x + s_adv
+    gy = text_pos.y + s_oy
+    gh = s_h
+    gw = e_w
+    draw_tesla_three(gx, gy, gw, gh, LABEL_WHITE)
+    rl.draw_text_ex(font, "XYPILOT", rl.Vector2(text_pos.x + s_adv + e_adv, text_pos.y), WORDMARK_SIZE, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       # release branch
