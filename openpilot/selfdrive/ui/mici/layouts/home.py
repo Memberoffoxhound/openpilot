@@ -305,12 +305,14 @@ class MiciHomeLayout(Widget):
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
+    # C4 is 536px. TESLA.ttf @ 80 is ~580px of ink.
+    wm = 60 if self.rect.width < 1000 else WORDMARK_SIZE
+    rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, wm, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       # release branch
       release_branch = self._version_text[1] in RELEASE_BRANCHES
-      version_pos = rl.Rectangle(text_pos.x, text_pos.y + WORDMARK_SIZE + 16, 100, 44)
+      version_pos = rl.Rectangle(text_pos.x, text_pos.y + wm + 16, 100, 44)
       self._version_label.set_text(self._version_text[0])
       self._version_label.set_position(version_pos.x, version_pos.y)
       self._version_label.render()
