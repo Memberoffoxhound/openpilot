@@ -247,7 +247,12 @@ class MiciHomeLayout(Widget):
       t = json.loads(open(TRIP_PATH).read())
     except Exception:
       t = {}
-    self._last_txt = ("Last ", self._fmt_trip(t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0))
+    # Live outing if this route has started; otherwise the previous one.
+    if (t.get("tot_s") or 0) > 1:
+      last = (t.get("trip_m", 0) or 0, t.get("eng_s", 0) or 0, t.get("tot_s", 0) or 0)
+    else:
+      last = (t.get("last_m", 0) or 0, t.get("last_eng_s", 0) or 0, t.get("last_tot_s", 0) or 0)
+    self._last_txt = ("Last ", self._fmt_trip(*last))
     self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_s", 0) or 0, t.get("week_tot_s", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,

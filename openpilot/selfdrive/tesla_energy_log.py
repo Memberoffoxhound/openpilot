@@ -86,6 +86,7 @@ def main() -> None:
         trip["last_tot_s"] = trip["tot_s"]
       trip["trip_m"] = trip["eng_s"] = trip["tot_s"] = 0.0
       trip["route"] = route
+      _save_trip(trip)
       if log_fp:
         log_fp.close()
         log_fp = None
@@ -127,7 +128,7 @@ def main() -> None:
         }
         log_fp.write(json.dumps(rec) + "\n")
 
-    if now - last_flush > 5.0:
+    if now - last_flush > 1.0:
       _save_trip(trip)
       last_flush = now
       if log_fp:
