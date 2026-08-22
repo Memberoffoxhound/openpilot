@@ -38,6 +38,8 @@ EIGHTY_WAVS = (
   "/data/88mph.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/88mph.wav",
 )
+DELOREAN_MODE = "/data/delorean_sound"
+DELOREAN_PLAY = "/data/delorean_play"
 DRIVE_GEARS = ("drive", "reverse")
 
 
@@ -208,6 +210,10 @@ class Soundd:
         if self._wav_eighty is not None:
           self.oneshots.append([self._wav_eighty, 0])
         self._play_eighty = False
+      if _flag(DELOREAN_PLAY):
+        if self._wav_eighty is not None:
+          self.oneshots.append([self._wav_eighty, 0])
+        _clear(DELOREAN_PLAY)
     live = []
     sr = float(SAMPLE_RATE)
     for arr, i in self.oneshots:
@@ -317,8 +323,8 @@ class Soundd:
             self.prev_unlatched = unlatched
 
           in_drive = str(sm['carState'].gearShifter) in DRIVE_GEARS
-          if (in_drive and self.prev_drive_gear is False and self._seen_offroad
-              and not self._eighty_played):
+          if (_flag(DELOREAN_MODE) and in_drive and self.prev_drive_gear is False
+              and self._seen_offroad and not self._eighty_played):
             self._eighty_played = True
             self._play_eighty = True
           self.prev_drive_gear = in_drive

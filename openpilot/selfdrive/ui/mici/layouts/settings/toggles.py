@@ -12,6 +12,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   LANE_COLOR_LABELS, ONROAD_UI_LABELS, lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   ludicrous_on, set_ludicrous, trigger_ludicrous, buckle_on, set_buckle, request_buckle_play,
+  delorean_on, set_delorean, request_delorean_play,
   ludicrous_files_ok,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -163,6 +164,38 @@ class BucklePreview(BigButton):
     request_buckle_play()
 
 
+class DeloreanCycle(BigButton):
+  """88mph clip on first Drive or Reverse. Off by default."""
+
+  def __init__(self):
+    super().__init__("delorean", "")
+    self.refresh()
+
+  def refresh(self):
+    value = "on" if delorean_on() else "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    on = not delorean_on()
+    set_delorean(on)
+    self.set_value("on" if on else "off")
+
+
+class DeloreanPreview(BigButton):
+  def __init__(self):
+    super().__init__("delorean preview", "tap")
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    request_delorean_play()
+
+
 class ThemeLayoutMici(NavScroller):
   """Settings → theme. Subsections live here."""
 
@@ -174,9 +207,12 @@ class ThemeLayoutMici(NavScroller):
     self._ludi_preview = LudicrousPreview()
     self._buckle = BuckleSoundCycle()
     self._buckle_preview = BucklePreview()
+    self._delorean = DeloreanCycle()
+    self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._ludicrous, self._ludi_preview,
-      self._buckle, self._buckle_preview, self._lane_color,
+      self._buckle, self._buckle_preview,
+      self._delorean, self._delorean_preview, self._lane_color,
     ])
 
 
