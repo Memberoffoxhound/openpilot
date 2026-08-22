@@ -189,6 +189,8 @@ class DeveloperLayoutMici(NavScroller):
   def _on_alpha_long_enabled(self, state: bool):
     def do_toggle(_state: bool):
       ui_state.params.put_bool("AlphaLongitudinalEnabled", _state, block=True)
+      if not _state:
+        ui_state.params.put_bool("ExperimentalMode", False, block=True)
       restart_needed_callback()
       self._update_toggles()
 

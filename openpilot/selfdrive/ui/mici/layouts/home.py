@@ -199,6 +199,8 @@ class MiciHomeLayout(Widget):
     self._wordmark_font = _wordmark_font()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
+    self._experimental_icon.set_enabled(True)
+    self._experimental_icon.set_click_callback(self._toggle_experimental)
     self._long_badge = LongModeBadge()
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
@@ -227,22 +229,6 @@ class MiciHomeLayout(Widget):
     self._week_txt = ("Week ", "0mi 0%")
 
   def _update_state(self):
-    if self.is_pressed and not self._is_pressed_prev:
-      self._mouse_down_t = time.monotonic()
-    elif not self.is_pressed and self._is_pressed_prev:
-      self._mouse_down_t = None
-      self._did_long_press = False
-    self._is_pressed_prev = self.is_pressed
-
-    if self._mouse_down_t is not None:
-      if time.monotonic() - self._mouse_down_t > 0.5:
-        # long gating for experimental mode - only allow toggle if longitudinal control is available
-        if ui_state.has_longitudinal_control and ui_state.experimental_mode_confirmed:
-          ui_state.experimental_mode = not ui_state.experimental_mode
-          ui_state.params.put("ExperimentalMode", ui_state.experimental_mode, block=True)
-        self._mouse_down_t = None
-        self._did_long_press = True
-
     self._refresh_trip()
 
   def _fmt_trip(self, meters: float, eng_m: float) -> str:
@@ -273,16 +259,24 @@ class MiciHomeLayout(Widget):
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, max_severity_callback)
 
+  def _toggle_experimental(self):
+    if not ui_state.has_longitudinal_control or not ui_state.experimental_mode_confirmed:
+      return
+    on = not ui_state.experimental_mode
+    ui_state.experimental_mode = on
+    ui_state.params.put_bool("ExperimentalMode", on)
+
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if not self._did_long_press:
-      relative_x = mouse_pos.x - self.rect.x
-      has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
-      if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
-        if self._on_alerts_click:
-          self._on_alerts_click()
-      elif self._on_settings_click:
-        self._on_settings_click()
-    self._did_long_press = False
+    if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
+        rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
+      return
+    relative_x = mouse_pos.x - self.rect.x
+    has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
+    if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
+      if self._on_alerts_click:
+        self._on_alerts_click()
+    elif self._on_settings_click:
+      self._on_settings_click()
 
   def _get_version_text(self) -> tuple[str, str, str, str] | None:
     version = ui_state.params.get("Version")
@@ -351,7 +345,10 @@ class MiciHomeLayout(Widget):
       rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
-    self._experimental_icon.set_visible(ui_state.experimental_mode)
+    op_long = bool(ui_state.has_longitudinal_control)
+    self._experimental_icon.set_visible(op_long)
+    self._experimental_icon.set_enabled(op_long)
+    self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
     self._egpu_icon.set_visible(ui_state.sm["deviceState"].chestnutPresent and ui_state.usbgpu_compiled)
     self._egpu_icon_gray.set_visible(ui_state.sm["deviceState"].chestnutPresent and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)

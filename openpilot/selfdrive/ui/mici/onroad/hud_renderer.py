@@ -132,10 +132,15 @@ class HudRenderer(Widget):
     self._egpu_icon: rl.Texture | None = None
     self._txt_compass_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
+    self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
+    self._txt_compass_fan90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 78, 78)
+    self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
     self._wheel_y_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps)
     self._heading_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps, initialized=False)
+    self._compass_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
+    self._compass90_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
 
     self._set_speed_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
     self._egpu_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -278,56 +283,65 @@ class HudRenderer(Widget):
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
       rl.draw_texture_ex(self._txt_exclamation_point, rl.Vector2(exclamation_pos_x, exclamation_pos_y), 0.0, 1.0, rl.WHITE)
 
-  def _draw_compass(self, rect: rl.Rectangle) -> None:
-    # 60px DM disc, left gutter, halfway between DM and the wheel.
-    if not custom_onroad_ui():
-      return
-    a = int(self._wheel_alpha_filter.x)
+  def _paint_compass(self, cx: float, cy: float, size: int, fan: int, a: int,
+                     heading: float, letter: str | None, bg: rl.Texture, fan_tex: rl.Texture,
+                     font_sz: int) -> None:
     if a < 3:
       return
-    letter = heading_letter()
-    deg = heading_deg()
-    if not letter or deg is None:
-      return
-    cur = self._heading_filter.x
-    delta = (deg - cur + 180.0) % 360.0 - 180.0
-    heading = self._heading_filter.update(cur + delta) % 360.0
-    self._heading_filter.x = heading
-
-    size = 60
-    fan = 52
-    # DM: (rect.x+16, rect.y+10) 60px. Wheel center x matches DM (46).
-    cx = rect.x + 16 + size / 2
-    dm_cy = rect.y + 10 + size / 2
-    wheel_cy = rect.y + rect.height - 14 - self._txt_wheel.height / 2 + self._wheel_y_filter.x
-    cy = (dm_cy + wheel_cy) / 2
-
     fade = rl.Color(255, 255, 255, a)
-    rl.draw_texture_ex(self._txt_compass_bg, rl.Vector2(cx - size / 2, cy - size / 2), 0.0, 1.0, fade)
-    # Cone texture points up (north). Rotation clockwise = heading.
-    src = rl.Rectangle(0, 0, self._txt_compass_fan.width, self._txt_compass_fan.height)
+    rl.draw_texture_ex(bg, rl.Vector2(cx - size / 2, cy - size / 2), 0.0, 1.0, fade)
+    src = rl.Rectangle(0, 0, fan_tex.width, fan_tex.height)
     dest = rl.Rectangle(cx, cy, fan, fan)
-    rl.draw_texture_pro(
-      self._txt_compass_fan, src, dest,
-      rl.Vector2(fan / 2, fan / 2), heading,
-      rl.Color(0, 255, 64, a),
-    )
-    # Torque-bar idle: white @ 0.25. Ring 1px outside the fan.
+    rl.draw_texture_pro(fan_tex, src, dest, rl.Vector2(fan / 2, fan / 2), heading,
+                        rl.Color(0, 255, 64, a))
     fan_r = fan / 2
-    track_a = int(255 * 0.25 * (a / (255 * 0.9)))
+    track_a = int(255 * 0.25 * (a / 229.5))
     rl.draw_ring(rl.Vector2(cx, cy), fan_r + 1, fan_r + 3, 0, 360, 36,
                  rl.Color(255, 255, 255, max(0, min(255, track_a))))
-
-    sz = 22
-    ts = measure_text_cached(self._font_display, letter, sz)
-    while ts.x > size * 0.55 and sz > 12:
+    if not letter:
+      return
+    sz = font_sz
+    ts = measure_text_cached(self._font_bold, letter, sz)
+    while ts.x > size * 0.62 and sz > 12:
       sz -= 1
-      ts = measure_text_cached(self._font_display, letter, sz)
-    rl.draw_text_ex(
-      self._font_display, letter,
-      rl.Vector2(cx - ts.x / 2, cy - ts.y / 2),
-      sz, 0, fade,
-    )
+      ts = measure_text_cached(self._font_bold, letter, sz)
+    rl.draw_text_ex(self._font_bold, letter, rl.Vector2(cx - ts.x / 2, cy - ts.y / 2), sz, 0, fade)
+
+  def _draw_compass(self, rect: rl.Rectangle) -> None:
+    letter = heading_letter()
+    deg = heading_deg()
+    if letter:
+      self._compass_letter = letter
+    if deg is not None:
+      cur = self._heading_filter.x
+      delta = (deg - cur + 180.0) % 360.0 - 180.0
+      heading = self._heading_filter.update(cur + delta) % 360.0
+      self._heading_filter.x = heading
+    heading = self._heading_filter.x
+    letter = self._compass_letter
+
+    engaged = ui_state.status != UIStatus.DISENGAGED and custom_onroad_ui()
+    set_a = float(self._set_speed_alpha_filter.x)
+    self._compass_fade.update(1.0 if engaged and set_a < 1e-2 else 0.0)
+    self._compass90_fade.update(1.0 if engaged else 0.0)
+
+    a = int(255 * 0.9 * self._compass_fade.x)
+    if custom_onroad_ui() and a >= 3:
+      size, fan = 60, 52
+      cx = rect.x + 16 + size / 2
+      dm_cy = rect.y + 10 + size / 2
+      wheel_cy = rect.y + rect.height - 14 - self._txt_wheel.height / 2 + self._wheel_y_filter.x
+      cy = (dm_cy + wheel_cy) / 2
+      self._paint_compass(cx, cy, size, fan, a, heading, letter,
+                          self._txt_compass_bg, self._txt_compass_fan, 28)
+
+    a90 = int(255 * 0.9 * self._compass90_fade.x)
+    if custom_onroad_ui() and a90 >= 3:
+      size, fan = 90, 78
+      cx = rect.x + rect.width - 16 - size / 2
+      cy = rect.y + 10 + size / 2
+      self._paint_compass(cx, cy, size, fan, a90, heading, letter,
+                          self._txt_compass_bg90, self._txt_compass_fan90, 42)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""
