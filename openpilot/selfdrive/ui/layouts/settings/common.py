@@ -79,6 +79,8 @@ def set_onroad_ui(mode: int, params: Params | None = None) -> None:
 
 _LUDI_MODE = "/data/ludicrous_mode"
 _LUDI_PLAY = "/data/ludicrous_play"
+_BUCKLE_MODE = "/data/buckle_sound"
+_BUCKLE_PLAY = "/data/buckle_play"
 
 
 def ludicrous_on() -> bool:
@@ -106,6 +108,23 @@ def consume_ludicrous_play() -> bool:
   except Exception:
     return False
   return False
+
+
+def buckle_on() -> bool:
+  try:
+    return open(_BUCKLE_MODE, encoding="utf-8").read().strip() in ("1", "true")
+  except Exception:
+    return False
+
+
+def set_buckle(on: bool) -> None:
+  with open(_BUCKLE_MODE, "w", encoding="utf-8") as f:
+    f.write("1" if on else "0")
+
+
+def request_buckle_play() -> None:
+  with open(_BUCKLE_PLAY, "w", encoding="utf-8") as f:
+    f.write("1")
 
 
 LUDI_MS2 = 3.8

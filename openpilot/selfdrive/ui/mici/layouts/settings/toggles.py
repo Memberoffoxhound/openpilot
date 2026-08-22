@@ -11,7 +11,7 @@ from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
   LANE_COLOR_LABELS, ONROAD_UI_LABELS, lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
-  ludicrous_on, set_ludicrous, trigger_ludicrous,
+  ludicrous_on, set_ludicrous, trigger_ludicrous, buckle_on, set_buckle, request_buckle_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.webrtc.helpers import on_air_block_reason
@@ -166,6 +166,38 @@ class LudicrousPreview(BigButton):
     trigger_ludicrous(preview=True)
 
 
+class BuckleSoundCycle(BigButton):
+  """Play buckle-this when the seatbelt latches. Off by default."""
+
+  def __init__(self):
+    super().__init__("buckle sound", "")
+    self.refresh()
+
+  def refresh(self):
+    value = "on" if buckle_on() else "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    on = not buckle_on()
+    set_buckle(on)
+    self.set_value("on" if on else "off")
+
+
+class BucklePreview(BigButton):
+  def __init__(self):
+    super().__init__("buckle preview", "tap")
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    request_buckle_play()
+
+
 class OnAirToggle(Widget):
   """Red On-Air = livestream on. Gray = stock Connect only."""
 
@@ -212,7 +244,12 @@ class ThemeLayoutMici(NavScroller):
     self._lane_color = LaneColorCycle()
     self._ludicrous = LudicrousCycle()
     self._ludi_preview = LudicrousPreview()
-    self._scroller.add_widgets([self._onroad_ui, self._ludicrous, self._ludi_preview, self._lane_color])
+    self._buckle = BuckleSoundCycle()
+    self._buckle_preview = BucklePreview()
+    self._scroller.add_widgets([
+      self._onroad_ui, self._ludicrous, self._ludi_preview,
+      self._buckle, self._buckle_preview, self._lane_color,
+    ])
 
 
 class ExperimentalModeConfirmPage(NavScroller):

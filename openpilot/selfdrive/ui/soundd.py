@@ -19,14 +19,20 @@ SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
 LUDI_PLAY = "/data/ludicrous_play"
+BUCKLE_PLAY = "/data/buckle_play"
+BUCKLE_MODE = "/data/buckle_sound"
 LUDI_WAVS = (
-  "/data/ludicrous.wav",  # private drop-in, wins
+  "/data/ludicrous.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
+)
+BUCKLE_WAVS = (
+  "/data/buckle.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/buckle.wav",
 )
 
 
-def load_ludicrous_wav() -> np.ndarray | None:
-  for path in LUDI_WAVS:
+def load_wav(*paths) -> np.ndarray | None:
+  for path in paths:
     try:
       with wave.open(path, "r") as w:
         ch, sw, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
@@ -44,11 +50,25 @@ def load_ludicrous_wav() -> np.ndarray | None:
         x = np.interp(np.linspace(0, 1, n_out, endpoint=False), np.linspace(0, 1, len(x), endpoint=False), x).astype(np.float32)
       peak = float(np.max(np.abs(x))) if len(x) else 0.0
       if peak > 1e-4:
-        x = x * (0.90 / peak)
+        x = x * (0.98 / peak)
       return x
     except Exception:
       continue
   return None
+
+
+def _flag(path: str) -> bool:
+  try:
+    return open(path).read().strip() in ("1", "true")
+  except Exception:
+    return False
+
+
+def _clear(path: str) -> None:
+  try:
+    os.unlink(path)
+  except Exception:
+    pass
 
 
 MIN_VOLUME = 0.1
@@ -96,8 +116,8 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
-    self.fx = load_ludicrous_wav()
-    self.fx_i = None
+    self.oneshots: list[list] = []  # [np.ndarray, index]
+    self.prev_unlatched: bool | None = None
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -152,28 +172,26 @@ class Soundd:
           break
 
     out = ret * self.current_volume
-    play = False
-    try:
-      play = open(LUDI_PLAY).read().strip() in ("1", "true")
-    except Exception:
-      play = False
-    if play and self.current_alert != AudibleAlert.warningImmediate:
-      fresh = load_ludicrous_wav()
-      if fresh is not None:
-        self.fx = fresh
-      if self.fx is not None:
-        self.fx_i = 0
-      try:
-        os.unlink(LUDI_PLAY)
-      except Exception:
-        pass
-    if self.fx is not None and self.fx_i is not None:
-      n = min(frames, len(self.fx) - self.fx_i)
+    if self.current_alert != AudibleAlert.warningImmediate:
+      if _flag(LUDI_PLAY):
+        w = load_wav(*LUDI_WAVS)
+        if w is not None:
+          self.oneshots.append([w, 0])
+        _clear(LUDI_PLAY)
+      if _flag(BUCKLE_PLAY):
+        w = load_wav(*BUCKLE_WAVS)
+        if w is not None:
+          self.oneshots.append([w, 0])
+        _clear(BUCKLE_PLAY)
+    live = []
+    for arr, i in self.oneshots:
+      n = min(frames, len(arr) - i)
       if n > 0:
-        out[:n] += self.fx[self.fx_i:self.fx_i + n]
-        self.fx_i += n
-      if self.fx_i >= len(self.fx):
-        self.fx_i = None
+        out[:n] += arr[i:i + n]
+        i += n
+      if i < len(arr):
+        live.append([arr, i])
+    self.oneshots = live
     return np.clip(out, -1.0, 1.0)
 
   def callback(self, data_out: np.ndarray, frames: int, time, status) -> None:
@@ -226,7 +244,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure'])
+    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'carState'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
@@ -242,6 +260,13 @@ class Soundd:
             self.current_volume = self.calculate_volume(float(self.spl_filter_weighted.x))
 
         self.get_audible_alert(sm)
+
+        if sm.updated['carState'] and _flag(BUCKLE_MODE):
+          unlatched = bool(sm['carState'].seatbeltUnlatched)
+          if self.prev_unlatched is True and unlatched is False:
+            with open(BUCKLE_PLAY, "w") as f:
+              f.write("1")
+          self.prev_unlatched = unlatched
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:
