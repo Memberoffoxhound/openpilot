@@ -9,7 +9,8 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_SCALE
+from importlib.resources import as_file
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_SCALE, FONT_DIR
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.common.version import RELEASE_BRANCHES
@@ -29,6 +30,23 @@ def _glyph_ink(font: rl.Font, ch: str, font_size: int) -> tuple[float, float, fl
   g = font.glyphs[idx]
   rec = font.recs[idx]
   return g.offsetX * scale, g.offsetY * scale, rec.width * scale, rec.height * scale, g.advanceX * scale
+
+
+def _wordmark_font() -> rl.Font:
+  """Dies/KAYOver TESLA.ttf for S3XYPILOT. Falls back to Inter DISPLAY."""
+  try:
+    chars = "SXYPILOT"
+    cps = sorted(map(ord, chars))
+    buf = rl.ffi.new("int[]", cps)
+    with as_file(FONT_DIR) as fs:
+      font = rl.load_font_ex((fs / "TESLA.ttf").as_posix(), 200, rl.ffi.cast("int *", buf), len(cps))
+    if font.glyphCount > 0:
+      rl.gen_texture_mipmaps(font.texture)
+      rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_TRILINEAR)
+      return font
+  except Exception:
+    pass
+  return gui_app.font(FontWeight.DISPLAY)
 
 
 def draw_tesla_three(x: float, y: float, w: float, h: float, color: rl.Color) -> float:
@@ -195,6 +213,7 @@ class MiciHomeLayout(Widget):
     self._is_pressed_prev = False
 
     self._version_text = self._get_version_text()
+    self._wordmark_font = _wordmark_font()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
     self._long_badge = LongModeBadge()
@@ -303,12 +322,11 @@ class MiciHomeLayout(Widget):
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    font = gui_app.font(FontWeight.DISPLAY)
+    font = self._wordmark_font
     s_ox, s_oy, s_w, s_h, s_adv = _glyph_ink(font, "S", WORDMARK_SIZE)
-    e_ox, _e_oy, e_w, _e_h, e_adv = _glyph_ink(font, "E", WORDMARK_SIZE)
     x_ox, _x_oy, _x_w, _x_h, _x_adv = _glyph_ink(font, "X", WORDMARK_SIZE)
-    letter_gap = max(2.0, (s_adv + e_ox) - (s_ox + s_w))
-    bar_w = max(e_w * 1.32, s_w * 0.98)
+    letter_gap = max(2.0, (s_adv + x_ox) - (s_ox + s_w))
+    bar_w = max(s_w * 1.05, s_h * 0.62)
     rl.draw_text_ex(font, "S", text_pos, WORDMARK_SIZE, 0, LABEL_WHITE)
     gx = text_pos.x + s_ox + s_w + letter_gap
     draw_tesla_three(gx, text_pos.y + s_oy, bar_w, s_h, LABEL_WHITE)
