@@ -31,18 +31,18 @@ comma 4 UI. comma 3X may boot; the UI is not tailored to it.
 
 ## Tesla compatibility
 
-Same Tesla platforms as stock comma, plus 2026 Model 3 / Y:
+Same Tesla platforms as stock comma. **2026 Model 3 Highland is not on comma’s list yet; this fork is driven on one and it works.**
 
 | Car | Years | Notes |
 |---|---|---|
 | Model 3 HW3 | 2019–23 | [comma official](https://docs.comma.ai/CARS/) |
-| Model 3 HW4 | 2024–26 | official through 2025; **2026 Highland is what this fork is driven on** |
+| Model 3 HW4 | 2024–26 | official through 2025; **2026 Highland confirmed on this fork** |
 | Model Y HW3 | 2020–23 | comma official |
-| Model Y HW4 | 2024–26 | official through 2025; **2026 included here** (comma has not listed it yet) |
+| Model Y HW4 | 2024–25 | comma official |
 
 HW3 uses Tesla A harness, HW4 uses Tesla B. Alpha longitudinal is TACC vs openpilot gas/brake.
 
-S / X / Cybertruck are not supported.
+S / X / Cybertruck are not supported. 2026 Model Y is untested here.
 
 ## Install
 
