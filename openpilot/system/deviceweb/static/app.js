@@ -194,7 +194,7 @@ function shotsView() {
     <p class="tiny">Hold the display 3s. PNGs live at <code>/data/media/0/screenshots</code> — same path over SSH/SFTP.</p>
     <div class="card" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px">
       ${shots.length ? shots.map(s => `
-        <a href="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" style="display:block;border:2px solid #9a9a9a;background:#111">
+        <a href="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" style="display:block;border:1px solid #fff;background:#111">
           <img src="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" alt="${esc(s.name)}" style="width:100%;display:block"/>
           <p class="tiny" style="padding:8px">${esc(s.name)} · ${bytes(s.size)}</p>
         </a>`).join("") : `<p class="muted" style="padding:40px;text-align:center;grid-column:1/-1">No screenshots yet.</p>`}

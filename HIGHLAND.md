@@ -25,7 +25,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 
 ## Screenshots
 
-Hold the display 3s (don’t drag). White flash + shutter. PNG with a 2px gray border in `/data/media/0/screenshots`. LAN dashboard **Shots** tab. SSH/SFTP same path.
+Hold the display 3s (don’t drag). White flash + shutter. PNG in `/data/media/0/screenshots`. LAN dashboard **Shots** tab (1px white frame). SSH/SFTP same path.
 
 ## LAN console
 

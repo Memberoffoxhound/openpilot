@@ -1,4 +1,4 @@
-"""3s display hold → PNG in /data/media/0/screenshots (2px gray border)."""
+"""3s display hold → PNG in /data/media/0/screenshots."""
 import os
 import time
 
@@ -8,8 +8,6 @@ SHOT_DIR = "/data/media/0/screenshots"
 SHOT_PLAY = "/data/screenshot_play"
 HOLD_S = 3.0
 MOVE_PX = 28
-BORDER = 2
-GRAY = rl.Color(160, 160, 160, 255)
 
 
 class ScreenShotter:
@@ -51,14 +49,10 @@ class ScreenShotter:
         rl.image_flip_vertical(img)
       else:
         img = rl.load_image_from_screen()
-      w, h = int(img.width), int(img.height)
-      out = rl.gen_image_color(w + BORDER * 2, h + BORDER * 2, GRAY)
-      rl.image_draw(out, img, rl.Rectangle(0, 0, w, h), rl.Rectangle(BORDER, BORDER, w, h), rl.WHITE)
       name = time.strftime("%Y-%m-%d--%H-%M-%S.png")
       path = os.path.join(SHOT_DIR, name)
-      rl.export_image(out, path)
+      rl.export_image(img, path)
       rl.unload_image(img)
-      rl.unload_image(out)
       self.flash = 1.0
       self.pending = False
       return path
