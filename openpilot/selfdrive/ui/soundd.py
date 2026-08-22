@@ -7,6 +7,7 @@ import wave
 
 from openpilot.cereal import log, messaging
 from openpilot.common.basedir import BASEDIR
+from openpilot.common.hardware import HARDWARE
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.utils import retry
@@ -28,6 +29,11 @@ LUDI_WAVS = (
 BUCKLE_WAVS = (
   "/data/buckle.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/buckle.wav",
+)
+SHOT_PLAY = "/data/screenshot_play"
+SHOT_WAVS = (
+  "/data/shutter.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/shutter.wav",
 )
 
 
@@ -183,14 +189,18 @@ class Soundd:
         if w is not None:
           self.oneshots.append([w, 0])
         _clear(BUCKLE_PLAY)
+      if _flag(SHOT_PLAY):
+        w = load_wav(*SHOT_WAVS)
+        if w is not None:
+          self.oneshots.append([w, 0])
+        _clear(SHOT_PLAY)
     live = []
     sr = float(SAMPLE_RATE)
-    fi, fo = 0.20, 0.35
     for arr, i in self.oneshots:
       n = min(frames, len(arr) - i)
       if n > 0:
-        t0 = i / sr
         dur = len(arr) / sr
+        fi, fo = (0.005, 0.03) if dur < 0.45 else (0.20, 0.35)
         # per-sample fade in/out
         idx = np.arange(n, dtype=np.float32) + i
         t = idx / sr

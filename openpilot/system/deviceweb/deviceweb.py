@@ -60,6 +60,7 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
 CLIP_DIR = DATA_DIR / "clips"
+SHOT_DIR = DATA_DIR / "screenshots"
 MAX_CLIP_SEC = 30
 SEG_RE = re.compile(
   r"^(?:(?P<dongle>[0-9a-fA-F]{16})[|_])?(?P<time>\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2})(?:--(?P<seg>\d+))?$"
@@ -115,7 +116,7 @@ def _info() -> dict:
   p = _params()
   info = {
     "name": "S3XYPilot",
-    "version": p.get("Version") or "0.11.12.24",
+    "version": p.get("Version") or "0.1.10.24",
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
     "remote": p.get("GitRemote") or "",
@@ -403,7 +404,7 @@ def _list_routes() -> list[dict]:
   except OSError:
     return []
   for ent in entries:
-    if ent.name == "clips":
+    if ent.name in ("clips", "screenshots"):
       continue
     m = SEG_RE.match(ent.name)
     if not m:
@@ -547,8 +548,23 @@ def _start_clip(body: dict) -> dict:
   return {"ok": True, "job": _clip_status()}
 
 
+def _list_shots() -> list[dict]:
+  if not SHOT_DIR.is_dir():
+    return []
+  items = []
+  for f in sorted(SHOT_DIR.iterdir(), key=lambda p: p.name, reverse=True):
+    if f.suffix.lower() != ".png" or not f.is_file():
+      continue
+    try:
+      st = f.stat()
+    except OSError:
+      continue
+    items.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+  return items[:80]
+
+
 class Handler(BaseHTTPRequestHandler):
-  server_version = "S3XYPilot/0.11.12.24"
+  server_version = "S3XYPilot/0.1.10.24"
 
   def log_message(self, fmt: str, *args) -> None:
     cloudlog.info("deviceweb " + (fmt % args))
@@ -614,6 +630,21 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"routes": _list_routes()})
       if path in ("/api/clip", "/api/device/clip"):
         return self._json(200, _clip_status())
+      if path in ("/api/screenshots", "/api/device/screenshots"):
+        return self._json(200, {"items": _list_shots()})
+      if path in ("/api/screenshots/raw", "/api/device/screenshots/raw"):
+        name = Path((qs.get("name") or [""])[0]).name
+        target = SHOT_DIR / name
+        if not name.endswith(".png") or not target.is_file():
+          return self._json(404, {"error": "not found"})
+        data = target.read_bytes()
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        return
       if path in ("/api/stats", "/api/device/stats"):
         return self._json(200, drive_stats.status())
       if path in ("/api/clip/file", "/api/device/clip/file"):

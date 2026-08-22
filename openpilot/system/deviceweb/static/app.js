@@ -33,11 +33,12 @@ const GROUPS = [
     {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
   ]},
 ];
-const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
+const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["shots","Shots"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
 let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
 let routes = [], clipJob = {state:"idle"}, clipTimer = null;
 let updateJob = {state:"idle", percent:0, status:"", eta:null}, updateTimer = null;
 let statsMonth = new Date();
+let shots = [];
 let statsFrom = null, statsTo = null, statsJob = {state:"idle"}, statsTimer = null, statsMap = null, statsQcam = true;
 function pad2(n){ return String(n).padStart(2,"0"); }
 function isoDay(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
@@ -82,7 +83,7 @@ async function loadFiles() {
 }
 function render() {
   const app = document.getElementById("app");
-  const title = {status:"Device", settings:"Settings", files:"Files", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
+  const title = {status:"Device", settings:"Settings", files:"Files", shots:"Shots", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
   app.innerHTML = `
     <aside>
       <div class="brand"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN console · no lock</p></div>
@@ -108,6 +109,7 @@ function render() {
   app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
     tab = b.dataset.tab;
     if (tab==="files") loadFiles();
+    else if (tab==="shots") loadShots();
     else if (tab==="clips") loadClips();
     else if (tab==="stats") loadStats(false);
     else if (tab==="updates") pollUpdate();
@@ -120,6 +122,7 @@ function view() {
   if (tab==="status") return statusView();
   if (tab==="settings") return settingsView();
   if (tab==="files") return filesView();
+  if (tab==="shots") return shotsView();
   if (tab==="clips") return clipsView();
   if (tab==="stats") return statsView();
   return updatesView();
@@ -180,6 +183,22 @@ function filesView() {
     <div class="crumb">${crumbs.join("")}</div>
     <div class="card">${files.length? files.map(n => `<button class="file" data-open="${esc(n.path)}" data-dir="${n.dir?1:0}"><b>${esc(n.name)}</b><em>${n.dir?"folder":bytes(n.size)}</em></button>`).join("") : `<p class="muted" style="padding:40px;text-align:center">Empty folder.</p>`}</div>
     <p class="tiny">Real disk under /data. Tokens and SSH keys are hidden.</p>
+  </div>`;
+}
+async function loadShots() {
+  try { shots = (await api("/api/screenshots")).items || []; } catch (e) { shots = []; toast = (e && e.message) || "shots failed"; }
+  render();
+}
+function shotsView() {
+  return `<div class="wrap">
+    <p class="tiny">Hold the display 3s. PNGs live at <code>/data/media/0/screenshots</code> — same path over SSH/SFTP.</p>
+    <div class="card" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px">
+      ${shots.length ? shots.map(s => `
+        <a href="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" style="display:block;border:2px solid #9a9a9a;background:#111">
+          <img src="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" alt="${esc(s.name)}" style="width:100%;display:block"/>
+          <p class="tiny" style="padding:8px">${esc(s.name)} · ${bytes(s.size)}</p>
+        </a>`).join("") : `<p class="muted" style="padding:40px;text-align:center;grid-column:1/-1">No screenshots yet.</p>`}
+    </div>
   </div>`;
 }
 function clipsView() {
