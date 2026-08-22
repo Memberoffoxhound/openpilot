@@ -87,7 +87,7 @@ function render() {
     <aside>
       <div class="brand"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN console · no lock</p></div>
       <nav>${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
-      <div class="ver">${info.version || "0.11.2.1"} · ${info.branch || "Highland"}</div>
+      <div class="ver">${info.version || "0.1.10.24"} · ${info.branch || "Highland"}</div>
     </aside>
     <div class="col">
       <header class="top">
@@ -270,7 +270,7 @@ function updatesView() {
   return `<div class="wrap">
     <div class="card pad">
       <p class="ghead">Installed</p>
-      <h2>${esc(info.version||"0.11.2.1")}</h2>
+      <h2>${esc(info.version||"0.1.10.24")}</h2>
       <p class="muted" style="margin-top:8px;font-family:var(--mono)">${esc(info.branch||"Highland")} · ${esc((info.commit||"").slice(0,12))}</p>
       <p class="muted" style="margin-top:16px">${esc(job.status || info.updaterNotes || "Check starts the download. Installs after 10s when ready.")}</p>
       ${running || pct ? `<div class="bar green" style="margin-top:16px"><i style="width:${pct}%"></i></div>
