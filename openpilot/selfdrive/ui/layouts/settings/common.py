@@ -88,10 +88,6 @@ LUDI_WAVS = (
   "/data/ludicrous.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
 )
-LUDI_GIFS = (
-  "/data/ludicrous.gif",
-  BASEDIR + "/openpilot/selfdrive/assets/images/ludicrous.gif",
-)
 
 
 def ludicrous_on() -> bool:
@@ -146,20 +142,23 @@ def _first_file(paths) -> str | None:
 
 
 def ludicrous_files_ok() -> bool:
-  return _first_file(LUDI_WAVS) is not None and _first_file(LUDI_GIFS) is not None
+  return _first_file(LUDI_WAVS) is not None
 
 
 LUDI_MS2 = 3.8
 LUDI_COOLDOWN = 45.0
-LUDI_FADE_IN = 0.20
-LUDI_FADE_OUT = 0.35
+LUDI_FADE_IN = 0.12
+LUDI_HOLD = 1.55
+LUDI_FADE_OUT = 0.50
 _warp_t0: float | None = None
 _warp_last = 0.0
-_clip = None  # lazy {frames, w, h, dt, tex, idx}
+_STARS = tuple(
+  (i * 2.399963, (i * 0.618034) % 1.0, 0.55 + (i % 7) * 0.22, 1.1 + (i % 5) * 0.35)
+  for i in range(120)
+)
 
 
 def trigger_ludicrous(*, preview: bool = False) -> bool:
-  """Start clip + sound. Returns False if drop-in files are missing."""
   global _warp_t0, _warp_last
   if not ludicrous_files_ok():
     return False
@@ -183,74 +182,45 @@ def maybe_trigger_ludicrous() -> None:
     trigger_ludicrous(preview=False)
 
 
-def _load_clip():
-  global _clip
-  if _clip is not None:
-    return _clip
-  path = _first_file(LUDI_GIFS)
-  if path is None:
-    _clip = False
-    return None
-  try:
-    from PIL import Image
-    im = Image.open(path)
-    frames = []
-    n = getattr(im, "n_frames", 1)
-    for i in range(n):
-      im.seek(i)
-      frames.append(im.convert("RGBA").tobytes())
-    w, h = im.size
-    # Texture must be RGBA — gen_image_color is R8G8B8A8. RGB tobytes painted black.
-    img = rl.gen_image_color(w, h, rl.BLACK)
-    tex = rl.load_texture_from_image(img)
-    rl.unload_image(img)
-    rl.update_texture(tex, frames[0])
-    _clip = {"frames": frames, "w": w, "h": h, "dt": 1.0 / 12.0, "tex": tex, "n": n}
-    return _clip
-  except Exception:
-    _clip = False
-    return None
-
-
-def _clip_alpha(t: float, dur: float) -> float:
-  if t < LUDI_FADE_IN:
-    return t / LUDI_FADE_IN
-  if t > dur - LUDI_FADE_OUT:
-    return max(0.0, (dur - t) / LUDI_FADE_OUT)
-  return 1.0
-
-
 def draw_ludicrous_warp(rect: rl.Rectangle) -> None:
-  """Center-crop GIF into the camera rect. Does not draw into the side panel."""
+  """ANH hyperspace: radial star streaks, full screen, then fade back."""
   global _warp_t0
   if _warp_t0 is None:
     return
-  clip = _load_clip()
-  if not clip:
-    _warp_t0 = None
-    return
-  dur = clip["n"] * clip["dt"]
   t = time.monotonic() - _warp_t0
-  if t > dur:
+  total = LUDI_FADE_IN + LUDI_HOLD + LUDI_FADE_OUT
+  if t > total:
     _warp_t0 = None
     return
-  alpha = _clip_alpha(t, dur)
-  idx = min(clip["n"] - 1, int(t / clip["dt"]))
-  w, h = clip["w"], clip["h"]
-  try:
-    rl.update_texture(clip["tex"], clip["frames"][idx])
-  except Exception:
-    pass
-  # cover crop, pin slightly high so the subtitle stays
-  scale = max(rect.width / w, rect.height / h)
-  dw, dh = w * scale, h * scale
-  ox = rect.x - (dw - rect.width) * 0.5
-  oy = rect.y - (dh - rect.height) * 0.72
-  src = rl.Rectangle(0, 0, w, h)
-  dst = rl.Rectangle(ox, oy, dw, dh)
-  rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
-  rl.draw_texture_pro(clip["tex"], src, dst, rl.Vector2(0, 0), 0.0, rl.Color(255, 255, 255, int(255 * alpha)))
-  rl.end_scissor_mode()
+  if t < LUDI_FADE_IN:
+    a = t / LUDI_FADE_IN
+  elif t < LUDI_FADE_IN + LUDI_HOLD:
+    a = 1.0
+  else:
+    a = max(0.0, 1.0 - (t - LUDI_FADE_IN - LUDI_HOLD) / LUDI_FADE_OUT)
+  p = min(1.0, t / (LUDI_FADE_IN + LUDI_HOLD))
+  p2 = p * p
+  cx = rect.x + rect.width * 0.5
+  cy = rect.y + rect.height * 0.5
+  span = math.hypot(rect.width, rect.height) * 0.62
+  stretch = 6.0 + p2 * 140.0
+  rl.draw_rectangle_rec(rect, rl.Color(2, 6, 22, int(170 * a)))
+  for ang, r0, spd, w in _STARS:
+    r = (r0 + p * spd) % 1.0
+    r = 0.04 + r * 0.96
+    inner = r * span * (0.08 + 0.92 * p)
+    outer = inner + stretch * (0.25 + r)
+    ca, sa = math.cos(ang), math.sin(ang)
+    thick = w * (0.8 + 1.8 * p)
+    rl.draw_line_ex(
+      rl.Vector2(cx + inner * ca, cy + inner * sa),
+      rl.Vector2(cx + outer * ca, cy + outer * sa),
+      thick,
+      rl.Color(210, 230, 255, int((90 + 140 * r) * a)),
+    )
+  if p > 0.45:
+    flash = 1.0 - abs(((p - 0.45) / 0.55) * 2.0 - 1.0)
+    rl.draw_circle(int(cx), int(cy), int(18 + flash * 70), rl.Color(190, 220, 255, int(55 * flash * a)))
 
 
 def _sunday_id() -> str:

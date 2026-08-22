@@ -177,8 +177,7 @@ class LudicrousFilesPage(NavScroller):
     self._scroller.add_widgets([
       GreyBigButton("ludicrous files", "private drop-in", warn),
       GreyBigButton("", "Copy your wav to /data/ludicrous.wav"),
-      GreyBigButton("", "Copy the GIF to /data/ludicrous.gif"),
-      GreyBigButton("", "Wav: 48 kHz mono. GIF plays in the camera frame."),
+      GreyBigButton("", "48 kHz mono. Plays with the warp overlay."),
     ])
 
 

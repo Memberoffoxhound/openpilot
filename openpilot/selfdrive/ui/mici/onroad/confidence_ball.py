@@ -104,7 +104,7 @@ class ConfidenceBall(Widget):
     else:
       self._confidence_filter.update((1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.brakeDisengageProbs or [1])) *
                                                         (1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.steerOverrideProbs or [1])))
-    want = 1.0 if custom_onroad_ui() and ui_state.status == UIStatus.ENGAGED else 0.0
+    want = 1.0 if custom_onroad_ui() and ui_state.engaged else 0.0
     self._heading_alpha.update(want)
 
   def _heading_state(self) -> tuple[str | None, bool, bool]:

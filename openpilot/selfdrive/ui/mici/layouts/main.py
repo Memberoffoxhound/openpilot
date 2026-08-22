@@ -103,9 +103,7 @@ class MiciMainLayout(Scroller):
 
     # Render
     super()._render(self._rect)
-    # Settings/home preview of ludicrous clip. Onroad draws inside the camera rect.
-    if not ui_state.started:
-      draw_ludicrous_warp(self._rect)
+    draw_ludicrous_warp(self._rect)
 
   def _handle_transitions(self):
     # Don't pop if onboarding
