@@ -19,6 +19,38 @@ SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
 LUDI_PLAY = "/data/ludicrous_play"
+LUDI_WAVS = (
+  "/data/ludicrous.wav",  # private drop-in, wins
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
+)
+
+
+def load_ludicrous_wav() -> np.ndarray | None:
+  for path in LUDI_WAVS:
+    try:
+      with wave.open(path, "r") as w:
+        ch, sw, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        raw = w.readframes(n)
+      if sw != 2:
+        continue
+      x = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+      if ch == 2:
+        x = x.reshape(-1, 2).mean(axis=1)
+      elif ch != 1:
+        continue
+      x /= 32768.0
+      if rate != SAMPLE_RATE and len(x) > 1:
+        n_out = int(round(len(x) * SAMPLE_RATE / float(rate)))
+        x = np.interp(np.linspace(0, 1, n_out, endpoint=False), np.linspace(0, 1, len(x), endpoint=False), x).astype(np.float32)
+      peak = float(np.max(np.abs(x))) if len(x) else 0.0
+      if peak > 1e-4:
+        x = x * (0.90 / peak)
+      return x
+    except Exception:
+      continue
+  return None
+
+
 MIN_VOLUME = 0.1
 ALERT_RAMP_TIME = 4 # seconds to ramp to max volume for warningImmediate
 SELFDRIVE_STATE_TIMEOUT = 5 # 5 seconds
@@ -64,13 +96,8 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
-    self.fx = None
+    self.fx = load_ludicrous_wav()
     self.fx_i = None
-    try:
-      with wave.open(BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav", "r") as wavefile:
-        self.fx = np.frombuffer(wavefile.readframes(wavefile.getnframes()), dtype=np.int16).astype(np.float32) / (2**16 / 2)
-    except Exception:
-      self.fx = None
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -130,8 +157,12 @@ class Soundd:
       play = open(LUDI_PLAY).read().strip() in ("1", "true")
     except Exception:
       play = False
-    if play and self.fx is not None and self.current_alert != AudibleAlert.warningImmediate:
-      self.fx_i = 0
+    if play and self.current_alert != AudibleAlert.warningImmediate:
+      fresh = load_ludicrous_wav()
+      if fresh is not None:
+        self.fx = fresh
+      if self.fx is not None:
+        self.fx_i = 0
       try:
         os.unlink(LUDI_PLAY)
       except Exception:

@@ -9,9 +9,8 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.common.filter_simple import FirstOrderFilter
 
 BALL_RADIUS = 24
-CARDINALS = "NESW"
+CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 PARKED_MS = 1.0
-YAW_STD_OK_RAD = math.radians(25.0)
 GPS_ACC_OK_DEG = 30.0
 
 
@@ -34,7 +33,7 @@ def _angle_diff_deg(a: float, b: float) -> float:
 
 
 def _cardinal(bearing_deg: float) -> str:
-  return CARDINALS[int((bearing_deg + 45.0) % 360.0) // 90]
+  return CARDINALS[int((bearing_deg + 22.5) % 360.0) // 45]
 
 
 def _gps_bearing() -> tuple[float | None, float]:
@@ -84,9 +83,9 @@ class ConfidenceBall(Widget):
     self._demo = demo
     self._confidence_filter = FirstOrderFilter(-0.5, 0.5, 1 / gui_app.target_fps)
     self._font = gui_app.font(FontWeight.DISPLAY)
-    self._font_size = 42
-    while self._font_size > 28:
-      if measure_text_cached(self._font, "W", self._font_size).x <= BALL_RADIUS * 2:
+    self._font_size = 26
+    while self._font_size > 20:
+      if measure_text_cached(self._font, "NW", self._font_size).x <= (BALL_RADIUS * 2 - 4):
         break
       self._font_size -= 1
     self._letter_h = measure_text_cached(self._font, "N", self._font_size).y
@@ -108,31 +107,12 @@ class ConfidenceBall(Widget):
                                                         (1 - max(ui_state.sm['modelV2'].meta.disengagePredictions.steerOverrideProbs or [1])))
 
   def _heading_state(self) -> tuple[str | None, bool, bool]:
-    """Returns (letter or None, confident, use_placeholder)."""
+    """GPS-only. ? placeholder if parked or no accurate moving fix."""
     parked = _parked()
-    yaw, yaw_std, yaw_ok = _localizer_yaw()
     gps_brg, gps_acc = _gps_bearing()
-    heading = None
-    confident = False
-
-    if yaw is not None and yaw_ok:
-      heading = yaw
-      confident = yaw_std < 15.0
-    if not parked and gps_brg is not None and gps_acc < GPS_ACC_OK_DEG:
-      if heading is None or (not confident and _angle_diff_deg(gps_brg, heading) > 45.0):
-        heading = gps_brg
-        confident = True
-      elif _angle_diff_deg(gps_brg, heading) > 90.0 and gps_acc < 15.0:
-        heading = gps_brg
-        confident = True
-
-    if heading is not None and (confident or not parked):
-      self._last_heading_deg = heading
-      return _cardinal(heading), confident, False
-
-    if self._last_heading_deg is not None:
-      return _cardinal(self._last_heading_deg), False, False
-
+    if (not parked) and gps_brg is not None and gps_acc < GPS_ACC_OK_DEG:
+      self._last_heading_deg = gps_brg
+      return _cardinal(gps_brg), True, False
     return None, False, True
 
   def _draw_placeholder(self, cx: float, cy: float) -> None:

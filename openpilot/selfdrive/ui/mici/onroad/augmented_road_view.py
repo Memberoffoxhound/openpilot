@@ -17,6 +17,7 @@ from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, M
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
 from openpilot.selfdrive.ui.layouts.settings.common import ludicrous_on, request_ludicrous_play
+from openpilot.common.filter_simple import BounceFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
 from enum import IntEnum
