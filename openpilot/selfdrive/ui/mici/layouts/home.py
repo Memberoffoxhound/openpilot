@@ -336,21 +336,24 @@ class MiciHomeLayout(Widget):
       ll, lv = self._last_txt
       wl, wv = self._week_txt
       avail = self.rect.width - HOME_PADDING * 2
-      sz = 28
-      while sz > 20:
-        w = (measure_text_cached(f, ll, sz).x + measure_text_cached(f, lv, sz).x +
-             16 + measure_text_cached(f, wl, sz).x + measure_text_cached(f, wv, sz).x)
+      lsz = 36
+      while lsz > 22:
+        vsz = max(18, lsz - 6)
+        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
+             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
         if w <= avail:
           break
-        sz -= 1
+        lsz -= 1
+      vsz = max(18, lsz - 6)
       x = version_pos.x
-      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), sz, 0, rl.GRAY)
-      x += measure_text_cached(f, ll, sz).x
-      rl.draw_text_ex(f, lv, rl.Vector2(x, y2), sz, 0, LABEL_WHITE)
-      x += measure_text_cached(f, lv, sz).x + 16
-      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), sz, 0, rl.GRAY)
-      x += measure_text_cached(f, wl, sz).x
-      rl.draw_text_ex(f, wv, rl.Vector2(x, y2), sz, 0, LABEL_WHITE)
+      vy = y2 + (lsz - vsz)
+      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, ll, lsz).x
+      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      x += measure_text_cached(f, lv, vsz).x + 16
+      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, wl, lsz).x
+      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(ui_state.experimental_mode)

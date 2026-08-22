@@ -12,7 +12,7 @@ Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue la
 
 Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
 
-Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday). Distance / distance-engaged, whole miles, no space before `mi`/`km`. Font steps down if the row would clip.
+Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday). Distance / distance-engaged, whole miles, no space before `mi`/`km`. Labels match the version row; values sit one step smaller. Both shrink if the row would clip.
 
 ## Toggles
 
