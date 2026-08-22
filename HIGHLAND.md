@@ -22,6 +22,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
 | `BuckleSound` | off | Same once-per-drive rule. |
+| Delorean (`/data/delorean_sound`) | off | 88mph clip on first Drive or Reverse. Once per drive. Personal use. |
 
 ## Screenshots
 

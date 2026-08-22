@@ -1,33 +1,32 @@
 # S3XYPilot
 
-Tesla-first fork for **stalkless Model 3 / Y**. A hobby project. The extras are small quality-of-life things a comma 4 Tesla driver will actually use — especially without stalks. No support. Install at your own risk.
+Tesla-first fork for **stalkless Model 3 / Y**. Hobby project. No support. Install at your own risk.
 
-Driven on a **2026 Model 3 Highland**.
-
-Based on openpilot 0.11.12. This branch versions as **0.11.12.24**.
+Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.12. This branch versions as **0.11.12.24**.
 
 Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
 
 ## Branches
 
-- **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot). Stock reference. Sync comma’s diffs here, then cherry-pick onto Highland.
-- **`Highland`** — S3XYPilot. Install this branch.
+- **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot) mirror.
+- **`Highland`** — S3XYPilot. Install this.
+- **`K5`** — comma master + Auto Lane Change (confirm slider). For the Kia.
 
-## What Highland adds
+## Highland
 
-Stalkless Teslas don’t have a cruise stalk. Highland puts **engage / disengage on the right scroll-wheel button** and keeps **cooperative steering** (virtual torque blending) on by default, so it still feels like stock comma.
+Stalkless Teslas have no cruise stalk. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
 
-- Footer shows **TACC** (Tesla cruise), **openpilot long**, or **experimental**
-- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm
-- Custom onroad UI — Tesla-blue lanes, compass, this-trip engaged %
-- Home — Today / Week miles and distance engaged %
-- 3s press on the display takes a screenshot (`/data/media/0/screenshots`, also the LAN dashboard **Shots** tab)
-- LAN dashboard at `http://<device-ip>:8088/` (local Wi-Fi, no login, alpha)
+- Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
+- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min
+- Custom onroad UI — Tesla-blue lanes, compass (fades with engage and with MAX speed)
+- Home — Today / Week miles and distance-engaged %
+- 3s display hold → screenshot (`/data/media/0/screenshots`)
+- LAN dashboard `http://<device-ip>:8088/` (local Wi-Fi, no login, alpha)
 - comma Connect livestream is **stock** (parked only)
 
-Theme extras, off by default: ludicrous overlay, buckle sound.
+Theme extras, **off by default**: ludicrous overlay, buckle sound, Delorean 88mph clip (first Drive or Reverse, once per drive).
 
-comma 4 UI. comma 3X may boot; the UI is not tailored to it.
+comma 4 UI. comma 3X may boot; UI is not tailored to it.
 
 ## Tesla compatibility
 
@@ -50,7 +49,7 @@ S / X / Cybertruck are not supported. 2026 Model Y is untested here.
 installer.comma.ai/Memberoffoxhound/Highland
 ```
 
-Username `Memberoffoxhound`, branch `Highland`. The GitHub repo is named `openpilot` so that installer URL works.
+Username `Memberoffoxhound`, branch `Highland`. Repo is named `openpilot` so that installer URL works.
 
 You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
 
