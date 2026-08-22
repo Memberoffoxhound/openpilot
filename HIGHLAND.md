@@ -5,7 +5,7 @@
 **Onroad UI:** Theme → onroad UI = stock (comma HUD) or custom. Custom adds an 8-way GPS heading over the confidence ball (`?` without a moving GPS fix) and drops the ball under it. Lane color only applies in custom. Theme → ludicrous plays a warp overlay + line on hard accel (off by default).
 
 
-Working branch for Tesla Model 3 Highland (2024+). Version **0.1.10.24**.
+Working branch for Tesla Model 3 Highland (2024+). Version **0.11.12.24**.
 
 Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works. The C4 home wordmark is **S3XYPilot** (Tesla Model 3 bars for the 3).
 

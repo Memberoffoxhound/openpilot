@@ -1,3 +1,7 @@
+Version 0.11.12.24 — S3XYPilot Highland (2026-08-22)
+========================================
+Connect-compatible version. Tesla fork on 0.11.12. See README.md.
+
 Version 0.11.2.1 — DELAMAIN (2026-08-20)
 ========================================
 Tesla Model 3 Highland fork on top of openpilot 0.11.2. See CHANGELOG.md.

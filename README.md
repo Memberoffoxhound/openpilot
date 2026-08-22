@@ -2,7 +2,7 @@
 
 Tesla-first fork for stalkless Model 3 / Y (Highland). Hobby project. No support. Install at your own risk.
 
-Based on openpilot 0.11.12. This branch versions as **0.1.10.24**.
+Based on openpilot 0.11.12. This branch versions as **0.11.12.24**.
 
 Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
 

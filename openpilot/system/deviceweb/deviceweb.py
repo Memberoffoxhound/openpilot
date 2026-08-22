@@ -115,7 +115,7 @@ def _info() -> dict:
   p = _params()
   info = {
     "name": "S3XYPilot",
-    "version": p.get("Version") or "0.1.10.24",
+    "version": p.get("Version") or "0.11.12.24",
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
     "remote": p.get("GitRemote") or "",
@@ -548,7 +548,7 @@ def _start_clip(body: dict) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-  server_version = "S3XYPilot/0.1.10.24"
+  server_version = "S3XYPilot/0.11.12.24"
 
   def log_message(self, fmt: str, *args) -> None:
     cloudlog.info("deviceweb " + (fmt % args))
