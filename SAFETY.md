@@ -1,4 +1,4 @@
-# S3XYPilot safety (comma server ban)
+# S3XYPilot safety (Do NOT Modify!)
 
 S3XYPilot is a surgical fork of [commaai/openpilot](https://github.com/commaai/openpilot).
 comma will **ban the dongle from comma.ai servers** if a fork breaks the rules in
