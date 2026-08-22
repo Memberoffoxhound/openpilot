@@ -180,6 +180,7 @@ class MiciHomeLayout(Widget):
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
     self._long_badge = LongModeBadge()
+    self._mads_icon = IconWidget("icons_mici/mads.png", (48, 48))
     self._egpu_icon = IconWidget("icons_mici/egpu_green.png", (50, 37))
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -192,6 +193,7 @@ class MiciHomeLayout(Widget):
       NetworkIcon(),
       self._long_badge,
       self._experimental_icon,
+      self._mads_icon,
       self._egpu_icon,
       self._egpu_icon_gray,
       self._body_icon,
@@ -330,7 +332,11 @@ class MiciHomeLayout(Widget):
       rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
+    op_long = bool(ui_state.has_longitudinal_control)
+    mads_on = op_long and ui_state.params.get_bool("Mads")
     self._experimental_icon.set_visible(ui_state.experimental_mode)
+    self._mads_icon.set_visible(mads_on)
+    self._mads_icon._opacity = 1.0 if ui_state.engaged else 0.45
     self._egpu_icon.set_visible(ui_state.sm["deviceState"].chestnutPresent and ui_state.usbgpu_compiled)
     self._egpu_icon_gray.set_visible(ui_state.sm["deviceState"].chestnutPresent and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)
