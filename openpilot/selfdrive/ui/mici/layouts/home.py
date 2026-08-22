@@ -149,10 +149,10 @@ class NetworkIcon(Widget):
 
 
 class LongModeBadge(Widget):
-  """Footer badge: Tesla or comma logo + vertical LONG. 48px tall like experimental."""
+  """Footer: Tesla T + TACC, or comma + LONG. 48px tall like experimental."""
   H = 48
   LOGO_W = 48
-  COL_W = 14
+  COL_W = 16
 
   def __init__(self):
     super().__init__()
@@ -168,23 +168,18 @@ class LongModeBadge(Widget):
 
   def _render(self, _) -> None:
     x, y = self.rect.x, self.rect.y
-    if self._op:
-      tex = self._comma
-      col = LABEL_WHITE
-    else:
-      tex = self._tesla
-      col = LABEL_WHITE
+    tex = self._comma if self._op else self._tesla
     tx = x + (self.LOGO_W - tex.width) / 2
     ty = y + (self.H - tex.height) / 2
     rl.draw_texture_ex(tex, rl.Vector2(tx, ty), 0.0, 1.0, rl.WHITE)
-    letters = "LONG"
+    letters = "LONG" if self._op else "TACC"
     lsz = 11
     sizes = [measure_text_cached(self._font, ch, lsz) for ch in letters]
     gap = max(0.0, (self.H - sum(s.y for s in sizes)) / (len(letters) + 1))
     lx = x + self.LOGO_W + 2
     cy = y + gap
     for ch, sz in zip(letters, sizes):
-      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, col)
+      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, LABEL_WHITE)
       cy += sz.y + gap
 
 
@@ -337,17 +332,25 @@ class MiciHomeLayout(Widget):
       self._branch_label.render()
 
       y2 = version_pos.y + self._date_label.font_size + 7
-      f36 = gui_app.font(FontWeight.ROMAN)
+      f = gui_app.font(FontWeight.ROMAN)
       ll, lv = self._last_txt
       wl, wv = self._week_txt
+      avail = self.rect.width - HOME_PADDING * 2
+      sz = 28
+      while sz > 20:
+        w = (measure_text_cached(f, ll, sz).x + measure_text_cached(f, lv, sz).x +
+             16 + measure_text_cached(f, wl, sz).x + measure_text_cached(f, wv, sz).x)
+        if w <= avail:
+          break
+        sz -= 1
       x = version_pos.x
-      rl.draw_text_ex(f36, ll, rl.Vector2(x, y2), 36, 0, rl.GRAY)
-      x += measure_text_cached(f36, ll, 36).x
-      rl.draw_text_ex(f36, lv, rl.Vector2(x, y2), 36, 0, LABEL_WHITE)
-      x += measure_text_cached(f36, lv, 36).x + 20
-      rl.draw_text_ex(f36, wl, rl.Vector2(x, y2), 36, 0, rl.GRAY)
-      x += measure_text_cached(f36, wl, 36).x
-      rl.draw_text_ex(f36, wv, rl.Vector2(x, y2), 36, 0, LABEL_WHITE)
+      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), sz, 0, rl.GRAY)
+      x += measure_text_cached(f, ll, sz).x
+      rl.draw_text_ex(f, lv, rl.Vector2(x, y2), sz, 0, LABEL_WHITE)
+      x += measure_text_cached(f, lv, sz).x + 16
+      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), sz, 0, rl.GRAY)
+      x += measure_text_cached(f, wl, sz).x
+      rl.draw_text_ex(f, wv, rl.Vector2(x, y2), sz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(ui_state.experimental_mode)
