@@ -184,10 +184,22 @@ class Soundd:
           self.oneshots.append([w, 0])
         _clear(BUCKLE_PLAY)
     live = []
+    sr = float(SAMPLE_RATE)
+    fi, fo = 0.20, 0.35
     for arr, i in self.oneshots:
       n = min(frames, len(arr) - i)
       if n > 0:
-        out[:n] += arr[i:i + n]
+        t0 = i / sr
+        dur = len(arr) / sr
+        # per-sample fade in/out
+        idx = np.arange(n, dtype=np.float32) + i
+        t = idx / sr
+        env = np.ones(n, dtype=np.float32)
+        if fi > 0:
+          env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
+        if fo > 0:
+          env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
+        out[:n] += arr[i:i + n] * env
         i += n
       if i < len(arr):
         live.append([arr, i])

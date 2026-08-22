@@ -14,7 +14,7 @@ from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, MouseEvent
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
-from openpilot.selfdrive.ui.layouts.settings.common import maybe_trigger_ludicrous
+from openpilot.selfdrive.ui.layouts.settings.common import maybe_trigger_ludicrous, draw_ludicrous_warp
 from openpilot.common.filter_simple import BounceFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -215,6 +215,7 @@ class AugmentedRoadView(CameraView):
 
     # Draw all UI overlays
     self._model_renderer.render(self._content_rect)
+    draw_ludicrous_warp(self._content_rect)
 
     # Fade out bottom of overlays for looks
     rl.draw_texture_ex(self._fade_texture, rl.Vector2(self._content_rect.x, self._content_rect.y), 0.0, 1.0, rl.WHITE)

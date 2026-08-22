@@ -1,9 +1,11 @@
+import json
 import math
 import os
 import time
 
 import pyray as rl
 from openpilot.cereal import messaging, log
+from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -81,6 +83,15 @@ _LUDI_MODE = "/data/ludicrous_mode"
 _LUDI_PLAY = "/data/ludicrous_play"
 _BUCKLE_MODE = "/data/buckle_sound"
 _BUCKLE_PLAY = "/data/buckle_play"
+TRIP_PATH = "/data/trip_meter.json"
+LUDI_WAVS = (
+  "/data/ludicrous.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
+)
+LUDI_GIFS = (
+  "/data/ludicrous.gif",
+  BASEDIR + "/openpilot/selfdrive/assets/images/ludicrous.gif",
+)
 
 
 def ludicrous_on() -> bool:
@@ -127,21 +138,38 @@ def request_buckle_play() -> None:
     f.write("1")
 
 
+def _first_file(paths) -> str | None:
+  for p in paths:
+    if os.path.isfile(p):
+      return p
+  return None
+
+
+def ludicrous_files_ok() -> bool:
+  return _first_file(LUDI_WAVS) is not None and _first_file(LUDI_GIFS) is not None
+
+
 LUDI_MS2 = 3.8
 LUDI_COOLDOWN = 45.0
+LUDI_FADE_IN = 0.20
+LUDI_FADE_OUT = 0.35
 _warp_t0: float | None = None
 _warp_last = 0.0
+_clip = None  # lazy {frames, w, h, dt, tex, idx}
 
 
-def trigger_ludicrous(*, preview: bool = False) -> None:
-  """Start warp + sound. Preview ignores cooldown and on-road."""
+def trigger_ludicrous(*, preview: bool = False) -> bool:
+  """Start clip + sound. Returns False if drop-in files are missing."""
   global _warp_t0, _warp_last
+  if not ludicrous_files_ok():
+    return False
   now = time.monotonic()
   if not preview and (now - _warp_last) < LUDI_COOLDOWN:
-    return
+    return True
   _warp_t0 = now
   _warp_last = now
   request_ludicrous_play()
+  return True
 
 
 def maybe_trigger_ludicrous() -> None:
@@ -155,39 +183,147 @@ def maybe_trigger_ludicrous() -> None:
     trigger_ludicrous(preview=False)
 
 
+def _load_clip():
+  global _clip
+  if _clip is not None:
+    return _clip
+  path = _first_file(LUDI_GIFS)
+  if path is None:
+    _clip = False
+    return None
+  try:
+    from PIL import Image
+    im = Image.open(path)
+    frames = []
+    n = getattr(im, "n_frames", 1)
+    for i in range(n):
+      im.seek(i)
+      frames.append(im.convert("RGB").tobytes())
+    w, h = im.size
+    img = rl.gen_image_color(w, h, rl.BLACK)
+    tex = rl.load_texture_from_image(img)
+    rl.unload_image(img)
+    _clip = {"frames": frames, "w": w, "h": h, "dt": 1.0 / 12.0, "tex": tex, "n": n}
+    return _clip
+  except Exception:
+    _clip = False
+    return None
+
+
+def _clip_alpha(t: float, dur: float) -> float:
+  if t < LUDI_FADE_IN:
+    return t / LUDI_FADE_IN
+  if t > dur - LUDI_FADE_OUT:
+    return max(0.0, (dur - t) / LUDI_FADE_OUT)
+  return 1.0
+
+
 def draw_ludicrous_warp(rect: rl.Rectangle) -> None:
+  """Center-crop GIF into the camera rect. Does not draw into the side panel."""
   global _warp_t0
   if _warp_t0 is None:
     return
-  t = time.monotonic() - _warp_t0
-  fade_in, hold, fade_out = 0.18, 0.95, 0.45
-  total = fade_in + hold + fade_out
-  if t > total:
+  clip = _load_clip()
+  if not clip:
     _warp_t0 = None
     return
-  if t < fade_in:
-    alpha = t / fade_in
-  elif t < fade_in + hold:
-    alpha = 1.0
-  else:
-    alpha = max(0.0, 1.0 - (t - fade_in - hold) / fade_out)
-  cx = rect.x + rect.width * 0.5
-  cy = rect.y + rect.height * 0.5
-  prog = min(1.0, t / (fade_in + hold))
-  span = max(rect.width, rect.height)
-  n = 56
-  for i in range(n):
-    ang = (i / n) * math.tau + t * 0.35
-    inner = 6.0 + prog * 28.0
-    outer = 40.0 + prog * span
-    c, s = math.cos(ang), math.sin(ang)
-    rl.draw_line_ex(
-      rl.Vector2(cx + inner * c, cy + inner * s),
-      rl.Vector2(cx + outer * c, cy + outer * s),
-      2.2 if i % 3 else 1.2,
-      rl.Color(210, 230, 255, int(200 * alpha)),
-    )
-  rl.draw_rectangle_rec(rect, rl.Color(8, 12, 28, int(40 * alpha)))
+  dur = clip["n"] * clip["dt"]
+  t = time.monotonic() - _warp_t0
+  if t > dur:
+    _warp_t0 = None
+    return
+  alpha = _clip_alpha(t, dur)
+  idx = min(clip["n"] - 1, int(t / clip["dt"]))
+  w, h = clip["w"], clip["h"]
+  try:
+    rl.update_texture(clip["tex"], clip["frames"][idx])
+  except Exception:
+    pass
+  # cover crop, pin slightly high so the subtitle stays
+  scale = max(rect.width / w, rect.height / h)
+  dw, dh = w * scale, h * scale
+  ox = rect.x - (dw - rect.width) * 0.5
+  oy = rect.y - (dh - rect.height) * 0.72
+  src = rl.Rectangle(0, 0, w, h)
+  dst = rl.Rectangle(ox, oy, dw, dh)
+  rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+  rl.draw_texture_pro(clip["tex"], src, dst, rl.Vector2(0, 0), 0.0, rl.Color(255, 255, 255, int(255 * alpha)))
+  rl.end_scissor_mode()
+
+
+def _sunday_id() -> str:
+  now = time.localtime()
+  sun = time.mktime(now) - ((now.tm_wday + 1) % 7) * 86400
+  st = time.localtime(sun)
+  return f"{st.tm_year:04d}-{st.tm_mon:02d}-{st.tm_mday:02d}"
+
+
+_trip: dict | None = None
+_trip_t = 0.0
+_trip_flush = 0.0
+
+
+def _load_trip() -> dict:
+  t = {"trip_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
+       "last_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
+       "week_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": ""}
+  try:
+    t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
+  except Exception:
+    pass
+  return t
+
+
+def _save_trip(t: dict) -> None:
+  tmp = TRIP_PATH + ".tmp"
+  with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(t, f)
+  os.replace(tmp, TRIP_PATH)
+
+
+def tick_trip() -> None:
+  """Last/Week from stock carState.vEgo + selfdriveState.enabled. UI-thread."""
+  global _trip, _trip_t, _trip_flush
+  now = time.monotonic()
+  if _trip is None:
+    _trip = _load_trip()
+    _trip_t = now
+  dt = min(1.0, max(0.0, now - _trip_t))
+  _trip_t = now
+  params = ui_state.params
+  route = params.get("CurrentRoute") or ""
+  wid = _sunday_id()
+  if _trip.get("week_id") != wid:
+    _trip["week_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
+    _trip["week_id"] = wid
+  if route and route != _trip.get("route"):
+    if _trip.get("tot_s", 0) > 5:
+      _trip["last_m"] = _trip["trip_m"]
+      _trip["last_eng_s"] = _trip["eng_s"]
+      _trip["last_tot_s"] = _trip["tot_s"]
+    _trip["trip_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
+    _trip["route"] = route
+    _save_trip(_trip)
+  try:
+    offroad = params.get_bool("IsOffroad")
+    cs_ok = ui_state.sm.recv_frame["carState"] > 0
+  except Exception:
+    offroad, cs_ok = True, False
+  if (not offroad) and cs_ok:
+    v = float(ui_state.sm["carState"].vEgo)
+    _trip["trip_m"] += v * dt
+    _trip["tot_s"] += dt
+    _trip["week_m"] += v * dt
+    _trip["week_tot_s"] += dt
+    try:
+      if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
+        _trip["eng_s"] += dt
+        _trip["week_eng_s"] += dt
+    except Exception:
+      pass
+  if now - _trip_flush > 1.0:
+    _save_trip(_trip)
+    _trip_flush = now
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
