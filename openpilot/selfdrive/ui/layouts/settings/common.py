@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import threading
 import time
 
 import pyray as rl
@@ -313,6 +314,30 @@ def _sunday_id() -> str:
 _trip: dict | None = None
 _trip_t = 0.0
 _trip_flush = 0.0
+_seed_started = False
+
+
+def _run_seed() -> None:
+  global _trip
+  try:
+    from openpilot.selfdrive.ui.layouts.settings.trip_seed import seed_week_today
+    s = seed_week_today()
+  except Exception:
+    cloudlog.exception("trip seed")
+    return
+  if not s or _trip is None:
+    return
+  _trip["week_m"] = float(s["week_m"])
+  _trip["week_eng_m"] = float(s["week_eng_m"])
+  _trip["today_m"] = float(s["today_m"])
+  _trip["today_eng_m"] = float(s["today_eng_m"])
+  _trip["week_id"] = s["week_id"]
+  _trip["day_id"] = s["day_id"]
+  _trip["seed"] = "qlog"
+  try:
+    _save_trip(_trip)
+  except Exception:
+    pass
 
 
 def _load_trip() -> dict:
@@ -324,7 +349,6 @@ def _load_trip() -> dict:
     t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
     pass
-  # One-time seed: old files only had time-based engaged seconds.
   for m_key, e_key, es_key, ts_key in (
     ("trip_m", "eng_m", "eng_s", "tot_s"),
     ("last_m", "last_eng_m", "last_eng_s", "last_tot_s"),
@@ -344,23 +368,18 @@ def _save_trip(t: dict) -> None:
 
 def tick_trip() -> None:
   """Today/Week from stock carState.vEgo + selfdriveState.enabled. UI-thread."""
-  global _trip, _trip_t, _trip_flush
+  global _trip, _trip_t, _trip_flush, _seed_started
   now = time.monotonic()
   if _trip is None:
     _trip = _load_trip()
     _trip_t = now
+    if not _seed_started:
+      _seed_started = True
+      threading.Thread(target=_run_seed, daemon=True).start()
   dt = min(1.0, max(0.0, now - _trip_t))
   _trip_t = now
   params = ui_state.params
   route = params.get("CurrentRoute") or ""
-  wid = _sunday_id()
-  if _trip.get("week_id") != wid:
-    _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
-    _trip["week_id"] = wid
-  did = _day_id()
-  if _trip.get("day_id") != did:
-    _trip["today_m"] = _trip["today_eng_m"] = 0.0
-    _trip["day_id"] = did
   if route and route != _trip.get("route"):
     _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
     _trip["route"] = route

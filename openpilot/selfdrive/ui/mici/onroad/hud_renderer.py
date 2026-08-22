@@ -276,8 +276,12 @@ class HudRenderer(Widget):
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
       rl.draw_texture_ex(self._txt_exclamation_point, rl.Vector2(exclamation_pos_x, exclamation_pos_y), 0.0, 1.0, rl.WHITE)
 
+  def _right_hud_cx(self, rect: rl.Rectangle) -> float:
+    # Shared horizontal center for compass and engaged % (50px, 16px inset).
+    return rect.x + rect.width - 16 - 25
+
   def _draw_compass(self, rect: rl.Rectangle) -> None:
-    # Top-right of the video, same row as DM (y+10, 16px inset). Stays in content_rect.
+    # Top-right of the video, same row as DM. Stays in content_rect.
     if not custom_onroad_ui():
       return
     a = int(self._wheel_alpha_filter.x)
@@ -291,8 +295,9 @@ class HudRenderer(Widget):
     if sz.x > 50:
       size = int(size * 50 / sz.x)
       sz = measure_text_cached(self._font_display, letter, size)
-    cx = rect.x + rect.width - 16 - 25
-    cy = rect.y + 10 + 25
+    cx = self._right_hud_cx(rect)
+    # DM bug is 60px at y+10. Compass is 50px; share the same vertical center.
+    cy = rect.y + 10 + 30
     rl.draw_text_ex(
       self._font_display, letter,
       rl.Vector2(cx - sz.x / 2, cy - sz.y / 2),
@@ -300,7 +305,7 @@ class HudRenderer(Widget):
     )
 
   def _draw_engaged_pct(self, rect: rl.Rectangle) -> None:
-    # Wheel-sized 50x50, bottom-right of the video. This trip only.
+    # 50px tall: number+% left, ENGD vertical on the right. Same cx as compass.
     if not custom_onroad_ui():
       return
     a = int(self._wheel_alpha_filter.x)
@@ -308,32 +313,29 @@ class HudRenderer(Widget):
       return
     pct = f"{trip_pct()}%"
     box = 50.0
-    cx = rect.x + rect.width - 21 - box / 2
+    cx = self._right_hud_cx(rect)
     cy = rect.y + rect.height - 14 - box / 2 + self._wheel_y_filter.x
-    vsz = FONT_SIZES.max_speed
+    letters = "ENGD"
+    lsz = 11
+    sizes = [measure_text_cached(self._font_semi_bold, ch, lsz) for ch in letters]
+    col_w = max(s.x for s in sizes) + 1.0
+    vsz = 46
     vs = measure_text_cached(self._font_display, pct, vsz)
-    while (vs.x > box or vs.y > box * 0.7) and vsz > 12:
+    while (vs.y > box) and vsz > 20:
       vsz -= 1
       vs = measure_text_cached(self._font_display, pct, vsz)
-    label = "ENGD"
-    lsz = 12
-    ls = measure_text_cached(self._font_semi_bold, label, lsz)
-    while ls.x > min(box, vs.x + 2) and lsz > 6:
-      lsz -= 1
-      ls = measure_text_cached(self._font_semi_bold, label, lsz)
-    gap = 1.0
-    total = vs.y + gap + ls.y
-    if total > box:
-      scale = box / total
-      vsz = max(10, int(vsz * scale))
-      lsz = max(6, int(lsz * scale))
-      vs = measure_text_cached(self._font_display, pct, vsz)
-      ls = measure_text_cached(self._font_semi_bold, label, lsz)
-      total = vs.y + gap + ls.y
-    top = cy - total / 2
+    gap = 3.0
+    total_w = vs.x + gap + col_w
+    left = cx - total_w / 2
     col = rl.Color(255, 255, 255, a)
-    rl.draw_text_ex(self._font_display, pct, rl.Vector2(cx - vs.x / 2, top), vsz, 0, col)
-    rl.draw_text_ex(self._font_semi_bold, label, rl.Vector2(cx - ls.x / 2, top + vs.y + gap), lsz, 0, col)
+    rl.draw_text_ex(self._font_display, pct, rl.Vector2(left, cy - vs.y / 2), vsz, 0, col)
+    letter_h = sum(s.y for s in sizes)
+    lg = max(0.0, (box - letter_h) / (len(letters) + 1))
+    ly = cy - box / 2 + lg
+    lx = left + vs.x + gap
+    for ch, sz in zip(letters, sizes):
+      rl.draw_text_ex(self._font_semi_bold, ch, rl.Vector2(lx + (col_w - sz.x) / 2, ly), lsz, 0, col)
+      ly += sz.y + lg
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""
