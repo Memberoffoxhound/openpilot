@@ -37,6 +37,7 @@ USER_AGENT = f"AGNOSSetup-{HARDWARE.get_os_version()}"
 
 INSTALLER_DESTINATION_PATH = "/tmp/installer"
 INSTALLER_URL_PATH = "/tmp/installer_url"
+INSTALLER_MODE_PATH = "/tmp/installer_mode"
 
 
 class NetworkConnectivityMonitor:
@@ -169,6 +170,50 @@ class SoftwareSelectionPage(NavWidget):
     self._custom_software_slider.render(custom_software_rect)
 
 
+class InstallModePage(NavWidget):
+  def __init__(self, simple_callback: Callable, verbose_callback: Callable,
+               back_callback: Callable | None = None):
+    super().__init__()
+    self.set_back_callback(back_callback)
+
+    self._simple_slider = self._child(LargerSlider("slide for\nsimple mode", simple_callback))
+    self._simple_slider.set_enabled(lambda: self.enabled and not self.is_dismissing)
+    self._verbose_slider = self._child(LargerSlider("slide for\nverbose mode", verbose_callback, green=False, shimmer_offset=0.4))
+    self._verbose_slider.set_enabled(lambda: self.enabled and not self.is_dismissing)
+
+  def show_event(self):
+    super().show_event()
+
+  def _update_state(self):
+    super()._update_state()
+    if self.is_dismissing:
+      self.reset()
+
+  def reset(self):
+    self._simple_slider.reset()
+    self._verbose_slider.reset()
+
+  def _render(self, rect: rl.Rectangle):
+    self._simple_slider.set_opacity(1.0 - self._verbose_slider.slider_percentage)
+    self._verbose_slider.set_opacity(1.0 - self._simple_slider.slider_percentage)
+
+    simple_rect = rl.Rectangle(
+      rect.x + (rect.width - self._simple_slider.rect.width) / 2,
+      rect.y,
+      self._simple_slider.rect.width,
+      rect.height / 2,
+    )
+    self._simple_slider.render(simple_rect)
+
+    verbose_rect = rl.Rectangle(
+      rect.x + (rect.width - self._verbose_slider.rect.width) / 2,
+      rect.y + rect.height / 2,
+      self._verbose_slider.rect.width,
+      rect.height / 2,
+    )
+    self._verbose_slider.render(verbose_rect)
+
+
 class CustomSoftwareWarningPage(NavScroller):
   def __init__(self, continue_callback: Callable, back_callback: Callable):
     super().__init__()
@@ -196,9 +241,14 @@ class DownloadingPage(NavWidget):
 
     self._title_label = UnifiedLabel("downloading...", 64, text_color=rl.Color(255, 255, 255, int(255 * 0.9)),
                                      font_weight=FontWeight.DISPLAY)
+    self._status_label = UnifiedLabel("", 28, text_color=rl.Color(255, 255, 255, int(255 * 0.9 * 0.65)),
+                                      font_weight=FontWeight.ROMAN)
+    self._detail_label = UnifiedLabel("", 22, text_color=rl.Color(255, 255, 255, int(255 * 0.9 * 0.5)),
+                                      font_weight=FontWeight.ROMAN)
     self._progress_label = UnifiedLabel("", 132, text_color=rl.Color(255, 255, 255, int(255 * 0.9 * 0.65)),
                                         font_weight=FontWeight.ROMAN, alignment_vertical=rl.GuiTextAlignmentVertical.TEXT_ALIGN_BOTTOM)
     self._progress = 0
+    self._verbose = False
 
   def _back_enabled(self) -> bool:
     return False
@@ -208,25 +258,56 @@ class DownloadingPage(NavWidget):
     self._nav_bar._alpha = 0.0  # not dismissable
     self.set_progress(0)
 
-  def set_progress(self, progress: int):
+  def set_verbose(self, verbose: bool):
+    self._verbose = verbose
+
+  def set_progress(self, progress: int, status: str | None = None, detail: str | None = None):
     self._progress = progress
     self._progress_label.set_text(f"{progress}%")
+    if status is not None:
+      self._status_label.set_text(status)
+    if detail is not None:
+      self._detail_label.set_text(detail)
 
   def _render(self, rect: rl.Rectangle):
     rl.draw_rectangle_rec(rect, rl.BLACK)
+    title_size = 36 if self._verbose else 64
+    self._title_label.set_font_size(title_size)
     self._title_label.render(rl.Rectangle(
       rect.x + 12,
       rect.y + 2,
       rect.width,
-      64,
+      title_size,
     ))
 
-    self._progress_label.render(rl.Rectangle(
-      rect.x + 12,
-      rect.y + 18,
-      rect.width,
-      rect.height,
-    ))
+    if self._verbose:
+      self._progress_label.set_font_size(72)
+      self._status_label.render(rl.Rectangle(
+        rect.x + 12,
+        rect.y + 42,
+        rect.width - 24,
+        32,
+      ))
+      self._progress_label.render(rl.Rectangle(
+        rect.x + 12,
+        rect.y + 70,
+        rect.width,
+        80,
+      ))
+      self._detail_label.render(rl.Rectangle(
+        rect.x + 12,
+        rect.y + 160,
+        rect.width - 24,
+        60,
+      ))
+    else:
+      self._progress_label.set_font_size(132)
+      self._progress_label.render(rl.Rectangle(
+        rect.x + 12,
+        rect.y + 18,
+        rect.width,
+        rect.height,
+      ))
 
 
 class FailedPage(NavScroller):
@@ -434,8 +515,11 @@ class Setup(Widget):
     super().__init__()
     self.download_url = ""
     self.download_progress = 0
+    self.download_status = ""
+    self.download_detail = ""
     self.download_thread = None
     self._download_failed_reason: str | None = None
+    self._verbose = False
 
     self._network_monitor = NetworkConnectivityMonitor()
     self._network_monitor.start()
@@ -456,11 +540,13 @@ class Setup(Widget):
     self._custom_software_warning_page = CustomSoftwareWarningPage(lambda: self._push_network_setup(True), self._pop_to_software_selection)
 
     self._downloading_page = DownloadingPage()
+    self._install_mode_page = InstallModePage(lambda: self._start_download(False),
+                                              lambda: self._start_download(True))
 
     gui_app.add_nav_stack_tick(self._nav_stack_tick)
 
   def _nav_stack_tick(self):
-    self._downloading_page.set_progress(self.download_progress)
+    self._downloading_page.set_progress(self.download_progress, self.download_status, self.download_detail)
 
     if self._download_failed_reason is not None:
       reason = self._download_failed_reason
@@ -502,7 +588,21 @@ class Setup(Widget):
 
     parsed = urlparse(url, scheme='https')
     self.download_url = (urlparse(f"https://{url}") if not parsed.netloc else parsed).geturl()
+    self._install_mode_page.reset()
+    gui_app.push_widget(self._install_mode_page)
+
+  def _start_download(self, verbose: bool):
+    self._verbose = verbose
     self.download_progress = 0
+    self.download_status = "connecting"
+    self.download_detail = self.download_url.replace("https://", "", 1)
+    self._downloading_page.set_verbose(verbose)
+
+    try:
+      with open(INSTALLER_MODE_PATH, "w") as f:
+        f.write("verbose\n" if verbose else "simple\n")
+    except OSError:
+      pass
 
     def start_download():
       self.download_thread = threading.Thread(target=self._download_thread, daemon=True)
@@ -516,6 +616,8 @@ class Setup(Widget):
       import tempfile
 
       fd, tmpfile = tempfile.mkstemp(prefix="installer_")
+      self.download_status = "connecting"
+      self.download_detail = self.download_url.replace("https://", "", 1)
 
       headers = {"User-Agent": USER_AGENT,
                  "X-openpilot-serial": HARDWARE.get_serial(),
@@ -526,6 +628,7 @@ class Setup(Widget):
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
         block_size = 8192
+        self.download_status = "downloading installer"
 
         while True:
           buffer = response.read(block_size)
@@ -537,7 +640,11 @@ class Setup(Widget):
 
           if total_size:
             self.download_progress = int(downloaded * 100 / total_size)
+            self.download_detail = f"{downloaded / (1024 * 1024):.1f} MB / {total_size / (1024 * 1024):.1f} MB"
+          else:
+            self.download_detail = f"{downloaded / (1024 * 1024):.1f} MB"
 
+      self.download_status = "checking installer"
       is_elf = False
       with open(tmpfile, 'rb') as f:
         header = f.read(4)
@@ -550,6 +657,9 @@ class Setup(Widget):
       # NOTE: currently unused, for future logging
       with open(INSTALLER_URL_PATH, "w") as f:
         f.write(self.download_url)
+
+      self.download_status = "starting installer"
+      self.download_progress = 100
 
       # AGNOS might try to execute the installer before this process exits.
       # Therefore, important to close the fd before renaming the installer.

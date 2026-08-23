@@ -35,6 +35,7 @@ USER_AGENT = f"AGNOSSetup-{HARDWARE.get_os_version()}"
 
 INSTALLER_DESTINATION_PATH = "/tmp/installer"
 INSTALLER_URL_PATH = "/tmp/installer_url"
+INSTALLER_MODE_PATH = "/tmp/installer_mode"
 
 
 class SetupState(IntEnum):
@@ -46,6 +47,7 @@ class SetupState(IntEnum):
   DOWNLOADING = 5
   DOWNLOAD_FAILED = 6
   CUSTOM_SOFTWARE_WARNING = 7
+  INSTALL_MODE = 8
 
 
 class Setup(Widget):
@@ -60,7 +62,10 @@ class Setup(Widget):
     self.failed_reason = ""
     self.download_url = ""
     self.download_progress = 0
+    self.download_status = ""
+    self.download_detail = ""
     self.download_thread = None
+    self._verbose = False
     self.wifi_ui = WifiManagerUI(WifiManager())
     self.keyboard = Keyboard()
     self.selected_radio = None
@@ -124,6 +129,20 @@ class Setup(Widget):
     self._custom_software_warning_body_scroll_panel = GuiScrollPanel()
 
     self._downloading_body_label = Label("Downloading...", TITLE_FONT_SIZE, FontWeight.MEDIUM, text_padding=20)
+    self._downloading_status_label = Label("", BODY_FONT_SIZE, text_padding=20)
+    self._downloading_detail_label = Label("", 52, FontWeight.NORMAL, text_padding=20)
+    self._downloading_progress_label = Label("", TITLE_FONT_SIZE, FontWeight.MEDIUM, text_padding=20)
+
+    self._install_mode_title_label = Label("Choose Install Mode", TITLE_FONT_SIZE, FontWeight.BOLD,
+                                           rl.GuiTextAlignment.TEXT_ALIGN_LEFT, text_padding=20)
+    self._install_mode_body_label = Label("Simple shows percent. Verbose shows each step.", BODY_FONT_SIZE,
+                                          text_alignment=rl.GuiTextAlignment.TEXT_ALIGN_LEFT, text_padding=20)
+    self._install_mode_simple_button = ButtonRadio("Simple", self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
+    self._install_mode_verbose_button = ButtonRadio("Verbose", self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
+    self._install_mode_continue_button = Button("Continue", self._install_mode_continue_button_callback,
+                                                button_style=ButtonStyle.PRIMARY)
+    self._install_mode_continue_button.set_enabled(False)
+    self._install_mode_back_button = Button("Back", self._install_mode_back_button_callback)
 
     try:
       with open("/sys/class/hwmon/hwmon1/in1_input") as f:
@@ -146,6 +165,8 @@ class Setup(Widget):
       self.render_custom_software_warning(rect)
     elif self.state == SetupState.CUSTOM_SOFTWARE:
       self.render_custom_software()
+    elif self.state == SetupState.INSTALL_MODE:
+      self.render_install_mode(rect)
     elif self.state == SetupState.DOWNLOADING:
       self.render_downloading(rect)
     elif self.state == SetupState.DOWNLOAD_FAILED:
@@ -284,9 +305,64 @@ class Setup(Widget):
     self._software_selection_back_button.render(rl.Rectangle(rect.x + MARGIN, button_y, button_width, BUTTON_HEIGHT))
     self._software_selection_continue_button.render(rl.Rectangle(rect.x + MARGIN + button_width + BUTTON_SPACING, button_y, button_width, BUTTON_HEIGHT))
 
+  def _install_mode_back_button_callback(self):
+    self.state = SetupState.SOFTWARE_SELECTION
+
+  def _install_mode_continue_button_callback(self):
+    self._verbose = self._install_mode_verbose_button.selected
+    try:
+      with open(INSTALLER_MODE_PATH, "w") as f:
+        f.write("verbose\n" if self._verbose else "simple\n")
+    except OSError:
+      pass
+    self._begin_download()
+
+  def render_install_mode(self, rect: rl.Rectangle):
+    self._install_mode_title_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + MARGIN, rect.width - MARGIN * 2,
+                                                       TITLE_FONT_SIZE * FONT_SCALE))
+    self._install_mode_body_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + TITLE_FONT_SIZE * FONT_SCALE + MARGIN,
+                                                      rect.width - MARGIN * 2, BODY_FONT_SIZE * FONT_SCALE))
+
+    radio_height = 230
+    radio_spacing = 30
+    self._install_mode_continue_button.set_enabled(False)
+
+    simple_rect = rl.Rectangle(rect.x + MARGIN, rect.y + TITLE_FONT_SIZE * FONT_SCALE + MARGIN * 2 + BODY_FONT_SIZE * FONT_SCALE,
+                               rect.width - MARGIN * 2, radio_height)
+    self._install_mode_simple_button.render(simple_rect)
+    if self._install_mode_simple_button.selected:
+      self._install_mode_continue_button.set_enabled(True)
+      self._install_mode_verbose_button.selected = False
+
+    verbose_rect = rl.Rectangle(rect.x + MARGIN, simple_rect.y + radio_height + radio_spacing, rect.width - MARGIN * 2, radio_height)
+    self._install_mode_verbose_button.render(verbose_rect)
+    if self._install_mode_verbose_button.selected:
+      self._install_mode_continue_button.set_enabled(True)
+      self._install_mode_simple_button.selected = False
+
+    button_width = (rect.width - BUTTON_SPACING - MARGIN * 2) / 2
+    button_y = rect.height - BUTTON_HEIGHT - MARGIN
+    self._install_mode_back_button.render(rl.Rectangle(rect.x + MARGIN, button_y, button_width, BUTTON_HEIGHT))
+    self._install_mode_continue_button.render(rl.Rectangle(rect.x + MARGIN + button_width + BUTTON_SPACING, button_y,
+                                                           button_width, BUTTON_HEIGHT))
+
   def render_downloading(self, rect: rl.Rectangle):
-    self._downloading_body_label.render(rl.Rectangle(rect.x, rect.y + rect.height / 2 - TITLE_FONT_SIZE * FONT_SCALE / 2, rect.width,
+    if not self._verbose:
+      self._downloading_body_label.render(rl.Rectangle(rect.x, rect.y + rect.height / 2 - TITLE_FONT_SIZE * FONT_SCALE / 2,
+                                                       rect.width, TITLE_FONT_SIZE * FONT_SCALE))
+      return
+
+    self._downloading_body_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + 180, rect.width - MARGIN * 2,
                                                      TITLE_FONT_SIZE * FONT_SCALE))
+    self._downloading_status_label.set_text(self.download_status)
+    self._downloading_status_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + 180 + TITLE_FONT_SIZE * FONT_SCALE + 40,
+                                                       rect.width - MARGIN * 2, BODY_FONT_SIZE * FONT_SCALE))
+    self._downloading_progress_label.set_text(f"{self.download_progress}%")
+    self._downloading_progress_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + 180 + TITLE_FONT_SIZE * FONT_SCALE + BODY_FONT_SIZE * FONT_SCALE + 80,
+                                                         rect.width - MARGIN * 2, TITLE_FONT_SIZE * FONT_SCALE))
+    self._downloading_detail_label.set_text(self.download_detail)
+    self._downloading_detail_label.render(rl.Rectangle(rect.x + MARGIN, rect.y + rect.height - BUTTON_HEIGHT - MARGIN - 120,
+                                                       rect.width - MARGIN * 2, 80))
 
   def render_download_failed(self, rect: rl.Rectangle):
     self._download_failed_title_label.render(rl.Rectangle(rect.x + 117, rect.y + 185, rect.width - 117, TITLE_FONT_SIZE * FONT_SCALE))
@@ -350,9 +426,16 @@ class Setup(Widget):
 
     parsed = urlparse(url, scheme='https')
     self.download_url = (urlparse(f"https://{url}") if not parsed.netloc else parsed).geturl()
+    self._install_mode_simple_button.selected = False
+    self._install_mode_verbose_button.selected = False
+    self._install_mode_continue_button.set_enabled(False)
+    self.state = SetupState.INSTALL_MODE
 
+  def _begin_download(self):
+    self.download_progress = 0
+    self.download_status = "Connecting..."
+    self.download_detail = self.download_url.replace("https://", "", 1)
     self.state = SetupState.DOWNLOADING
-
     self.download_thread = threading.Thread(target=self._download_thread, daemon=True)
     self.download_thread.start()
 
@@ -366,11 +449,13 @@ class Setup(Widget):
                  "X-openpilot-serial": HARDWARE.get_serial(),
                  "X-openpilot-device-type": HARDWARE.get_device_type()}
       req = urllib.request.Request(self.download_url, headers=headers)
+      self.download_status = "Connecting..."
 
       with open(tmpfile, 'wb') as f, urllib.request.urlopen(req, timeout=30) as response:
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
         block_size = 8192
+        self.download_status = "Downloading installer"
 
         while True:
           buffer = response.read(block_size)
@@ -382,6 +467,11 @@ class Setup(Widget):
 
           if total_size:
             self.download_progress = int(downloaded * 100 / total_size)
+            self.download_detail = f"{downloaded / (1024 * 1024):.1f} MB / {total_size / (1024 * 1024):.1f} MB"
+          else:
+            self.download_detail = f"{downloaded / (1024 * 1024):.1f} MB"
+
+      self.download_status = "Checking installer"
 
       is_elf = False
       with open(tmpfile, 'rb') as f:
@@ -391,6 +481,9 @@ class Setup(Widget):
       if not is_elf:
         self.download_failed(self.download_url, "No custom software found at this URL.")
         return
+
+      self.download_status = "Starting installer"
+      self.download_progress = 100
 
       # AGNOS might try to execute the installer before this process exits.
       # Therefore, important to close the fd before renaming the installer.

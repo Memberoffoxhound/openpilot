@@ -1,7 +1,14 @@
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cctype>
+#include <deque>
 #include <fstream>
 #include <map>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+#include <vector>
 
 #include "common/swaglog.h"
 #include "common/util.h"
@@ -24,6 +31,7 @@ const std::string BRANCH_STR = get_str(BRANCH "?                                
 
 #define GIT_SSH_URL "git@github.com:commaai/openpilot.git"
 #define CONTINUE_PATH "/data/continue.sh"
+#define INSTALLER_MODE_PATH "/tmp/installer_mode"
 
 const std::string INSTALL_PATH = "/data/openpilot";
 const std::string VALID_CACHE_PATH = "/data/.openpilot_cache";
@@ -50,6 +58,11 @@ const bool tici_device = Hardware::get_device_type() == cereal::InitData::Device
 
 std::vector<std::string> tici_prebuilt_branches = {"release3", "release-tici", "release3-staging", "nightly", "nightly-dev"};
 std::string migrated_branch;
+
+bool g_verbose = false;
+int g_progress = 0;
+std::string g_status;
+std::deque<std::string> g_log;
 
 void branchMigration() {
   migrated_branch = BRANCH_STR;
@@ -80,6 +93,136 @@ void run(const char* cmd) {
   assert(err == 0);
 }
 
+std::string trimCopy(std::string s) {
+  s.erase(std::remove(s.begin(), s.end(), '\r'), s.end());
+  s.erase(std::remove(s.begin(), s.end(), '\n'), s.end());
+  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+    s.pop_back();
+  }
+  size_t i = 0;
+  while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
+    i++;
+  }
+  return s.substr(i);
+}
+
+std::string ellipsize(const std::string &s, size_t max_chars) {
+  if (s.size() <= max_chars) {
+    return s;
+  }
+  if (max_chars < 2) {
+    return s.substr(0, max_chars);
+  }
+  return s.substr(0, max_chars - 1) + ".";
+}
+
+void writeInstallerMode(bool verbose) {
+  std::ofstream f(INSTALLER_MODE_PATH);
+  if (f) {
+    f << (verbose ? "verbose" : "simple") << "\n";
+  }
+}
+
+void setStatus(const std::string &status) {
+  g_status = status;
+}
+
+void pushLog(const std::string &line) {
+  std::string cleaned = trimCopy(line);
+  if (cleaned.empty()) {
+    return;
+  }
+  if (!g_log.empty() && g_log.back() == cleaned) {
+    return;
+  }
+  g_log.push_back(cleaned);
+  while (g_log.size() > 5) {
+    g_log.pop_front();
+  }
+}
+
+Color white90() {
+  return (Color){255, 255, 255, (unsigned char)(255 * 0.9)};
+}
+
+Color white65() {
+  return (Color){255, 255, 255, (unsigned char)(255 * 0.9 * 0.65)};
+}
+
+void renderSimpleProgress(int progress) {
+  if (tici_device) {
+    DrawTextEx(font_inter, "Installing...", (Vector2){150, 290}, 110, 0, WHITE);
+    Rectangle bar = {150, 570, (float)GetScreenWidth() - 300, 72};
+    DrawRectangleRec(bar, (Color){41, 41, 41, 255});
+    progress = std::clamp(progress, 0, 100);
+    bar.width *= progress / 100.0f;
+    DrawRectangleRec(bar, (Color){70, 91, 234, 255});
+    DrawTextEx(font_inter, (std::to_string(progress) + "%").c_str(), (Vector2){150, 670}, 85, 0, WHITE);
+  } else {
+    DrawTextEx(font_display, "installing...", (Vector2){12, 0}, 77, 0, white90());
+    const std::string percent_str = std::to_string(progress) + "%";
+    DrawTextEx(font_inter, percent_str.c_str(), (Vector2){12, (float)(GetScreenHeight() - 154 + 20)}, 154, 0, white65());
+  }
+}
+
+void renderVerboseProgress(int progress) {
+  progress = std::clamp(progress, 0, 100);
+  const std::string percent_str = std::to_string(progress) + "%";
+  const std::string status = g_status.empty() ? (tici_device ? "Working" : "working") : g_status;
+
+  if (tici_device) {
+    DrawTextEx(font_display, "Installing...", (Vector2){150, 160}, 90, 0, WHITE);
+    DrawTextEx(font_inter, status.c_str(), (Vector2){150, 280}, 56, 0, white90());
+
+    Rectangle bar = {150, 380, (float)GetScreenWidth() - 300, 56};
+    DrawRectangleRec(bar, (Color){41, 41, 41, 255});
+    Rectangle fill = bar;
+    fill.width *= progress / 100.0f;
+    DrawRectangleRec(fill, (Color){70, 91, 234, 255});
+    DrawTextEx(font_inter, percent_str.c_str(), (Vector2){150, 460}, 70, 0, WHITE);
+
+    float y = 560;
+    const int log_size = 36;
+    const size_t max_chars = 70;
+    for (const auto &line : g_log) {
+      DrawTextEx(font_roman, ellipsize(line, max_chars).c_str(), (Vector2){150, y}, log_size, 0, white65());
+      y += 48;
+    }
+  } else {
+    // comma 4 is 536x240. Keep type large enough to read at arm's length.
+    DrawTextEx(font_display, "installing...", (Vector2){12, 2}, 32, 0, white90());
+    DrawTextEx(font_inter, ellipsize(status, 28).c_str(), (Vector2){12, 36}, 22, 0, white65());
+
+    Rectangle bar = {12, 64, (float)GetScreenWidth() - 24, 10};
+    DrawRectangleRec(bar, (Color){41, 41, 41, 255});
+    Rectangle fill = bar;
+    fill.width *= progress / 100.0f;
+    DrawRectangleRec(fill, (Color){70, 91, 234, 255});
+
+    DrawTextEx(font_inter, percent_str.c_str(), (Vector2){12, 78}, 40, 0, white90());
+
+    float y = 124;
+    const int log_size = 16;
+    const size_t max_chars = 42;
+    for (const auto &line : g_log) {
+      DrawTextEx(font_roman, ellipsize(line, max_chars).c_str(), (Vector2){12, y}, log_size, 0, white65());
+      y += 18;
+    }
+  }
+}
+
+void renderProgress(int progress) {
+  g_progress = progress;
+  BeginDrawing();
+    ClearBackground(BLACK);
+    if (g_verbose) {
+      renderVerboseProgress(progress);
+    } else {
+      renderSimpleProgress(progress);
+    }
+  EndDrawing();
+}
+
 void finishInstall() {
   BeginDrawing();
     ClearBackground(BLACK);
@@ -88,41 +231,114 @@ void finishInstall() {
       int text_width = MeasureText(m, FONT_SIZE);
       DrawTextEx(font_display, m, (Vector2){(float)(GetScreenWidth() - text_width)/2 + FONT_SIZE, (float)(GetScreenHeight() - FONT_SIZE)/2}, FONT_SIZE, 0, WHITE);
     } else {
-      DrawTextEx(font_display, "finishing setup", (Vector2){12, 0}, 77, 0, (Color){255, 255, 255, (unsigned char)(255 * 0.9)});
+      DrawTextEx(font_display, "finishing setup", (Vector2){12, 0}, 77, 0, white90());
     }
   EndDrawing();
   util::sleep_for(60 * 1000);
 }
 
-void renderProgress(int progress) {
-  BeginDrawing();
-    ClearBackground(BLACK);
+void drawModeButton(Rectangle rec, const char *title, const char *subtitle, bool pressed) {
+  Color fill = pressed ? (Color){70, 91, 234, 255} : (Color){41, 41, 41, 255};
+  DrawRectangleRounded(rec, 0.12f, 8, fill);
+  if (tici_device) {
+    DrawTextEx(font_display, title, (Vector2){rec.x + 40, rec.y + rec.height / 2 - 70}, 64, 0, WHITE);
+    DrawTextEx(font_inter, subtitle, (Vector2){rec.x + 40, rec.y + rec.height / 2 + 8}, 40, 0, white65());
+  } else {
+    DrawTextEx(font_display, title, (Vector2){rec.x + 16, rec.y + 14}, 28, 0, WHITE);
+    DrawTextEx(font_inter, subtitle, (Vector2){rec.x + 16, rec.y + 48}, 18, 0, white65());
+  }
+}
+
+bool loadInstallerModeFromDisk() {
+  std::ifstream f(INSTALLER_MODE_PATH);
+  if (!f) {
+    return false;
+  }
+  std::string mode;
+  f >> mode;
+  if (mode == "verbose") {
+    g_verbose = true;
+    return true;
+  }
+  if (mode == "simple") {
+    g_verbose = false;
+    return true;
+  }
+  return false;
+}
+
+void promptInstallMode() {
+  if (loadInstallerModeFromDisk()) {
+    return;
+  }
+
+  SetTargetFPS(30);
+  while (!WindowShouldClose()) {
+    const int w = GetScreenWidth();
+    const int h = GetScreenHeight();
+    Rectangle simple_rec;
+    Rectangle verbose_rec;
+
     if (tici_device) {
-      DrawTextEx(font_inter, "Installing...", (Vector2){150, 290}, 110, 0, WHITE);
-      Rectangle bar = {150, 570, (float)GetScreenWidth() - 300, 72};
-      DrawRectangleRec(bar, (Color){41, 41, 41, 255});
-      progress = std::clamp(progress, 0, 100);
-      bar.width *= progress / 100.0f;
-      DrawRectangleRec(bar, (Color){70, 91, 234, 255});
-      DrawTextEx(font_inter, (std::to_string(progress) + "%").c_str(), (Vector2){150, 670}, 85, 0, WHITE);
+      float btn_w = (w - 150 * 2 - 40) / 2.0f;
+      float btn_h = 280;
+      float y = 420;
+      simple_rec = {150, y, btn_w, btn_h};
+      verbose_rec = {150 + btn_w + 40, y, btn_w, btn_h};
     } else {
-      DrawTextEx(font_display, "installing...", (Vector2){12, 0}, 77, 0, (Color){255, 255, 255, (unsigned char)(255 * 0.9)});
-      const std::string percent_str = std::to_string(progress) + "%";
-      DrawTextEx(font_inter, percent_str.c_str(), (Vector2){12, (float)(GetScreenHeight() - 154 + 20)}, 154, 0,
-                 (Color){255, 255, 255, (unsigned char)(255 * 0.9 * 0.65)});
+      float btn_w = w - 24;
+      float btn_h = 78;
+      simple_rec = {12, 56, btn_w, btn_h};
+      verbose_rec = {12, 144, btn_w, btn_h};
     }
 
-  EndDrawing();
+    Vector2 pos = GetMousePosition();
+    bool tap = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    bool simple_hot = CheckCollisionPointRec(pos, simple_rec);
+    bool verbose_hot = CheckCollisionPointRec(pos, verbose_rec);
+
+    BeginDrawing();
+      ClearBackground(BLACK);
+      if (tici_device) {
+        DrawTextEx(font_display, "Choose install mode", (Vector2){150, 200}, 90, 0, WHITE);
+        DrawTextEx(font_inter, "Simple shows percent. Verbose shows each step.",
+                   (Vector2){150, 310}, 40, 0, white65());
+      } else {
+        DrawTextEx(font_display, "install mode", (Vector2){12, 8}, 32, 0, white90());
+      }
+      drawModeButton(simple_rec, tici_device ? "Simple" : "simple",
+                     tici_device ? "Percent only" : "percent only", simple_hot && IsMouseButtonDown(MOUSE_BUTTON_LEFT));
+      drawModeButton(verbose_rec, tici_device ? "Verbose" : "verbose",
+                     tici_device ? "Show each step" : "show each step", verbose_hot && IsMouseButtonDown(MOUSE_BUTTON_LEFT));
+    EndDrawing();
+
+    if (tap && simple_hot) {
+      g_verbose = false;
+      break;
+    }
+    if (tap && verbose_hot) {
+      g_verbose = true;
+      break;
+    }
+  }
+
+  writeInstallerMode(g_verbose);
 }
 
 int doInstall() {
   // wait for valid time
+  setStatus(tici_device ? "Waiting for clock" : "waiting for clock");
+  pushLog("waiting for valid system time");
+  renderProgress(g_progress);
   while (!util::system_time_valid()) {
     util::sleep_for(500);
     LOGD("Waiting for valid time");
   }
 
   // cleanup previous install attempts
+  setStatus(tici_device ? "Cleaning previous install" : "cleaning previous");
+  pushLog("rm -rf " TMP_INSTALL_PATH);
+  renderProgress(g_progress);
   run("rm -rf " TMP_INSTALL_PATH);
 
   // do the install
@@ -135,6 +351,9 @@ int doInstall() {
 
 int freshClone() {
   LOGD("Doing fresh clone");
+  setStatus(tici_device ? "Cloning repository" : "cloning repository");
+  pushLog("git clone --depth=1 " + GIT_URL + " -b " + migrated_branch);
+  renderProgress(0);
   std::string cmd = util::string_format("git clone --progress %s -b %s --depth=1 --recurse-submodules %s 2>&1",
                                         GIT_URL.c_str(), migrated_branch.c_str(), TMP_INSTALL_PATH);
   return executeGitCommand(cmd);
@@ -143,10 +362,15 @@ int freshClone() {
 int cachedFetch(const std::string &cache) {
   LOGD("Fetching with cache: %s", cache.c_str());
 
+  setStatus(tici_device ? "Using cached copy" : "using cache");
+  pushLog("copy " + cache + " -> " TMP_INSTALL_PATH);
+  renderProgress(2);
   run(util::string_format("cp -rp %s %s", cache.c_str(), TMP_INSTALL_PATH).c_str());
   run(util::string_format("cd %s && git remote set-url origin %s", TMP_INSTALL_PATH, GIT_URL.c_str()).c_str());
   run(util::string_format("cd %s && git remote set-branches --add origin %s", TMP_INSTALL_PATH, migrated_branch.c_str()).c_str());
 
+  setStatus(tici_device ? "Fetching updates" : "fetching updates");
+  pushLog("git fetch origin " + migrated_branch);
   renderProgress(10);
 
   return executeGitCommand(util::string_format("cd %s && git fetch --progress origin %s 2>&1", TMP_INSTALL_PATH, migrated_branch.c_str()));
@@ -154,10 +378,12 @@ int cachedFetch(const std::string &cache) {
 
 int executeGitCommand(const std::string &cmd) {
   static const std::array stages = {
-    // prefix, weight in percentage
-    std::pair{"Receiving objects: ", 91},
-    std::pair{"Resolving deltas: ", 2},
-    std::pair{"Updating files: ", 7},
+    // prefix, weight in percentage, status text
+    std::tuple{"remote: Counting objects", 2, "counting objects"},
+    std::tuple{"remote: Compressing objects", 3, "compressing"},
+    std::tuple{"Receiving objects: ", 86, "receiving objects"},
+    std::tuple{"Resolving deltas: ", 2, "resolving deltas"},
+    std::tuple{"Updating files: ", 7, "updating files"},
   };
 
   FILE *pipe = popen(cmd.c_str(), "r");
@@ -166,18 +392,29 @@ int executeGitCommand(const std::string &cmd) {
   char buffer[512];
   while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
     std::string line(buffer);
+    pushLog(line);
     int base = 0;
-    for (const auto &[text, weight] : stages) {
+    for (const auto &[text, weight, status] : stages) {
       if (line.find(text) != std::string::npos) {
+        setStatus(status);
         size_t percentPos = line.find("%");
         if (percentPos != std::string::npos && percentPos >= 3) {
-          int percent = std::stoi(line.substr(percentPos - 3, 3));
-          int progress = base + int(percent / 100. * weight);
-          renderProgress(progress);
+          try {
+            int percent = std::stoi(line.substr(percentPos - 3, 3));
+            int progress = base + int(percent / 100. * weight);
+            renderProgress(progress);
+          } catch (const std::exception &) {
+            renderProgress(g_progress);
+          }
+        } else {
+          renderProgress(g_progress);
         }
         break;
       }
       base += weight;
+    }
+    if (g_verbose) {
+      renderProgress(g_progress);
     }
   }
   return pclose(pipe);
@@ -192,11 +429,21 @@ void cloneFinished(int exitCode) {
   // ensure correct branch is checked out
   int err = chdir(TMP_INSTALL_PATH);
   assert(err == 0);
+  setStatus(tici_device ? "Checking out branch" : "checking out branch");
+  pushLog("git checkout " + migrated_branch);
+  renderProgress(100);
   run(("git checkout " + migrated_branch).c_str());
   run(("git reset --hard origin/" + migrated_branch).c_str());
+
+  setStatus(tici_device ? "Updating submodules" : "updating submodules");
+  pushLog("git submodule update --init");
+  renderProgress(100);
   run("git submodule update --init");
 
   // move into place
+  setStatus(tici_device ? "Moving into place" : "moving into place");
+  pushLog("mv " TMP_INSTALL_PATH " " + INSTALL_PATH);
+  renderProgress(100);
   run(("rm -f " + VALID_CACHE_PATH).c_str());
   run(("rm -rf " + INSTALL_PATH).c_str());
   run(util::string_format("mv %s %s", TMP_INSTALL_PATH, INSTALL_PATH.c_str()).c_str());
@@ -223,6 +470,8 @@ void cloneFinished(int exitCode) {
 #endif
 
   // write continue.sh
+  setStatus(tici_device ? "Writing continue script" : "writing continue.sh");
+  renderProgress(100);
   FILE *of = fopen("/data/continue.sh.new", "wb");
   assert(of != NULL);
 
@@ -257,6 +506,7 @@ int main(int argc, char *argv[]) {
   if (util::file_exists(CONTINUE_PATH)) {
     finishInstall();
   } else {
+    promptInstallMode();
     renderProgress(0);
     int result = doInstall();
     cloneFinished(result);
