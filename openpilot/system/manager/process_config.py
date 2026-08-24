@@ -87,7 +87,7 @@ procs = [
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
-  PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", driverview),
+  PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", always_run),  # offroad: theme previews + buckle
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
   NativeProcess("_pandad", "openpilot/selfdrive/pandad", ["./pandad"], always_run, enabled=False),
   PythonProcess("calibrationd", "openpilot.selfdrive.locationd.calibrationd", only_onroad),
@@ -117,6 +117,8 @@ procs = [
   # debug procs
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
   PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
+  PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", always_run),  # LAN settings/files/updates PWA, no auth
+  PythonProcess("tesla_energy_log", "openpilot.selfdrive.tesla_energy_log", always_run),  # trip meter + Party energy jsonl
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),
 ]
 
