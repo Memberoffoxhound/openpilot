@@ -152,9 +152,9 @@ class LudicrousFilesPage(NavScroller):
     super().__init__()
     warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
     self._scroller.add_widgets([
-      GreyBigButton("ludicrous files", "private drop-in", warn),
-      GreyBigButton("", "Copy your wav to /data/ludicrous.wav"),
-      GreyBigButton("", "48 kHz mono. Plays with the warp overlay."),
+      GreyBigButton("ludicrous files", "personal use", warn),
+      GreyBigButton("", "Bundled clip loads from the install."),
+      GreyBigButton("", "Optional override: /data/ludicrous.wav"),
     ])
 
 
