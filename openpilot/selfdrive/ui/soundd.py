@@ -1,5 +1,7 @@
 import math
 import os
+import json
+import threading
 import numpy as np
 import time
 import wave
@@ -40,7 +42,9 @@ EIGHTY_WAVS = (
 )
 DELOREAN_MODE = "/data/delorean_sound"
 DELOREAN_PLAY = "/data/delorean_play"
-DRIVE_GEARS = ("drive", "reverse")
+BUCKLE_GATE = "/data/buckle_gate.json"
+BUCKLE_DRIVE_S = 20 * 60
+BUCKLE_WAIT_S = 3 * 3600
 
 
 def load_wav(*paths) -> np.ndarray | None:
@@ -128,15 +132,12 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
-    self.oneshots: list[list] = []  # [np.ndarray, index]
+    self.oneshots: list[list] = []  # [np.ndarray, index, tag]
+    self._queue: list[list] = []
+    self._lock = threading.Lock()
     self.prev_unlatched: bool | None = None
-    self.prev_drive_gear: bool | None = None
-    self._seen_offroad = False
-    self._buckle_played = False
-    self._eighty_played = False
     self._play_eighty = False
-    self._wav_eighty = load_wav(*EIGHTY_WAVS)
-    self._wav_buckle = load_wav(*BUCKLE_WAVS)
+    self._buckle_armed, self._buckle_t, self._onroad_t0 = self._load_gate()
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -150,10 +151,52 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
+  def _load_gate(self) -> tuple[bool, float, float]:
+    try:
+      j = json.loads(open(BUCKLE_GATE, encoding="utf-8").read())
+      return bool(j.get("armed", True)), float(j.get("t") or 0), float(j.get("onroad_t0") or 0)
+    except Exception:
+      return True, 0.0, 0.0
+
+  def _save_gate(self) -> None:
+    try:
+      with open(BUCKLE_GATE, "w", encoding="utf-8") as f:
+        json.dump({"armed": self._buckle_armed, "t": self._buckle_t, "onroad_t0": self._onroad_t0}, f)
+    except OSError:
+      pass
+
+  def _push(self, tag: str, paths: tuple[str, ...]) -> None:
+    # Decode here (20 Hz thread), never in the PortAudio callback. Buffer dies with the oneshot.
+    w = load_wav(*paths)
+    if w is None:
+      return
+    with self._lock:
+      self._queue.append([w, 0, tag])
+
+  def _tag_busy(self, tag: str) -> bool:
+    with self._lock:
+      return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
+
+  def _drain_flags(self) -> None:
+    if _flag(LUDI_PLAY):
+      self._push("ludi", LUDI_WAVS)
+      _clear(LUDI_PLAY)
+    if _flag(BUCKLE_PLAY):
+      self._push("buckle", BUCKLE_WAVS)
+      _clear(BUCKLE_PLAY)
+    if _flag(SHOT_PLAY):
+      self._push("shot", SHOT_WAVS)
+      _clear(SHOT_PLAY)
+    if self._play_eighty or _flag(DELOREAN_PLAY):
+      if not self._tag_busy("buckle"):
+        self._push("eighty", EIGHTY_WAVS)
+        self._play_eighty = False
+        _clear(DELOREAN_PLAY)
+
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}
 
-    # Load all sounds
+    # Stock alerts only. Theme wavs decode in _push when the event fires.
     for sound in sound_list:
       filename, play_count, volume = sound_list[sound]
 
@@ -191,37 +234,18 @@ class Soundd:
           break
 
     out = ret * self.current_volume
-    if self.current_alert != AudibleAlert.warningImmediate:
-      if _flag(LUDI_PLAY):
-        w = load_wav(*LUDI_WAVS)
-        if w is not None:
-          self.oneshots.append([w, 0])
-        _clear(LUDI_PLAY)
-      if _flag(BUCKLE_PLAY):
-        if self._wav_buckle is not None:
-          self.oneshots.append([self._wav_buckle, 0])
-        _clear(BUCKLE_PLAY)
-      if _flag(SHOT_PLAY):
-        w = load_wav(*SHOT_WAVS)
-        if w is not None:
-          self.oneshots.append([w, 0])
-        _clear(SHOT_PLAY)
-      if _flag(DELOREAN_PLAY):
-        self._play_eighty = True
-        _clear(DELOREAN_PLAY)
-      buckle_busy = self._wav_buckle is not None and any(arr is self._wav_buckle for arr, _ in self.oneshots)
-      if self._play_eighty and not buckle_busy:
-        if self._wav_eighty is not None:
-          self.oneshots.append([self._wav_eighty, 0])
-        self._play_eighty = False
+    with self._lock:
+      if self._queue:
+        self.oneshots.extend(self._queue)
+        self._queue.clear()
+      playing = list(self.oneshots)
     live = []
     sr = float(SAMPLE_RATE)
-    for arr, i in self.oneshots:
+    for arr, i, tag in playing:
       n = min(frames, len(arr) - i)
       if n > 0:
         dur = len(arr) / sr
         fi, fo = (0.005, 0.03) if dur < 0.45 else (0.20, 0.35)
-        # per-sample fade in/out
         idx = np.arange(n, dtype=np.float32) + i
         t = idx / sr
         env = np.ones(n, dtype=np.float32)
@@ -232,8 +256,9 @@ class Soundd:
         out[:n] += arr[i:i + n] * env
         i += n
       if i < len(arr):
-        live.append([arr, i])
-    self.oneshots = live
+        live.append([arr, i, tag])
+    with self._lock:
+      self.oneshots = live
     return np.clip(out, -1.0, 1.0)
 
   def callback(self, data_out: np.ndarray, frames: int, time, status) -> None:
@@ -303,31 +328,41 @@ class Soundd:
 
         self.get_audible_alert(sm)
 
+        now = time.time()
         started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
-        if not started:
-          self._seen_offroad = True
-          self._buckle_played = False
-          self._eighty_played = False
 
-        if sm.updated['carState']:
-          if _flag(BUCKLE_MODE):
-            unlatched = bool(sm['carState'].seatbeltUnlatched)
-            latched = self.prev_unlatched is True and unlatched is False
-            # Once per drive. Silent if soundd started mid-drive (never saw offroad).
-            if latched and self._seen_offroad and not self._buckle_played:
-              self._buckle_played = True
-              try:
-                open(BUCKLE_PLAY, "w").write("1")
-              except OSError:
-                pass
-            self.prev_unlatched = unlatched
+        if (not self._buckle_armed) and self._buckle_t and (now - self._buckle_t) >= BUCKLE_WAIT_S:
+          self._buckle_armed = True
+          self._save_gate()
 
-          in_drive = str(sm['carState'].gearShifter) in DRIVE_GEARS
-          if (_flag(DELOREAN_MODE) and in_drive and self.prev_drive_gear is False
-              and self._seen_offroad and not self._eighty_played):
-            self._eighty_played = True
-            self._play_eighty = True
-          self.prev_drive_gear = in_drive
+        if started:
+          if not self._onroad_t0:
+            self._onroad_t0 = now
+            self._save_gate()
+            if _flag(DELOREAN_MODE):
+              self._play_eighty = True
+        elif self._onroad_t0:
+          if (now - self._onroad_t0) >= BUCKLE_DRIVE_S:
+            self._buckle_armed = True
+          self._onroad_t0 = 0.0
+          self._save_gate()
+
+        if sm.updated['carState'] and _flag(BUCKLE_MODE):
+          unlatched = bool(sm['carState'].seatbeltUnlatched)
+          latched_edge = self.prev_unlatched is True and not unlatched
+          latched_start = self.prev_unlatched is None and not unlatched
+          if (latched_edge or latched_start) and self._buckle_armed:
+            self._buckle_armed = False
+            self._buckle_t = now
+            self._save_gate()
+            try:
+              open(BUCKLE_PLAY, "w").write("1")
+            except OSError:
+              pass
+          self.prev_unlatched = unlatched
+
+        if self.current_alert != AudibleAlert.warningImmediate:
+          self._drain_flags()
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:
