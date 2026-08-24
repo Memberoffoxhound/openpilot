@@ -6,7 +6,7 @@ from openpilot.selfdrive.controls.lib.auto_lane_change import AutoLaneChangeCont
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 
-# TeslaPilot Highland: no auto lane change below 25 mph (stock is 20).
+# Sexypilot Highland: no auto lane change below 25 mph (stock is 20).
 LANE_CHANGE_SPEED_MIN = 25 * CV.MPH_TO_MS
 LANE_CHANGE_TIME_MAX = 10.
 LANE_CHANGE_START_TIME = 0.5

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LAN device console for S3XYPilot. No auth — bind on the local network only."""
+"""LAN device console for Sexypilot. No auth — bind on the local network only."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ WRITE_BOOL = {
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode",
 }
-WRITE_INT = {"LaneColor", "LongitudinalPersonality"}
+WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize"}
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
 READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
@@ -115,7 +115,7 @@ def _git(*args: str) -> str:
 def _info() -> dict:
   p = _params()
   info = {
-    "name": "S3XYPilot",
+    "name": "Sexypilot",
     "version": p.get("Version") or "0.1.10.24",
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
@@ -485,7 +485,7 @@ def _run_clip(route: str, start: int, end: int, title: str, qcam: bool) -> None:
     sys.executable, "-m", "openpilot.tools.clip.run",
     route_id, "-s", str(start), "-e", str(end),
     "-d", str(DATA_DIR), "-o", str(out), "-f", "9",
-    "-t", title or "S3XYPilot",
+    "-t", title or "Sexypilot",
   ]
   if qcam:
     cmd.append("--qcam")
@@ -542,7 +542,7 @@ def _start_clip(body: dict) -> dict:
     _clip_job.update({"state": "running", "error": "", "route": route, "start": start, "end": end, "output": ""})
   threading.Thread(
     target=_run_clip,
-    args=(route, start, end, str(body.get("title") or "S3XYPilot"), bool(body.get("qcam"))),
+    args=(route, start, end, str(body.get("title") or "Sexypilot"), bool(body.get("qcam"))),
     daemon=True,
   ).start()
   return {"ok": True, "job": _clip_status()}
@@ -564,7 +564,7 @@ def _list_shots() -> list[dict]:
 
 
 class Handler(BaseHTTPRequestHandler):
-  server_version = "S3XYPilot/0.1.10.24"
+  server_version = "Sexypilot/0.1.10.24"
 
   def log_message(self, fmt: str, *args) -> None:
     cloudlog.info("deviceweb " + (fmt % args))

@@ -13,6 +13,7 @@ const GROUPS = [
   ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
+    {key:"CompassSize", label:"Compass size", type:"select", desc:"Custom onroad compass.", options:[["0","Small"],["1","Large"]]},
   ]},
   {id:"livestream", title:"Livestream", items:[
     {key:"LivestreamEnabled", label:"On-Air", type:"bool", desc:"Local Wi-Fi viewer. Not on comma Prime LTE."},
@@ -139,7 +140,7 @@ function statusView() {
       ${stat("Network", (info.network||"net").toUpperCase(), bars)}
     </div>
     <div class="card">
-      ${row("Device", info.name||"S3XYPilot")}
+      ${row("Device", info.name||"Sexypilot")}
       ${row("Version", info.version||"—")}
       ${row("Branch", info.branch||"—")}
       ${row("Commit", (info.commit||"").slice(0,12), true)}
@@ -147,6 +148,7 @@ function statusView() {
       ${row("Serial", info.serial||"—", true)}
       ${row("Personality", pers)}
       ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
+      ${row("Compass", params.CompassSize==="1"?"large":"small")}
     </div>
     <div class="btns">
       <button class="btn" id="openLive">Open livestream</button>
@@ -216,7 +218,7 @@ function clipsView() {
       </div>
       <div class="field"><label>Start (s)</label><input id="cStart" type="number" min="0" value="${start}"/></div>
       <div class="field"><label>End (s)</label><input id="cEnd" type="number" min="3" max="30" value="${end}"/></div>
-      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "S3XYPilot")}"/></div>
+      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "Sexypilot")}"/></div>
       <div class="set"><div class="meta"><b>Use qcamera</b><p>Smaller file, faster. Uncheck for full fcamera.</p></div>
         <button class="tog ${clipJob.qcam!==false?"on":""}" id="cQcam"><i></i></button></div>
     </div>

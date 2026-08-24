@@ -1,14 +1,14 @@
 > User-facing README: [README.md](README.md). This file is Highland working notes only.
 
-# S3XYPilot — Highland
+# Sexypilot — Highland
 
-Working branch. Version **0.11.12.24**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
+Working branch. Version **0.11.12**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
 `master` is an unmodified comma.ai/openpilot mirror. Highland is the Tesla fork. Sync comma diffs onto `master`, then cherry-pick onto Highland.
 
 ## Onroad
 
-Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue lanes, 60px DM-style compass on the left between DM and the wheel (green fan = heading, letter in the hub, torque-bar ring). Compass is GPS-backed and only draws while engaged.
+Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue lanes, compass (theme → compass size). Small is 60px on the left between DM and the wheel and hides while MAX is up. Large is 90px top-right and stays while engaged. Green fan = heading, letter in the hub, torque-bar ring. GPS-backed. Custom UI only.
 
 Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
 
@@ -20,9 +20,10 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 |---|---|---|
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. |
 | `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
+| `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
-| `BuckleSound` | off | Same once-per-drive rule. |
-| Delorean (`/data/delorean_sound`) | off | 88mph clip on first Drive or Reverse. Once per drive. Personal use. |
+| `BuckleSound` | off | Once, offroad or onroad. Rearm after a drive ≥20 min, else after 3 hours. |
+| Delorean (`/data/delorean_sound`) | off | 88mph clip on going onroad. Once per drive. Personal use. |
 
 ## Screenshots
 

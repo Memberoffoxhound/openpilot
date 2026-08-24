@@ -1,4 +1,4 @@
-Version 0.11.12.24 — S3XYPilot Highland (2026-08-22)
+Version 0.11.12 — Sexypilot Highland (2026-08-22)
 ========================================
 Connect-compatible version. Tesla fork on 0.11.12. See README.md.
 
