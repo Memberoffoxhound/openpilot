@@ -401,6 +401,18 @@ def tick_trip() -> None:
     if not _seed_started:
       _seed_started = True
       threading.Thread(target=_run_seed, daemon=True).start()
+
+  # Rollover checks execute every tick across midnight & Sundays
+  wid = _sunday_id()
+  if _trip.get("week_id") != wid:
+    _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
+    _trip["week_id"] = wid
+
+  did = _day_id()
+  if _trip.get("day_id") != did:
+    _trip["today_m"] = _trip["today_eng_m"] = 0.0
+    _trip["day_id"] = did
+
   dt = min(1.0, max(0.0, now - _trip_t))
   _trip_t = now
   params = ui_state.params
@@ -421,16 +433,16 @@ def tick_trip() -> None:
       _trip["trip_m"] += v * dt
       _trip["week_m"] += v * dt
       _trip["today_m"] = _trip.get("today_m", 0.0) + v * dt
-      try:
-        if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
-          _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
-          _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
-          _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
-          _trip["eng_s"] += dt
-          _trip["week_eng_s"] += dt
-      except Exception:
-        pass
-  if now - _trip_flush > 1.0:
+    try:
+      if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
+        _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
+        _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
+        _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
+        _trip["eng_s"] += dt
+        _trip["week_eng_s"] += dt
+    except Exception:
+      pass
+if (now - _trip_flush) > TRIP_FLUSH_SEC:
     _save_trip(_trip)
     _trip_flush = now
 
