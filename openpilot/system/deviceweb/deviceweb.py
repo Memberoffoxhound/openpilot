@@ -48,10 +48,10 @@ WRITE_BOOL = {
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode",
-  # Weather Lady + Elon news
+  # Weather Lady + Elon news (bools kept as mirrors of WeatherNewsMode)
   "WeatherNewsEnable", "WeatherNewsAggressive",
 }
-WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize"}
+WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode"}
 WRITE_STR = {"WeatherNewsPreview"}  # personable | aggressive | ""
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
@@ -212,7 +212,7 @@ def _read_params() -> dict[str, str]:
           if path.exists():
             out[k] = "1" if path.read_text().strip().lower() in ("1", "true", "yes", "on") else "0"
           else:
-            out[k] = "1" if k == "WeatherNewsEnable" else "0"
+            out[k] = "1" if k in ("WeatherNewsEnable",) else "0"
       else:
         v = p.get(k)
         if v is None or v == "":
@@ -251,6 +251,14 @@ def _write_params(body: dict) -> None:
         p.put(k, str(int(v)), block=True)
       except Exception:
         (param_dir / k).write_text(str(int(v)))
+      if k == "WeatherNewsMode":
+        mode = max(0, min(2, int(v)))
+        try:
+          p.put_bool("WeatherNewsEnable", mode != 0, block=True)
+          p.put_bool("WeatherNewsAggressive", mode == 2, block=True)
+        except Exception:
+          (param_dir / "WeatherNewsEnable").write_text("1" if mode != 0 else "0")
+          (param_dir / "WeatherNewsAggressive").write_text("1" if mode == 2 else "0")
     elif k in WRITE_STR:
       s = str(v).strip().lower()
       if k == "WeatherNewsPreview" and s not in ("", "personable", "aggressive"):
@@ -750,8 +758,22 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/weather/preview", "/api/device/weather/preview"):
         body = self._read_json()
         mode = str(body.get("mode") or "").strip().lower()
+        if mode in ("nice",):
+          mode = "personable"
+        if mode in ("unhinged",):
+          mode = "aggressive"
         if mode not in ("personable", "aggressive"):
-          return self._json(400, {"ok": False, "error": "mode must be personable or aggressive"})
+          # fall back to current WeatherNewsMode
+          try:
+            cur = int(p.get("WeatherNewsMode", return_default=True) or 1)
+          except Exception:
+            cur = 1
+          if cur == 2:
+            mode = "aggressive"
+          elif cur == 1:
+            mode = "personable"
+          else:
+            return self._json(400, {"ok": False, "error": "weather is off"})
         _write_params({"WeatherNewsPreview": mode})
         return self._json(200, {"ok": True, "mode": mode})
       self._json(404, {"error": "not found"})

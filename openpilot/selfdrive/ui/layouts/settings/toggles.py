@@ -3,6 +3,7 @@ from openpilot.common.params import Params, UnknownKeyName
 from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color, onroad_ui_label, next_onroad_ui, set_onroad_ui,
   compass_size_label, next_compass_size,
+  weather_news_mode, set_weather_news_mode, request_weather_news_preview, WX_OFF,
 )
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
@@ -40,6 +41,9 @@ DESCRIPTIONS = {
   ),
   "CompassSize": tr_noop(
     "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
+  ),
+  "WeatherNewsMode": tr_noop(
+    "First drive of the day: local forecast plus two news bites. Off, Nice, or Unhinged. Preview plays the selected voice through the speaker."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -147,6 +151,24 @@ class TogglesLayout(Widget):
       callback=self._cycle_compass_size,
     )
 
+    self._weather_mode_setting = multiple_button_item(
+      lambda: tr("Theme: Weather & News"),
+      lambda: tr(DESCRIPTIONS["WeatherNewsMode"]),
+      buttons=[lambda: tr("Off"), lambda: tr("Nice"), lambda: tr("Unhinged")],
+      button_width=220,
+      callback=self._set_weather_news_mode,
+      selected_index=weather_news_mode(self._params),
+      icon="speed_limit.png",
+    )
+
+    self._weather_preview_setting = button_item(
+      lambda: tr("Theme: Weather Preview"),
+      lambda: tr("Preview"),
+      description=lambda: tr("Plays Nice or Unhinged through the speaker. Dim while Off."),
+      callback=self._preview_weather_news,
+      enabled=lambda: weather_news_mode(self._params) != WX_OFF,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -182,6 +204,8 @@ class TogglesLayout(Widget):
         self._toggles["CustomOnroadUi"] = self._onroad_ui_setting
         self._toggles["LaneColor"] = self._lane_color_setting
         self._toggles["CompassSize"] = self._compass_size_setting
+        self._toggles["WeatherNewsMode"] = self._weather_mode_setting
+        self._toggles["WeatherNewsPreview"] = self._weather_preview_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -256,6 +280,8 @@ class TogglesLayout(Widget):
     self._onroad_ui_setting.action_item.set_text(lambda: tr(onroad_ui_label(self._params)))
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
+    self._weather_mode_setting.action_item.set_selected_button(weather_news_mode(self._params))
+    self._weather_preview_setting.action_item.set_enabled(lambda: weather_news_mode(self._params) != WX_OFF)
 
   def _render(self, rect):
     self._scroller.render(rect)
@@ -328,3 +354,10 @@ class TogglesLayout(Widget):
     nxt = next_compass_size(self._params)
     self._params.put("CompassSize", nxt, block=True)
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
+
+  def _set_weather_news_mode(self, button_index: int):
+    set_weather_news_mode(button_index, self._params)
+    self._weather_preview_setting.action_item.set_enabled(lambda: weather_news_mode(self._params) != WX_OFF)
+
+  def _preview_weather_news(self):
+    request_weather_news_preview(self._params)

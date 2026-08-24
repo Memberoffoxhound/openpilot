@@ -3,19 +3,20 @@ from collections.abc import Callable
 import pyray as rl
 from openpilot.cereal import log
 from openpilot.common.params import Params
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigMultiToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
-  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS,
+  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS, WX_MODE_LABELS,
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
   ludicrous_on, set_ludicrous, trigger_ludicrous, buckle_on, set_buckle, request_buckle_play,
   delorean_on, set_delorean, request_delorean_play,
   ludicrous_files_ok,
+  weather_news_mode, set_weather_news_mode, request_weather_news_preview, WX_OFF,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 
@@ -85,6 +86,54 @@ class CompassSizeCycle(BigButton):
     nxt = next_compass_size(self._params)
     self._params.put("CompassSize", nxt, block=True)
     self.set_value(COMPASS_SIZE_LABELS[nxt])
+
+
+class WeatherNewsCycle(BigMultiToggle):
+  """Off / Nice / Unhinged. First drive of the day plus parked preview."""
+
+  def __init__(self, on_change: Callable[[], None] | None = None):
+    super().__init__("weather & news", list(WX_MODE_LABELS), select_callback=self._on_select)
+    self._params = Params()
+    self._on_change = on_change
+    self.refresh()
+
+  def refresh(self):
+    value = WX_MODE_LABELS[weather_news_mode(self._params)]
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _on_select(self, value: str):
+    set_weather_news_mode(WX_MODE_LABELS.index(value), self._params)
+    if self._on_change:
+      self._on_change()
+
+
+class WeatherNewsPreview(BigButton):
+  """Lights up for Nice and Unhinged. Dead while Off."""
+
+  def __init__(self):
+    super().__init__("preview", "off")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    live = weather_news_mode(self._params) != WX_OFF
+    self.set_enabled(live)
+    self.set_value("tap" if live else "off")
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    if weather_news_mode(self._params) == WX_OFF:
+      return
+    super()._handle_mouse_release(mouse_pos)
+    request_weather_news_preview(self._params)
 
 
 class LaneColorCycle(BigButton):
@@ -229,6 +278,8 @@ class ThemeLayoutMici(NavScroller):
     super().__init__()
     self._onroad_ui = OnroadUiCycle()
     self._compass_size = CompassSizeCycle()
+    self._wx_preview = WeatherNewsPreview()
+    self._wx_mode = WeatherNewsCycle(on_change=self._wx_preview.refresh)
     self._lane_color = LaneColorCycle()
     self._ludicrous = LudicrousCycle()
     self._ludi_preview = LudicrousPreview()
@@ -237,9 +288,11 @@ class ThemeLayoutMici(NavScroller):
     self._delorean = DeloreanCycle()
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
-      self._onroad_ui, self._compass_size, self._ludicrous, self._ludi_preview,
+      self._onroad_ui, self._compass_size, self._lane_color,
+      self._wx_mode, self._wx_preview,
+      self._ludicrous, self._ludi_preview,
       self._buckle, self._buckle_preview,
-      self._delorean, self._delorean_preview, self._lane_color,
+      self._delorean, self._delorean_preview,
     ])
 
 

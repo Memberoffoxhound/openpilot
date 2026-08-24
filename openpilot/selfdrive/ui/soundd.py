@@ -45,9 +45,13 @@ EIGHTY_WAVS = (
 )
 DELOREAN_MODE = "/data/delorean_sound"
 DELOREAN_PLAY = "/data/delorean_play"
+WXNEWS_PLAY = "/data/wxnews_play"
+WXNEWS_WAVS = ("/data/wxnews.wav",)
 BUCKLE_GATE = "/data/buckle_gate.json"
 BUCKLE_DRIVE_S = 20 * 60
 BUCKLE_WAIT_S = 3 * 3600
+DELOREAN_HOLD_S = 1.5
+DELOREAN_OFFROAD_RESET_S = 10.0
 
 
 def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
@@ -200,7 +204,9 @@ class Soundd:
     self._lock = threading.Lock()
     self.prev_unlatched: bool | None = None
     self._play_eighty = False
-    self._buckle_armed, self._buckle_t, self._onroad_t0 = self._load_gate()
+    self._buckle_armed, self._buckle_t, self._onroad_t0, self._eighty_played = self._load_gate()
+    self._started_since = 0.0
+    self._offroad_since = 0.0
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -214,17 +220,22 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
-  def _load_gate(self) -> tuple[bool, float, float]:
+  def _load_gate(self) -> tuple[bool, float, float, bool]:
     try:
       j = json.loads(open(BUCKLE_GATE, encoding="utf-8").read())
-      return bool(j.get("armed", True)), float(j.get("t") or 0), float(j.get("onroad_t0") or 0)
+      return bool(j.get("armed", True)), float(j.get("t") or 0), float(j.get("onroad_t0") or 0), bool(j.get("eighty_played", False))
     except Exception:
-      return True, 0.0, 0.0
+      return True, 0.0, 0.0, False
 
   def _save_gate(self) -> None:
     try:
       with open(BUCKLE_GATE, "w", encoding="utf-8") as f:
-        json.dump({"armed": self._buckle_armed, "t": self._buckle_t, "onroad_t0": self._onroad_t0}, f)
+        json.dump({
+          "armed": self._buckle_armed,
+          "t": self._buckle_t,
+          "onroad_t0": self._onroad_t0,
+          "eighty_played": self._eighty_played,
+        }, f)
     except OSError:
       pass
 
@@ -251,10 +262,14 @@ class Soundd:
       self._push("shot", SHOT_WAVS)
       _clear(SHOT_PLAY)
     if self._play_eighty or _flag(DELOREAN_PLAY):
-      if not self._tag_busy("buckle"):
+      if not self._tag_busy("buckle") and not self._tag_busy("eighty"):
         self._push("eighty", EIGHTY_WAVS)
         self._play_eighty = False
         _clear(DELOREAN_PLAY)
+    if _flag(WXNEWS_PLAY):
+      if not self._tag_busy("wxnews"):
+        self._push("wxnews", WXNEWS_WAVS)
+        _clear(WXNEWS_PLAY)
 
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}
@@ -400,16 +415,29 @@ class Soundd:
           self._save_gate()
 
         if started:
+          self._offroad_since = 0.0
+          if not self._started_since:
+            self._started_since = now
           if not self._onroad_t0:
             self._onroad_t0 = now
             self._save_gate()
-            if _flag(DELOREAN_MODE):
-              self._play_eighty = True
-        elif self._onroad_t0:
-          if (now - self._onroad_t0) >= BUCKLE_DRIVE_S:
-            self._buckle_armed = True
-          self._onroad_t0 = 0.0
-          self._save_gate()
+          if (now - self._started_since) >= DELOREAN_HOLD_S and _flag(DELOREAN_MODE) and not self._eighty_played:
+            self._play_eighty = True
+            self._eighty_played = True
+            self._save_gate()
+        else:
+          self._started_since = 0.0
+          if self._onroad_t0:
+            if not self._offroad_since:
+              self._offroad_since = now
+            if (now - self._offroad_since) >= DELOREAN_OFFROAD_RESET_S:
+              if (now - self._onroad_t0) >= BUCKLE_DRIVE_S:
+                self._buckle_armed = True
+              self._onroad_t0 = 0.0
+              self._eighty_played = False
+              self._play_eighty = False
+              self._offroad_since = 0.0
+              self._save_gate()
 
         if sm.updated['carState'] and _flag(BUCKLE_MODE):
           unlatched = bool(sm['carState'].seatbeltUnlatched)

@@ -61,8 +61,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HardwareSerial", {PERSISTENT, STRING}},
     {"HasAcceptedTerms", {PERSISTENT, STRING, "0"}},
     {"InstallDate", {PERSISTENT, TIME}},
-    {"WeatherNewsEnable", {PERSISTENT, BOOL, "0"}},
+    {"WeatherNewsEnable", {PERSISTENT, BOOL, "1"}},
     {"WeatherNewsAggressive", {PERSISTENT, BOOL, "0"}},
+    {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off, 1=nice, 2=aggressive (Unhinged)
     {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},
     {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
     {"IsDriverViewEnabled", {CLEAR_ON_MANAGER_START, BOOL}},

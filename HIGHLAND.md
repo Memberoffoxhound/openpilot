@@ -23,7 +23,8 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
 | `BuckleSound` | off | Once, offroad or onroad. Rearm after a drive ≥20 min, else after 3 hours. |
-| Delorean (`/data/delorean_sound`) | off | 88mph clip on going onroad. Once per drive. Personal use. |
+| Delorean (`/data/delorean_sound`) | off | 88mph clip on going onroad. Once per drive after 1.5s stable. Personal use. |
+| `WeatherNewsMode` | nice | Off / Nice / Unhinged. First drive of the Chicago-local day. Theme + LAN preview. |
 
 ## Screenshots
 

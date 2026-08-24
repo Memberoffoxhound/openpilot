@@ -11,9 +11,8 @@ const GROUPS = [
     {key:"RecordFront", label:"Record cabin camera", type:"bool", desc:"Upload dcam to help DM.", restart:true},
     {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
   ]},
-  {id:"weather", title:"Weather Lady", items:[
-    {key:"WeatherNewsEnable", label:"Enable weather + news", type:"bool", desc:"First drive of the day: forecast, overnight, Elon-company bites."},
-    {key:"WeatherNewsAggressive", label:"Ara / aggressive voice", type:"bool", desc:"Foul-mouthed MF’n weather lady (Grok Ara attitude). Off = personable."},
+  {id:"weather", title:"Weather & News", items:[
+    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]]},
   ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
@@ -88,10 +87,17 @@ async function previewWeather(mode) {
       headers:{"content-type":"application/json"},
       body: JSON.stringify({mode})
     });
-    if (j.ok) say(mode === "aggressive" ? "Ara preview queued — listen up." : "Personable preview queued.");
+    if (j.ok) say(mode === "aggressive" ? "Unhinged preview queued." : "Nice preview queued.");
     else say(j.error || "preview failed");
   } catch (e) { say((e && e.message) || "preview failed"); }
 }
+function wxMode() {
+  const raw = params.WeatherNewsMode;
+  if (raw === undefined || raw === null || raw === "") return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 1;
+}
+function wxLive() { return wxMode() === 1 || wxMode() === 2; }
 async function loadFiles() {
   const j = await api("/api/files?path=" + encodeURIComponent(path));
   files = j.items || [];
@@ -146,8 +152,7 @@ function view() {
 function statusView() {
   const bars = "▂▄▆█".slice(0, Math.max(1, info.wifiBars|0)) + "·".repeat(4-Math.max(1, info.wifiBars|0));
   const pers = ["Aggressive","Standard","Relaxed"][Number(params.LongitudinalPersonality)||1];
-  const wxOn = params.WeatherNewsEnable !== "0";
-  const ara = params.WeatherNewsAggressive === "1";
+  const wx = ["off","nice","unhinged"][wxMode()] || "nice";
   return `<div class="wrap">
     <div class="warn">This console has no password. Anyone on this Wi-Fi can read files and change settings. Keep it on your LAN.</div>
     <div class="grid">
@@ -166,15 +171,14 @@ function statusView() {
       ${row("Personality", pers)}
       ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
       ${row("Compass", params.CompassSize==="1"?"large":"small")}
-      ${row("Weather Lady", wxOn ? (ara ? "Ara / aggressive" : "personable") : "off")}
+      ${row("Weather & news", wx)}
       ${row("Last weather run", params.WeatherNewsLastRunDate || "never")}
     </div>
     <div class="card pad">
       <p class="ghead">Weather preview</p>
-      <p class="muted" style="margin:8px 0 12px">Works parked. Speaks through the C4 speaker.</p>
+      <p class="muted" style="margin:8px 0 12px">Lights up for Nice or Unhinged. Speaks through the C4 speaker, parked or not.</p>
       <div class="btns">
-        <button class="btn" id="wxPersonable">Preview personable</button>
-        <button class="btn primary" id="wxAra">Preview Ara</button>
+        <button class="btn ${wxLive()?"primary":""}" id="wxPreview" ${wxLive()?"":"disabled"}>Preview</button>
       </div>
     </div>
     <div class="btns">
@@ -193,10 +197,9 @@ function settingsView() {
       let extra = "";
       if (g.id === "weather") {
         extra = `<div class="card pad" style="margin-top:12px">
-          <p class="muted" style="margin-bottom:12px">Instant voice test (offroad ok). Uses espeak-ng Ara prosody on aggressive.</p>
+          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off.</p>
           <div class="btns">
-            <button class="btn" id="wxPersonable">Preview personable</button>
-            <button class="btn primary" id="wxAra">Preview Ara</button>
+            <button class="btn ${wxLive()?"primary":""}" id="wxPreview" ${wxLive()?"":"disabled"}>Preview</button>
           </div>
         </div>`;
       }
@@ -205,7 +208,7 @@ function settingsView() {
   </div>`;
 }
 function setRow(it) {
-  const val = params[it.key] ?? (it.type==="select" ? it.options[0][0] : (it.key==="WeatherNewsEnable" ? "1" : "0"));
+  const val = params[it.key] ?? (it.type==="select" ? (it.key==="WeatherNewsMode" ? "1" : it.options[0][0]) : "0");
   const locked = !!it.deviceOnly;
   const ctl = it.type==="bool"
     ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}" ${locked?"disabled":""}><i></i></button>`
@@ -371,10 +374,8 @@ function bind() {
   });
   const live = document.getElementById("openLive");
   if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
-  const wxP = document.getElementById("wxPersonable");
-  if (wxP) wxP.onclick = () => previewWeather("personable");
-  const wxA = document.getElementById("wxAra");
-  if (wxA) wxA.onclick = () => previewWeather("aggressive");
+  const wxP = document.getElementById("wxPreview");
+  if (wxP) wxP.onclick = () => previewWeather(wxMode() === 2 ? "aggressive" : "personable");
   const chk = document.getElementById("chk");
   if (chk) chk.onclick = () => startUpdate();
   const updCancel = document.getElementById("updCancel");
