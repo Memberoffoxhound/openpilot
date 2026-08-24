@@ -140,7 +140,7 @@ function statusView() {
       ${stat("Network", (info.network||"net").toUpperCase(), bars)}
     </div>
     <div class="card">
-      ${row("Device", info.name||"Sexypilot")}
+      ${row("Device", info.name||"S3XYPilot")}
       ${row("Version", info.version||"—")}
       ${row("Branch", info.branch||"—")}
       ${row("Commit", (info.commit||"").slice(0,12), true)}
@@ -218,7 +218,7 @@ function clipsView() {
       </div>
       <div class="field"><label>Start (s)</label><input id="cStart" type="number" min="0" value="${start}"/></div>
       <div class="field"><label>End (s)</label><input id="cEnd" type="number" min="3" max="30" value="${end}"/></div>
-      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "Sexypilot")}"/></div>
+      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "S3XYPilot")}"/></div>
       <div class="set"><div class="meta"><b>Use qcamera</b><p>Smaller file, faster. Uncheck for full fcamera.</p></div>
         <button class="tog ${clipJob.qcam!==false?"on":""}" id="cQcam"><i></i></button></div>
     </div>

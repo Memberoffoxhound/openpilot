@@ -1,6 +1,6 @@
 > User-facing README: [README.md](README.md). This file is Highland working notes only.
 
-# Sexypilot — Highland
+# S3XYPilot — Highland
 
 Working branch. Version **0.11.12**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 

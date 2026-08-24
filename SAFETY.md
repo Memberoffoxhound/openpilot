@@ -1,6 +1,6 @@
-# Sexypilot safety (Do NOT Modify!)
+# S3XYPilot safety (Do NOT Modify!)
 
-Sexypilot is a surgical fork of [commaai/openpilot](https://github.com/commaai/openpilot).
+S3XYPilot is a surgical fork of [commaai/openpilot](https://github.com/commaai/openpilot).
 comma will **ban the dongle from comma.ai servers** if a fork breaks the rules in
 [docs/SAFETY.md](docs/SAFETY.md). This file is the Highland checklist against that document.
 

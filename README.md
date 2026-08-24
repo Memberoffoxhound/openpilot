@@ -1,4 +1,4 @@
-# Sexypilot
+# S3XYPilot
 
 Tesla-first fork for **stalkless Model 3 / Y**. Hobby project. No support. Install at your own risk.
 
@@ -9,7 +9,7 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 ## Branches
 
 - **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot) mirror.
-- **`Highland`** — Sexypilot. Install this.
+- **`Highland`** — S3XYPilot. Install this.
 - **`K5`** — comma master + Auto Lane Change (confirm slider). For the Kia.
 
 ## Highland
