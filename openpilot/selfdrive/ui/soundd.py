@@ -1,4 +1,7 @@
 import math
+import os
+import json
+import threading
 import numpy as np
 import time
 import wave
@@ -6,17 +9,147 @@ import wave
 
 from openpilot.cereal import log, messaging
 from openpilot.common.basedir import BASEDIR
+from openpilot.common.hardware import HARDWARE
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.utils import retry
 from openpilot.common.swaglog import cloudlog
 
 from openpilot.system import micd
-from openpilot.common.hardware import HARDWARE
 
 SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
+THEME_RMS = 0.24
+THEME_PEAK = 0.85
+THEME_KNEE = 0.72
+LUDI_PLAY = "/data/ludicrous_play"
+BUCKLE_PLAY = "/data/buckle_play"
+BUCKLE_MODE = "/data/buckle_sound"
+LUDI_WAVS = (
+  "/data/ludicrous.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
+)
+BUCKLE_WAVS = (
+  "/data/buckle.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/buckle.wav",
+)
+SHOT_PLAY = "/data/screenshot_play"
+SHOT_WAVS = (
+  "/data/shutter.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/shutter.wav",
+)
+EIGHTY_WAVS = (
+  "/data/88mph.wav",
+  BASEDIR + "/openpilot/selfdrive/assets/sounds/88mph.wav",
+)
+DELOREAN_MODE = "/data/delorean_sound"
+DELOREAN_PLAY = "/data/delorean_play"
+BUCKLE_GATE = "/data/buckle_gate.json"
+BUCKLE_DRIVE_S = 20 * 60
+BUCKLE_WAIT_S = 3 * 3600
+
+
+def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
+  if src == dst or len(x) < 2:
+    return x
+  n_out = int(round(len(x) * dst / float(src)))
+  if len(x) < 4:
+    return np.interp(np.linspace(0, 1, n_out, endpoint=False),
+                     np.linspace(0, 1, len(x), endpoint=False), x).astype(np.float32)
+  t = np.linspace(0, len(x) - 1, n_out, endpoint=False)
+  i = np.floor(t).astype(np.int32)
+  f = (t - i).astype(np.float32)
+  xp = np.pad(x.astype(np.float32), 2, mode="edge")
+  i = i + 2
+  p0, p1, p2, p3 = xp[i - 1], xp[i], xp[i + 1], xp[i + 2]
+  f2 = f * f
+  f3 = f2 * f
+  return (0.5 * ((2.0 * p1) + (-p0 + p2) * f +
+                 (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f2 +
+                 (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * f3)).astype(np.float32)
+
+
+def _dialog_eq(x: np.ndarray) -> np.ndarray:
+  # C4 speaker: dump rumble, lift speech, cut the tinny breakup.
+  n = len(x)
+  spec = np.fft.rfft(x)
+  f = np.maximum(np.fft.rfftfreq(n, 1.0 / SAMPLE_RATE), 1.0)
+  hp = (f ** 4) / (f ** 4 + 200.0 ** 4)
+  pres = 10 ** ((6.0 / 20.0) * np.exp(-0.5 * (np.log(f / 1700.0) * 2.0) ** 2))
+  dip = 10 ** ((-3.0 / 20.0) * np.exp(-0.5 * (np.log(f / 4500.0) * 3.0) ** 2))
+  hs = 1.0 + (10 ** (-5.5 / 20.0) - 1.0) * (f * f / (f * f + 5500.0 ** 2))
+  return np.fft.irfft(spec * (hp * pres * dip * hs), n=n).astype(np.float32)
+
+
+def _sliding_rms(x: np.ndarray, win: int) -> np.ndarray:
+  n = len(x)
+  w = max(int(win), 1)
+  pad = np.full(w, float(x[0] * x[0]) if n else 0.0, dtype=np.float64)
+  x2 = np.concatenate((pad, np.square(x, dtype=np.float64)))
+  c = np.cumsum(x2)
+  return np.sqrt(np.maximum((c[w:w + n] - c[:n]) / w, 1e-12)).astype(np.float32)
+
+
+def _agc(x: np.ndarray) -> np.ndarray:
+  rms = _sliding_rms(x, int(0.025 * SAMPLE_RATE))
+  gain = np.clip(THEME_RMS / np.maximum(rms, 1e-5), 0.40, 8.0)
+  return x * gain
+
+
+def _soft_limit(x: np.ndarray) -> np.ndarray:
+  a = np.abs(x)
+  span = THEME_PEAK - THEME_KNEE
+  shaped = THEME_KNEE + span * np.tanh((a - THEME_KNEE) / span)
+  return (np.sign(x) * np.where(a > THEME_KNEE, shaped, a)).astype(np.float32)
+
+
+def _theme_prep(x: np.ndarray) -> np.ndarray:
+  # Short clicks keep their shape. Movie clips: dialog EQ, AGC, never 1.0.
+  if len(x) < int(0.45 * SAMPLE_RATE):
+    peak = float(np.max(np.abs(x))) if len(x) else 0.0
+    if peak > THEME_PEAK:
+      x = x * (THEME_PEAK / peak)
+    return x.astype(np.float32)
+  return _soft_limit(_agc(_dialog_eq(x)))
+
+
+def load_wav(*paths) -> np.ndarray | None:
+  for path in paths:
+    try:
+      with wave.open(path, "r") as w:
+        ch, sw, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        raw = w.readframes(n)
+      if sw != 2:
+        continue
+      x = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+      if ch == 2:
+        x = x.reshape(-1, 2).mean(axis=1)
+      elif ch != 1:
+        continue
+      x /= 32768.0
+      if rate != SAMPLE_RATE:
+        x = _resample_cubic(x, rate, SAMPLE_RATE)
+      return _theme_prep(x)
+    except Exception:
+      continue
+  return None
+
+
+def _flag(path: str) -> bool:
+  try:
+    return open(path).read().strip() in ("1", "true")
+  except Exception:
+    return False
+
+
+def _clear(path: str) -> None:
+  try:
+    os.unlink(path)
+  except Exception:
+    pass
+
+
 MIN_VOLUME = 0.1
 ALERT_RAMP_TIME = 4 # seconds to ramp to max volume for warningImmediate
 SELFDRIVE_STATE_TIMEOUT = 5 # 5 seconds
@@ -62,6 +195,12 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
+    self.oneshots: list[list] = []  # [np.ndarray, index, tag]
+    self._queue: list[list] = []
+    self._lock = threading.Lock()
+    self.prev_unlatched: bool | None = None
+    self._play_eighty = False
+    self._buckle_armed, self._buckle_t, self._onroad_t0 = self._load_gate()
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -75,10 +214,52 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
+  def _load_gate(self) -> tuple[bool, float, float]:
+    try:
+      j = json.loads(open(BUCKLE_GATE, encoding="utf-8").read())
+      return bool(j.get("armed", True)), float(j.get("t") or 0), float(j.get("onroad_t0") or 0)
+    except Exception:
+      return True, 0.0, 0.0
+
+  def _save_gate(self) -> None:
+    try:
+      with open(BUCKLE_GATE, "w", encoding="utf-8") as f:
+        json.dump({"armed": self._buckle_armed, "t": self._buckle_t, "onroad_t0": self._onroad_t0}, f)
+    except OSError:
+      pass
+
+  def _push(self, tag: str, paths: tuple[str, ...]) -> None:
+    # Decode here (20 Hz thread), never in the PortAudio callback. Buffer dies with the oneshot.
+    w = load_wav(*paths)
+    if w is None:
+      return
+    with self._lock:
+      self._queue.append([w, 0, tag])
+
+  def _tag_busy(self, tag: str) -> bool:
+    with self._lock:
+      return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
+
+  def _drain_flags(self) -> None:
+    if _flag(LUDI_PLAY):
+      self._push("ludi", LUDI_WAVS)
+      _clear(LUDI_PLAY)
+    if _flag(BUCKLE_PLAY):
+      self._push("buckle", BUCKLE_WAVS)
+      _clear(BUCKLE_PLAY)
+    if _flag(SHOT_PLAY):
+      self._push("shot", SHOT_WAVS)
+      _clear(SHOT_PLAY)
+    if self._play_eighty or _flag(DELOREAN_PLAY):
+      if not self._tag_busy("buckle"):
+        self._push("eighty", EIGHTY_WAVS)
+        self._play_eighty = False
+        _clear(DELOREAN_PLAY)
+
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}
 
-    # Load all sounds
+    # Stock alerts only. Theme wavs decode in _push when the event fires.
     for sound in sound_list:
       filename, play_count, volume = sound_list[sound]
 
@@ -115,7 +296,33 @@ class Soundd:
           self.pending_stop = False
           break
 
-    return ret * self.current_volume
+    out = ret * self.current_volume
+    with self._lock:
+      if self._queue:
+        self.oneshots.extend(self._queue)
+        self._queue.clear()
+      playing = list(self.oneshots)
+    live = []
+    sr = float(SAMPLE_RATE)
+    for arr, i, tag in playing:
+      n = min(frames, len(arr) - i)
+      if n > 0:
+        dur = len(arr) / sr
+        fi, fo = (0.006, 0.02) if dur < 0.45 else (0.012, 0.05)
+        idx = np.arange(n, dtype=np.float32) + i
+        t = idx / sr
+        env = np.ones(n, dtype=np.float32)
+        if fi > 0:
+          env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
+        if fo > 0:
+          env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
+        out[:n] += arr[i:i + n] * env
+        i += n
+      if i < len(arr):
+        live.append([arr, i, tag])
+    with self._lock:
+      self.oneshots = live
+    return np.clip(out, -1.0, 1.0)
 
   def callback(self, data_out: np.ndarray, frames: int, time, status) -> None:
     if status:
@@ -141,13 +348,14 @@ class Soundd:
       self.current_sound_frame = 0
 
   def get_audible_alert(self, sm):
+    started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
     if sm.updated['selfdriveState']:
       new_alert = sm['selfdriveState'].alertSound.raw
       self.update_alert(new_alert)
-    elif check_selfdrive_timeout_alert(sm):
+    elif started and check_selfdrive_timeout_alert(sm):
       self.update_alert(AudibleAlert.warningImmediate)
       self.selfdrive_timeout_alert = True
-    elif self.selfdrive_timeout_alert:
+    elif self.selfdrive_timeout_alert or (not started and self.current_alert != AudibleAlert.none):
       self.update_alert(AudibleAlert.none)
       self.selfdrive_timeout_alert = False
 
@@ -167,7 +375,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure'])
+    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'carState', 'deviceState'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
@@ -183,6 +391,42 @@ class Soundd:
             self.current_volume = self.calculate_volume(float(self.spl_filter_weighted.x))
 
         self.get_audible_alert(sm)
+
+        now = time.time()
+        started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
+
+        if (not self._buckle_armed) and self._buckle_t and (now - self._buckle_t) >= BUCKLE_WAIT_S:
+          self._buckle_armed = True
+          self._save_gate()
+
+        if started:
+          if not self._onroad_t0:
+            self._onroad_t0 = now
+            self._save_gate()
+            if _flag(DELOREAN_MODE):
+              self._play_eighty = True
+        elif self._onroad_t0:
+          if (now - self._onroad_t0) >= BUCKLE_DRIVE_S:
+            self._buckle_armed = True
+          self._onroad_t0 = 0.0
+          self._save_gate()
+
+        if sm.updated['carState'] and _flag(BUCKLE_MODE):
+          unlatched = bool(sm['carState'].seatbeltUnlatched)
+          latched_edge = self.prev_unlatched is True and not unlatched
+          latched_start = self.prev_unlatched is None and not unlatched
+          if (latched_edge or latched_start) and self._buckle_armed:
+            self._buckle_armed = False
+            self._buckle_t = now
+            self._save_gate()
+            try:
+              open(BUCKLE_PLAY, "w").write("1")
+            except OSError:
+              pass
+          self.prev_unlatched = unlatched
+
+        if self.current_alert != AudibleAlert.warningImmediate:
+          self._drain_flags()
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:
