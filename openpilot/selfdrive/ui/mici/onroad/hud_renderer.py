@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
-from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_deg, heading_letter
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -132,6 +132,8 @@ class HudRenderer(Widget):
     self._egpu_icon: rl.Texture | None = None
     self._txt_compass_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
+    self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
+    self._txt_compass_fan90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 78, 78)
     self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
@@ -319,17 +321,28 @@ class HudRenderer(Widget):
 
     engaged = ui_state.status != UIStatus.DISENGAGED and custom_onroad_ui()
     set_a = float(self._set_speed_alpha_filter.x)
-    self._compass_fade.update(1.0 if engaged and set_a < 1e-2 else 0.0)
+    large = compass_size() == COMPASS_LARGE
+    if large:
+      self._compass_fade.update(1.0 if engaged else 0.0)
+    else:
+      self._compass_fade.update(1.0 if engaged and set_a < 1e-2 else 0.0)
 
     a = int(255 * 0.9 * self._compass_fade.x)
-    if custom_onroad_ui() and a >= 3:
-      size, fan = 60, 52
+    if not (custom_onroad_ui() and a >= 3):
+      return
+    if large:
+      size, fan, font = 90, 78, 42
+      cx = rect.x + rect.width - 16 - size / 2
+      cy = rect.y + 10 + size / 2
+      bg, fan_tex = self._txt_compass_bg90, self._txt_compass_fan90
+    else:
+      size, fan, font = 60, 52, 28
       cx = rect.x + 16 + size / 2
       dm_cy = rect.y + 10 + size / 2
       wheel_cy = rect.y + rect.height - 14 - self._txt_wheel.height / 2 + self._wheel_y_filter.x
       cy = (dm_cy + wheel_cy) / 2
-      self._paint_compass(cx, cy, size, fan, a, heading, letter,
-                          self._txt_compass_bg, self._txt_compass_fan, 28)
+      bg, fan_tex = self._txt_compass_bg, self._txt_compass_fan
+    self._paint_compass(cx, cy, size, fan, a, heading, letter, bg, fan_tex, font)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

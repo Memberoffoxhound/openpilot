@@ -28,6 +28,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"CompletedTrainingVersion", {PERSISTENT, STRING, "0"}},
     {"ControlsReady", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
     {"CustomOnroadUi", {PERSISTENT, INT, "0"}},  // 0 = stock onroad HUD; 1 = custom (compass, etc)
+    {"CompassSize", {PERSISTENT, INT, "0"}},  // 0 = small (60px left); 1 = large (90px top-right)
     {"LudicrousMode", {PERSISTENT, BOOL, "0"}},
     {"LudicrousPlay", {CLEAR_ON_MANAGER_START, BOOL}},
     {"CurrentBootlog", {PERSISTENT, STRING}},

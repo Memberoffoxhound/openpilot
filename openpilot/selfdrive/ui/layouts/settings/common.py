@@ -25,6 +25,10 @@ ONROAD_UI_CUSTOM = 1
 ONROAD_UI_LABELS = ("stock UI", "custom UI")
 _CUSTOM_ONROAD_PATH = "/data/params/d/CustomOnroadUi"
 
+COMPASS_SMALL = 0
+COMPASS_LARGE = 1
+COMPASS_SIZE_LABELS = ("small", "large")
+
 
 def lane_color_mode(params: Params | None = None) -> int:
   params = params or Params()
@@ -67,6 +71,20 @@ def next_onroad_ui(params: Params | None = None) -> int:
 
 def custom_onroad_ui(params: Params | None = None) -> bool:
   return onroad_ui_mode(params) == ONROAD_UI_CUSTOM
+
+
+def compass_size(params: Params | None = None) -> int:
+  params = params or Params()
+  mode = params.get("CompassSize", return_default=True)
+  return COMPASS_LARGE if mode == COMPASS_LARGE else COMPASS_SMALL
+
+
+def compass_size_label(params: Params | None = None) -> str:
+  return COMPASS_SIZE_LABELS[compass_size(params)]
+
+
+def next_compass_size(params: Params | None = None) -> int:
+  return COMPASS_SMALL if compass_size(params) == COMPASS_LARGE else COMPASS_LARGE
 
 
 CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
@@ -208,17 +226,15 @@ _STARS = tuple(
 _seen_offroad = False
 _mid_drive_boot = False
 _ludi_drive = False
-_buckle_drive = False
 
 
 def tick_egg_drive() -> None:
   """Arm easter eggs only after this process has seen offroad. Reboot mid-drive stays silent."""
-  global _seen_offroad, _mid_drive_boot, _ludi_drive, _buckle_drive
+  global _seen_offroad, _mid_drive_boot, _ludi_drive
   if not ui_state.started:
     _seen_offroad = True
     _mid_drive_boot = False
     _ludi_drive = False
-    _buckle_drive = False
     return
   if not _seen_offroad:
     _mid_drive_boot = True
@@ -226,15 +242,6 @@ def tick_egg_drive() -> None:
 
 def eggs_live() -> bool:
   return bool(ui_state.started and _seen_offroad and not _mid_drive_boot)
-
-
-def buckle_once() -> bool:
-  global _buckle_drive
-  tick_egg_drive()
-  if not eggs_live() or _buckle_drive:
-    return False
-  _buckle_drive = True
-  return True
 
 
 def trigger_ludicrous(*, preview: bool = False) -> bool:

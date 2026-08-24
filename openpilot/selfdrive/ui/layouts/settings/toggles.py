@@ -2,6 +2,7 @@ from openpilot.cereal import log
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color, onroad_ui_label, next_onroad_ui, set_onroad_ui,
+  compass_size_label, next_compass_size,
 )
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
@@ -36,6 +37,9 @@ DESCRIPTIONS = {
   ),
   "CustomOnroadUi": tr_noop(
     "Stock UI is comma's onroad HUD. Custom UI is this fork's onroad overlays, starting with a compass heading."
+  ),
+  "CompassSize": tr_noop(
+    "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -136,6 +140,13 @@ class TogglesLayout(Widget):
       callback=self._cycle_lane_color,
     )
 
+    self._compass_size_setting = button_item(
+      lambda: tr("Theme: Compass Size"),
+      lambda: tr(compass_size_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["CompassSize"]),
+      callback=self._cycle_compass_size,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -170,6 +181,7 @@ class TogglesLayout(Widget):
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
         self._toggles["CustomOnroadUi"] = self._onroad_ui_setting
         self._toggles["LaneColor"] = self._lane_color_setting
+        self._toggles["CompassSize"] = self._compass_size_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -243,6 +255,7 @@ class TogglesLayout(Widget):
 
     self._onroad_ui_setting.action_item.set_text(lambda: tr(onroad_ui_label(self._params)))
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
+    self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
 
   def _render(self, rect):
     self._scroller.render(rect)
@@ -310,3 +323,8 @@ class TogglesLayout(Widget):
     nxt = next_lane_color(self._params)
     self._params.put("LaneColor", nxt, block=True)
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
+
+  def _cycle_compass_size(self):
+    nxt = next_compass_size(self._params)
+    self._params.put("CompassSize", nxt, block=True)
+    self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
