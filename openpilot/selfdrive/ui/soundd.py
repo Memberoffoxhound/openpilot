@@ -348,13 +348,14 @@ class Soundd:
       self.current_sound_frame = 0
 
   def get_audible_alert(self, sm):
+    started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
     if sm.updated['selfdriveState']:
       new_alert = sm['selfdriveState'].alertSound.raw
       self.update_alert(new_alert)
-    elif check_selfdrive_timeout_alert(sm):
+    elif started and check_selfdrive_timeout_alert(sm):
       self.update_alert(AudibleAlert.warningImmediate)
       self.selfdrive_timeout_alert = True
-    elif self.selfdrive_timeout_alert:
+    elif self.selfdrive_timeout_alert or (not started and self.current_alert != AudibleAlert.none):
       self.update_alert(AudibleAlert.none)
       self.selfdrive_timeout_alert = False
 
