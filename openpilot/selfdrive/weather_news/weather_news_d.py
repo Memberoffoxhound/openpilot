@@ -16,13 +16,14 @@ Voice (best practical Ara-style on device)
 - Personable: warmer, slightly slower female espeak voice.
 - Aggressive (Ara / MF'n): faster, lower, rougher delivery + foul scripts.
 True neural Ara voice is not on-device; personality lives in the scripts +
-prosody. Falls back cleanly if espeak is missing.
+prosody. WAV is rendered then played via aplay for reliable C4 speaker output.
 """
 
 from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import time
 import traceback
 from datetime import date
@@ -44,7 +45,7 @@ from openpilot.selfdrive.weather_news.news_bites import get_news_cycle
 
 ONROAD_DELAY_S = 10.0
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
-USER_AGENT = "S3XYPilot-WeatherNews/0.3"
+USER_AGENT = "S3XYPilot-WeatherNews/0.4"
 PARAM_DIR = Path("/data/params/d")
 
 # ---------- Params helpers (custom keys may not be in keys.h) ----------
@@ -106,7 +107,6 @@ def location_from_cereal(sm: messaging.SubMaster) -> tuple[float, float, str]:
         return float(pos.value[0]), float(pos.value[1]), "your area"
   except Exception:
     pass
-  # last-resort IP / default
   try:
     import requests
     r = requests.get("https://ipapi.co/json/", timeout=4)
@@ -143,41 +143,64 @@ def fetch_weather(lat: float, lon: float) -> Optional[dict[str, Any]]:
 
 # ---------- Ara-style voice ----------
 
+def _which(bins: list[str]) -> Optional[str]:
+  for b in bins:
+    try:
+      subprocess.check_call(["which", b], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+      return b
+    except Exception:
+      continue
+  return None
+
+
 def speak(text: str, aggressive: bool = False) -> None:
-  """Best on-device voice approximating Grok Ara personality via prosody."""
+  """Best on-device voice approximating Grok Ara personality via prosody + WAV play."""
   tag = "ARA/AGGRESSIVE" if aggressive else "PERSONABLE"
-  cloudlog.info(f"weather_news [{tag}]: {text[:120]}...")
+  cloudlog.info(f"weather_news [{tag}]: {text[:140]}...")
   print(f"\n===== WEATHER/NEWS [{tag}] =====\n{text}\n===== END =====\n")
 
-  # Prefer espeak-ng, then espeak
-  bins = ["espeak-ng", "espeak"]
-  for binary in bins:
-    try:
-      if aggressive:
-        # Ara-ish: faster, lower pitch, slightly breathy / rough
-        # -p pitch (0-99, default 50), -s speed wpm, -a amplitude, -g word gap
-        cmd = [
-          binary, "-v", "en-us+m3", "-p", "28", "-s", "175", "-a", "180", "-g", "4",
-          text,
-        ]
-      else:
-        # Warm personable lady
-        cmd = [
-          binary, "-v", "en-us+f3", "-p", "55", "-s", "145", "-a", "160", "-g", "6",
-          text,
-        ]
-      subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+  espeak = _which(["espeak-ng", "espeak"])
+  if not espeak:
+    cloudlog.warning("weather_news: no espeak-ng/espeak — text only")
+    return
+
+  # Ara: lower pitch, faster, denser. Personable: warmer female, slower.
+  if aggressive:
+    voice, pitch, speed, amp, gap = "en-us+m3", "26", "178", "200", "3"
+  else:
+    voice, pitch, speed, amp, gap = "en-us+f3", "58", "142", "170", "7"
+
+  wav_path = None
+  try:
+    fd, wav_path = tempfile.mkstemp(prefix="wxnews_", suffix=".wav")
+    os.close(fd)
+    cmd = [
+      espeak, "-v", voice, "-p", pitch, "-s", speed, "-a", amp, "-g", gap,
+      "-w", wav_path, text,
+    ]
+    subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+
+    player = _which(["aplay", "paplay", "ffplay"])
+    if player == "aplay":
+      subprocess.run(["aplay", "-q", wav_path], check=False, timeout=90)
+    elif player == "paplay":
+      subprocess.run(["paplay", wav_path], check=False, timeout=90)
+    elif player == "ffplay":
+      subprocess.run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", wav_path], check=False, timeout=90)
+    else:
+      # last resort: direct speak (may overlap poorly)
+      subprocess.run(
+        [espeak, "-v", voice, "-p", pitch, "-s", speed, "-a", amp, "-g", gap, text],
+        check=False, timeout=60,
       )
-      return
-    except FileNotFoundError:
-      continue
-    except Exception as e:
-      cloudlog.warning(f"weather_news speak failed ({binary}): {e}")
-      continue
-  cloudlog.warning("weather_news: no TTS binary found (espeak-ng / espeak)")
+  except Exception as e:
+    cloudlog.warning(f"weather_news speak failed: {e}")
+  finally:
+    if wav_path:
+      try:
+        os.unlink(wav_path)
+      except OSError:
+        pass
 
 
 def run_full_cycle(aggressive: bool, lat: float, lon: float, loc_name: str) -> None:
@@ -194,10 +217,10 @@ def run_full_cycle(aggressive: bool, lat: float, lon: float, loc_name: str) -> N
     )
     speak(msg, aggressive)
 
-  time.sleep(1.8)
+  time.sleep(0.8)
   for bite in get_news_cycle(num_bites=2, aggressive=aggressive):
     speak(bite, aggressive=aggressive)
-    time.sleep(1.4)
+    time.sleep(0.6)
 
 
 def handle_preview(sm: messaging.SubMaster) -> bool:
@@ -220,7 +243,6 @@ def is_onroad(params: Params, sm: messaging.SubMaster) -> bool:
     pass
   try:
     if sm.recv_frame.get("deviceState", 0) > 0:
-      # started / not offroad
       ds = sm["deviceState"]
       if hasattr(ds, "started") and ds.started:
         return True
@@ -235,7 +257,7 @@ def is_onroad(params: Params, sm: messaging.SubMaster) -> bool:
 
 
 def main() -> None:
-  cloudlog.info("weather_news: v0.3 full integration starting (first-drive + Ara voice)")
+  cloudlog.info("weather_news: v0.4 full integration (first-drive + Ara wav voice)")
   params = Params()
   sm = messaging.SubMaster([
     "deviceState",
@@ -250,9 +272,8 @@ def main() -> None:
     try:
       sm.update(0)
 
-      # 1) Previews always win (works offroad)
       if handle_preview(sm):
-        time.sleep(4)
+        time.sleep(2)
         continue
 
       if not get_bool("WeatherNewsEnable", default=True):
@@ -261,7 +282,6 @@ def main() -> None:
 
       today = date.today().isoformat()
       if get_str("WeatherNewsLastRunDate", "") == today:
-        # Already did the daily run — only service previews
         time.sleep(30)
         continue
 
@@ -272,7 +292,6 @@ def main() -> None:
       cloudlog.info(f"weather_news: first drive of {today} — waiting {ONROAD_DELAY_S}s")
       time.sleep(ONROAD_DELAY_S)
 
-      # Re-check after delay
       sm.update(0)
       if not get_bool("WeatherNewsEnable", default=True):
         continue
