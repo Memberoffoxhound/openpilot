@@ -12,3 +12,14 @@
 
 openpilot/selfdrive/car/tests/test_models_segs.txt filter=lfs diff=lfs merge=lfs -text
 openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
+
+# TeslaPilot Highland boot mark (848x848) kept as a normal blob so clones
+# do not need LFS to fetch the white Tesla T spinner.
+openpilot/selfdrive/assets/images/spinner_comma.png -filter=lfs -diff=lfs -merge=lfs -text
+
+# C4 Settings → theme paintbrush icon (small white silhouette).
+openpilot/selfdrive/assets/fonts/TESLA.ttf -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/sounds/88mph.wav -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/sounds/ludicrous.wav -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/sounds/buckle.wav -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/sounds/shutter.wav -filter=lfs -diff=lfs -merge=lfs -text

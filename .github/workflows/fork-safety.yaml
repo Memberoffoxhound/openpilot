@@ -1,0 +1,54 @@
+# DELAMAIN fork-safety gate.
+# comma docs/SAFETY.md: disable/nerf driver monitoring or excessive-actuation
+# checks, or ship modified opendbc/safety without the full test suite, and
+# comma will ban the dongle from their servers.
+#
+# This workflow fails the PR if Highland touches those paths relative to the
+# merge-base with commaai/openpilot (and commaai/opendbc for the safety pack).
+name: fork-safety
+
+on:
+  push:
+    branches: [master, Highland]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  safety-paths:
+    name: safety-critical paths unchanged
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Fetch commaai/openpilot
+        run: |
+          git remote add comma https://github.com/commaai/openpilot.git
+          git fetch comma master --depth=200
+
+      - name: Driver monitoring and excessive-actuation checks must match comma
+        run: |
+          set -euo pipefail
+          BASE=$(git merge-base comma/master HEAD)
+          echo "merge-base with commaai/openpilot master: $BASE"
+          git diff --exit-code "$BASE" HEAD -- \
+            openpilot/selfdrive/monitoring \
+            openpilot/selfdrive/selfdrived/helpers.py
+
+      - name: opendbc/safety must not be modified
+        working-directory: opendbc_repo
+        run: |
+          set -euo pipefail
+          git remote add comma https://github.com/commaai/opendbc.git || true
+          git fetch comma master --depth=200
+          BASE=$(git merge-base comma/master HEAD)
+          echo "merge-base with commaai/opendbc master: $BASE"
+          git diff --exit-code "$BASE" HEAD -- opendbc/safety
+
+      - name: panda submodule stays commaai/panda
+        run: |
+          set -euo pipefail
+          grep -E 'url = .*/commaai/panda.git' .gitmodules
+          echo "panda submodule URL is stock commaai/panda"
