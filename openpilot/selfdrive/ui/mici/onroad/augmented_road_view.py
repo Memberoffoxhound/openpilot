@@ -14,6 +14,7 @@ from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, MouseEvent
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
+from openpilot.selfdrive.ui.layouts.settings.common import maybe_trigger_ludicrous
 from openpilot.common.filter_simple import BounceFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -173,6 +174,7 @@ class AugmentedRoadView(CameraView):
       self._offroad_label.set_text("openpilot can't start\ncheck alerts")
     else:
       self._offroad_label.set_text("start the car to\nuse openpilot")
+    maybe_trigger_ludicrous()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     # Don't trigger click callback if bookmark was triggered
@@ -229,8 +231,8 @@ class AugmentedRoadView(CameraView):
     self._hud_renderer.set_can_draw_top_icons(alert_to_render is None)
     self._hud_renderer.set_wheel_critical_icon(alert_to_render is not None and not not_animating_out and
                                                alert_to_render.visual_alert == car.CarControl.HUDControl.VisualAlert.steerRequired)
-    self._alert_renderer.render(self._content_rect)
     self._hud_renderer.render(self._content_rect)
+    self._alert_renderer.render(self._content_rect)
 
     # Draw fake rounded border
     rl.draw_rectangle_rounded_lines_ex(self._content_rect, 0.2 * 1.02, 10, 50, rl.BLACK)

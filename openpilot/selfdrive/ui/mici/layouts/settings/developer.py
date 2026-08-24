@@ -21,10 +21,10 @@ class AlphaLongConfirmPage(NavScroller):
       GreyBigButton("enabling alpha longitudinal", "scroll to continue",
                     gui_app.texture("icons_mici/setup/warning.png", 64, 64)),
       GreyBigButton("", "WARNING: alpha longitudinal control may disable Automatic Emergency Braking (AEB)"),
-      GreyBigButton("", "On this car, openpilot defaults to the stock system's built-in ACC."),
-      GreyBigButton("", "Enabling this will switch to openpilot longitudinal control."),
-      GreyBigButton("", "Using Experimental mode is recommended with openpilot longitudinal control alpha."),
-      GreyBigButton("", "Changing this setting will restart openpilot if the car is powered on."),
+      GreyBigButton("", "On this car, S3XYPilot defaults to the stock system's built-in ACC."),
+      GreyBigButton("", "Enabling this will switch to S3XYPilot longitudinal control."),
+      GreyBigButton("", "Using Experimental mode is recommended with S3XYPilot longitudinal control alpha."),
+      GreyBigButton("", "Changing this setting will restart S3XYPilot if the car is powered on."),
       accept,
     ])
 
@@ -189,6 +189,8 @@ class DeveloperLayoutMici(NavScroller):
   def _on_alpha_long_enabled(self, state: bool):
     def do_toggle(_state: bool):
       ui_state.params.put_bool("AlphaLongitudinalEnabled", _state, block=True)
+      if not _state:
+        ui_state.params.put_bool("ExperimentalMode", False, block=True)
       restart_needed_callback()
       self._update_toggles()
 
