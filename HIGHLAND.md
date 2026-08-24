@@ -18,7 +18,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 
 | Param | Default | Meaning |
 |---|---|---|
-| `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. |
+| `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot). |
 | `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |

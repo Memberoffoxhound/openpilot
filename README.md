@@ -17,7 +17,9 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 Stalkless Teslas have no cruise stalk. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
 
 - Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
-- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min
+- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
+- Cooperative steering — on. Based on dzid26's implementation of cooperative steering (VTB). AmyJeanes landed the sunnypilot Tesla Coop Steering path.
+- Scroll-wheel disengage — stalkless cancel. Based on dkiiv's implementation of stalkless scroll-wheel cancel, pulled from dzid26's Tesla fork.
 - Custom onroad UI — Tesla-blue lanes, compass (small left or large top-right; theme toggle)
 - Home — Today / Week miles and distance-engaged %
 - 3s display hold → screenshot (`/data/media/0/screenshots`)
@@ -54,3 +56,11 @@ Username `Memberoffoxhound`, branch `Highland`. Repo is named `openpilot` so tha
 You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
 
 Stock install: [`openpilot.comma.ai`](https://openpilot.comma.ai)
+
+## Special thanks
+
+These are not original to this fork. Huge thanks.
+
+- **Automatic Lane Change** — based on [rav4kumar](https://github.com/rav4kumar)'s implementation of Automatic Lane Change in sunnypilot ([#653](https://github.com/sunnypilot/sunnypilot/pull/653)), with [Jason Wen / sunnyhaibin](https://github.com/sunnyhaibin).
+- **Cooperative steering** — based on [dzid26](https://github.com/dzid26)'s implementation of cooperative steering (virtual torque blending, `vtb` / `vtb-sla`). [AmyJeanes](https://github.com/AmyJeanes) landed Tesla Coop Steering in sunnypilot using native LKAS ([opendbc #287](https://github.com/sunnypilot/opendbc/pull/287)).
+- **Stalkless scroll-wheel disengage** — based on [dkiiv](https://github.com/dkiiv)'s implementation of stalkless cancel (`DAS_accState == 13` → `ButtonType.cancel`, [opendbc #3203](https://github.com/commaai/opendbc/pull/3203)). Pulled from [dzid26](https://github.com/dzid26)'s Tesla fork.

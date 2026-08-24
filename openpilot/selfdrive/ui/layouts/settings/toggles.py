@@ -30,7 +30,7 @@ DESCRIPTIONS = {
   "AutoLaneChangeEnabled": tr_noop(
     "Auto Lane Change uses Tesla's built-in blind spot monitoring to check for a vehicle in the adjacent lane prior to merging. " +
     "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary. " +
-    "When off, a steering-wheel nudge is required (stock openpilot)."
+    "When off, a steering-wheel nudge is required (stock openpilot). Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot)."
   ),
   "LaneColor": tr_noop(
     "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot. Applied in custom onroad UI."
