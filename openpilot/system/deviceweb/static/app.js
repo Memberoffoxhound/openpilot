@@ -11,6 +11,10 @@ const GROUPS = [
     {key:"RecordFront", label:"Record cabin camera", type:"bool", desc:"Upload dcam to help DM.", restart:true},
     {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
   ]},
+  {id:"weather", title:"Weather Lady", items:[
+    {key:"WeatherNewsEnable", label:"Enable weather + news", type:"bool", desc:"First drive of the day: forecast, overnight, Elon-company bites."},
+    {key:"WeatherNewsAggressive", label:"Ara / aggressive voice", type:"bool", desc:"Foul-mouthed MF’n weather lady (Grok Ara attitude). Off = personable."},
+  ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
     {key:"CompassSize", label:"Compass size", type:"select", desc:"Custom onroad compass.", options:[["0","Small"],["1","Large"]]},
@@ -77,6 +81,17 @@ async function save(k, v) {
   info = await api("/api/info");
   render();
 }
+async function previewWeather(mode) {
+  try {
+    const j = await api("/api/weather/preview", {
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body: JSON.stringify({mode})
+    });
+    if (j.ok) say(mode === "aggressive" ? "Ara preview queued — listen up." : "Personable preview queued.");
+    else say(j.error || "preview failed");
+  } catch (e) { say((e && e.message) || "preview failed"); }
+}
 async function loadFiles() {
   const j = await api("/api/files?path=" + encodeURIComponent(path));
   files = j.items || [];
@@ -131,6 +146,8 @@ function view() {
 function statusView() {
   const bars = "▂▄▆█".slice(0, Math.max(1, info.wifiBars|0)) + "·".repeat(4-Math.max(1, info.wifiBars|0));
   const pers = ["Aggressive","Standard","Relaxed"][Number(params.LongitudinalPersonality)||1];
+  const wxOn = params.WeatherNewsEnable !== "0";
+  const ara = params.WeatherNewsAggressive === "1";
   return `<div class="wrap">
     <div class="warn">This console has no password. Anyone on this Wi-Fi can read files and change settings. Keep it on your LAN.</div>
     <div class="grid">
@@ -149,6 +166,16 @@ function statusView() {
       ${row("Personality", pers)}
       ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
       ${row("Compass", params.CompassSize==="1"?"large":"small")}
+      ${row("Weather Lady", wxOn ? (ara ? "Ara / aggressive" : "personable") : "off")}
+      ${row("Last weather run", params.WeatherNewsLastRunDate || "never")}
+    </div>
+    <div class="card pad">
+      <p class="ghead">Weather preview</p>
+      <p class="muted" style="margin:8px 0 12px">Works parked. Speaks through the C4 speaker.</p>
+      <div class="btns">
+        <button class="btn" id="wxPersonable">Preview personable</button>
+        <button class="btn primary" id="wxAra">Preview Ara</button>
+      </div>
     </div>
     <div class="btns">
       <button class="btn" id="openLive">Open livestream</button>
@@ -162,11 +189,23 @@ function settingsView() {
   const groups = GROUPS.map(g => ({...g, items:g.items.filter(it => !query || it.label.toLowerCase().includes(query) || it.key.toLowerCase().includes(query))})).filter(g => g.items.length);
   return `<div class="wrap">
     <label class="search"><input id="q" placeholder="Search settings" value="${esc(q)}"/></label>
-    ${groups.map(g => `<section><p class="ghead">${g.title}</p><div class="card">${g.items.map(it => setRow(it)).join("")}</div></section>`).join("")}
+    ${groups.map(g => {
+      let extra = "";
+      if (g.id === "weather") {
+        extra = `<div class="card pad" style="margin-top:12px">
+          <p class="muted" style="margin-bottom:12px">Instant voice test (offroad ok). Uses espeak-ng Ara prosody on aggressive.</p>
+          <div class="btns">
+            <button class="btn" id="wxPersonable">Preview personable</button>
+            <button class="btn primary" id="wxAra">Preview Ara</button>
+          </div>
+        </div>`;
+      }
+      return `<section><p class="ghead">${g.title}</p><div class="card">${g.items.map(it => setRow(it)).join("")}</div>${extra}</section>`;
+    }).join("")}
   </div>`;
 }
 function setRow(it) {
-  const val = params[it.key] ?? (it.type==="select" ? it.options[0][0] : "0");
+  const val = params[it.key] ?? (it.type==="select" ? it.options[0][0] : (it.key==="WeatherNewsEnable" ? "1" : "0"));
   const locked = !!it.deviceOnly;
   const ctl = it.type==="bool"
     ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}" ${locked?"disabled":""}><i></i></button>`
@@ -332,6 +371,10 @@ function bind() {
   });
   const live = document.getElementById("openLive");
   if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
+  const wxP = document.getElementById("wxPersonable");
+  if (wxP) wxP.onclick = () => previewWeather("personable");
+  const wxA = document.getElementById("wxAra");
+  if (wxA) wxA.onclick = () => previewWeather("aggressive");
   const chk = document.getElementById("chk");
   if (chk) chk.onclick = () => startUpdate();
   const updCancel = document.getElementById("updCancel");
