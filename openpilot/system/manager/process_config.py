@@ -119,6 +119,8 @@ procs = [
   PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
   PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", always_run),  # LAN settings/files/updates PWA, no auth
   PythonProcess("tesla_energy_log", "openpilot.selfdrive.tesla_energy_log", always_run),  # trip meter + Party energy jsonl
+  # S3XYPilot Weather Lady + Elon news (first drive of day + preview)
+  PythonProcess("weather_news_d", "openpilot.selfdrive.weather_news.weather_news_d", always_run),
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),
 ]
 
