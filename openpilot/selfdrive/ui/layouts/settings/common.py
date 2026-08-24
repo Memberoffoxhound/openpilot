@@ -411,12 +411,16 @@ def tick_trip() -> None:
 
   # Rollover checks execute every tick across midnight & Sundays
   wid = _sunday_id()
-  if _trip.get("week_id") != wid:
+  if not _trip.get("week_id"):
+    _trip["week_id"] = wid
+  elif _trip.get("week_id") != wid:
     _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
     _trip["week_id"] = wid
 
   did = _day_id()
-  if _trip.get("day_id") != did:
+  if not _trip.get("day_id"):
+    _trip["day_id"] = did
+  elif _trip.get("day_id") != did:
     _trip["today_m"] = _trip["today_eng_m"] = 0.0
     _trip["day_id"] = did
 

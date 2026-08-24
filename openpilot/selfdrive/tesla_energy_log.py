@@ -58,6 +58,7 @@ def main() -> None:
       if log_fp is None or log_name != name:
         if log_fp:
           log_fp.close()
+        REALDATA.mkdir(parents=True, exist_ok=True)
         log_fp = open(REALDATA / name, "a", buffering=1)
         log_name = name
       rec = {

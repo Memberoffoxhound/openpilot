@@ -44,6 +44,8 @@ AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
+# Highland extras. Must not block engage if they crash.
+OPTIONAL_PROCS = {"weather_news_d", "deviceweb", "tesla_energy_log"}
 
 
 class SelfdriveD:
@@ -347,6 +349,7 @@ class SelfdriveD:
       self.events.add(EventName.bigModelFailed)
 
     not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning}
+    not_running -= OPTIONAL_PROCS
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)

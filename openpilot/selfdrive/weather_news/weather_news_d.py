@@ -100,14 +100,6 @@ def location_from_cereal(sm: messaging.SubMaster) -> tuple[float, float, str]:
   except Exception:
     pass
   try:
-    if sm.recv_frame.get("liveLocationKalman", 0) > 0:
-      llk = sm["liveLocationKalman"]
-      pos = llk.positionGeodetic
-      if pos.valid:
-        return float(pos.value[0]), float(pos.value[1]), "your area"
-  except Exception:
-    pass
-  try:
     import requests
     r = requests.get("https://ipapi.co/json/", timeout=4)
     j = r.json()
@@ -264,7 +256,6 @@ def main() -> None:
     "selfdriveState",
     "carState",
     "gpsLocationExternal",
-    "liveLocationKalman",
   ])
   rk = Ratekeeper(1.0, print_delay_threshold=None)
 
@@ -276,7 +267,7 @@ def main() -> None:
         time.sleep(2)
         continue
 
-      if not get_bool("WeatherNewsEnable", default=True):
+      if not get_bool("WeatherNewsEnable", default=False):
         time.sleep(20)
         continue
 
@@ -293,7 +284,7 @@ def main() -> None:
       time.sleep(ONROAD_DELAY_S)
 
       sm.update(0)
-      if not get_bool("WeatherNewsEnable", default=True):
+      if not get_bool("WeatherNewsEnable", default=False):
         continue
       if get_str("WeatherNewsLastRunDate", "") == today:
         continue

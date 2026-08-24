@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from openpilot.common.swaglog import cloudlog
 
-DATA_DIR = Path("/data/media/0")
+DATA_DIR = Path("/data/media/0/realdata")
 SEG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})--")
 TZ = ZoneInfo("America/Chicago")
 SKIP = {"clips", "screenshots"}
