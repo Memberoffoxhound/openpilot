@@ -128,11 +128,15 @@ def check_selfdrive_timeout_alert(sm):
 class Soundd:
   def __init__(self):
     self.load_sounds()
-    self.oneshots: list[list] = []  # [np.ndarray, index, tag]
+    self.oneshots: list[list] = []  # [np.ndarray, index]
     self.prev_unlatched: bool | None = None
-    self.prev_started = False
+    self.prev_drive_gear: bool | None = None
+    self._seen_offroad = False
     self._buckle_played = False
     self._eighty_played = False
+    self._play_eighty = False
+    self._wav_eighty = load_wav(*EIGHTY_WAVS)
+    self._wav_buckle = load_wav(*BUCKLE_WAVS)
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -187,33 +191,32 @@ class Soundd:
           break
 
     out = ret * self.current_volume
-if self.current_alert != AudibleAlert.warningImmediate:
+    if self.current_alert != AudibleAlert.warningImmediate:
       if _flag(LUDI_PLAY):
         w = load_wav(*LUDI_WAVS)
         if w is not None:
-          self.oneshots.append([w, 0, "ludi"])
+          self.oneshots.append([w, 0])
         _clear(LUDI_PLAY)
-
       if _flag(BUCKLE_PLAY):
-        w = load_wav(*BUCKLE_WAVS)
-        if w is not None:
-          self.oneshots.append([w, 0, "buckle"])
+        if self._wav_buckle is not None:
+          self.oneshots.append([self._wav_buckle, 0])
         _clear(BUCKLE_PLAY)
-
       if _flag(SHOT_PLAY):
         w = load_wav(*SHOT_WAVS)
         if w is not None:
-          self.oneshots.append([w, 0, "shot"])
+          self.oneshots.append([w, 0])
         _clear(SHOT_PLAY)
-
       if _flag(DELOREAN_PLAY):
-        buckle_busy = any(tag == "buckle" for _, _, tag in self.oneshots)
-        if not buckle_busy:
-          w = load_wav(*EIGHTY_WAVS)
-          if w is not None:
-            self.oneshots.append([w, 0, "eighty"])
-          _clear(DELOREAN_PLAY)
-    for arr, i, tag in self.oneshots:
+        self._play_eighty = True
+        _clear(DELOREAN_PLAY)
+      buckle_busy = self._wav_buckle is not None and any(arr is self._wav_buckle for arr, _ in self.oneshots)
+      if self._play_eighty and not buckle_busy:
+        if self._wav_eighty is not None:
+          self.oneshots.append([self._wav_eighty, 0])
+        self._play_eighty = False
+    live = []
+    sr = float(SAMPLE_RATE)
+    for arr, i in self.oneshots:
       n = min(frames, len(arr) - i)
       if n > 0:
         dur = len(arr) / sr
@@ -229,7 +232,7 @@ if self.current_alert != AudibleAlert.warningImmediate:
         out[:n] += arr[i:i + n] * env
         i += n
       if i < len(arr):
-        live.append([arr, i, tag])
+        live.append([arr, i])
     self.oneshots = live
     return np.clip(out, -1.0, 1.0)
 
@@ -301,36 +304,30 @@ if self.current_alert != AudibleAlert.warningImmediate:
         self.get_audible_alert(sm)
 
         started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
+        if not started:
+          self._seen_offroad = True
+          self._buckle_played = False
+          self._eighty_played = False
 
-      # Reset flags whenever device goes offroad
-      if not started:
-        self._buckle_played = False
-        self._eighty_played = False
+        if sm.updated['carState']:
+          if _flag(BUCKLE_MODE):
+            unlatched = bool(sm['carState'].seatbeltUnlatched)
+            latched = self.prev_unlatched is True and unlatched is False
+            # Once per drive. Silent if soundd started mid-drive (never saw offroad).
+            if latched and self._seen_offroad and not self._buckle_played:
+              self._buckle_played = True
+              try:
+                open(BUCKLE_PLAY, "w").write("1")
+              except OSError:
+                pass
+            self.prev_unlatched = unlatched
 
-      # Trigger 88mph sound once immediately when entering onroad mode
-      if _flag(DELOREAN_MODE) and started and not self.prev_started and not self._eighty_played:
-        self._eighty_played = True
-        try:
-          open(DELOREAN_PLAY, "w").write("1")
-        except OSError:
-          pass
-
-      self.prev_started = started
-
-      # Handle buckle sound (plays once per trip when latched)
-      if sm.updated['carState'] and _flag(BUCKLE_MODE):
-        unlatched = bool(sm['carState'].seatbeltUnlatched)
-        latched_edge = self.prev_unlatched is True and not unlatched
-        latched_on_start = self.prev_unlatched is None and not unlatched
-
-        if (latched_edge or latched_on_start) and not self._buckle_played:
-          self._buckle_played = True
-          try:
-            open(BUCKLE_PLAY, "w").write("1")
-          except OSError:
-            pass
-
-        self.prev_unlatched = unlatched
+          in_drive = str(sm['carState'].gearShifter) in DRIVE_GEARS
+          if (_flag(DELOREAN_MODE) and in_drive and self.prev_drive_gear is False
+              and self._seen_offroad and not self._eighty_played):
+            self._eighty_played = True
+            self._play_eighty = True
+          self.prev_drive_gear = in_drive
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:

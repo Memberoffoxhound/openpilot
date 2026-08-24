@@ -442,7 +442,7 @@ def tick_trip() -> None:
         _trip["week_eng_s"] += dt
     except Exception:
       pass
-if (now - _trip_flush) > TRIP_FLUSH_SEC:
+  if now - _trip_flush > 1.0:
     _save_trip(_trip)
     _trip_flush = now
 
