@@ -20,6 +20,8 @@ from openpilot.system import micd
 SAMPLE_RATE = 48000
 SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
+THEME_RMS = 0.12
+THEME_PEAK = 0.65
 LUDI_PLAY = "/data/ludicrous_play"
 BUCKLE_PLAY = "/data/buckle_play"
 BUCKLE_MODE = "/data/buckle_sound"
@@ -47,6 +49,39 @@ BUCKLE_DRIVE_S = 20 * 60
 BUCKLE_WAIT_S = 3 * 3600
 
 
+def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
+  if src == dst or len(x) < 2:
+    return x
+  n_out = int(round(len(x) * dst / float(src)))
+  if len(x) < 4:
+    return np.interp(np.linspace(0, 1, n_out, endpoint=False),
+                     np.linspace(0, 1, len(x), endpoint=False), x).astype(np.float32)
+  t = np.linspace(0, len(x) - 1, n_out, endpoint=False)
+  i = np.floor(t).astype(np.int32)
+  f = (t - i).astype(np.float32)
+  xp = np.pad(x.astype(np.float32), 2, mode="edge")
+  i = i + 2
+  p0, p1, p2, p3 = xp[i - 1], xp[i], xp[i + 1], xp[i + 2]
+  f2 = f * f
+  f3 = f2 * f
+  return (0.5 * ((2.0 * p1) + (-p0 + p2) * f +
+                 (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f2 +
+                 (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * f3)).astype(np.float32)
+
+
+def _theme_level(x: np.ndarray) -> np.ndarray:
+  # Short clicks keep their shape. Movie clips sit at a C4-speaker RMS, peaks limited.
+  if len(x) < int(0.45 * SAMPLE_RATE):
+    peak = float(np.max(np.abs(x))) if len(x) else 0.0
+    if peak > THEME_PEAK:
+      x = x * (THEME_PEAK / peak)
+    return x.astype(np.float32)
+  rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
+  if rms > 1e-5:
+    x = x * (THEME_RMS / rms)
+  return (THEME_PEAK * np.tanh(x / THEME_PEAK)).astype(np.float32)
+
+
 def load_wav(*paths) -> np.ndarray | None:
   for path in paths:
     try:
@@ -61,13 +96,9 @@ def load_wav(*paths) -> np.ndarray | None:
       elif ch != 1:
         continue
       x /= 32768.0
-      if rate != SAMPLE_RATE and len(x) > 1:
-        n_out = int(round(len(x) * SAMPLE_RATE / float(rate)))
-        x = np.interp(np.linspace(0, 1, n_out, endpoint=False), np.linspace(0, 1, len(x), endpoint=False), x).astype(np.float32)
-      peak = float(np.max(np.abs(x))) if len(x) else 0.0
-      if peak > 1e-4:
-        x = x * (0.98 / peak)
-      return x
+      if rate != SAMPLE_RATE:
+        x = _resample_cubic(x, rate, SAMPLE_RATE)
+      return _theme_level(x)
     except Exception:
       continue
   return None
@@ -245,7 +276,7 @@ class Soundd:
       n = min(frames, len(arr) - i)
       if n > 0:
         dur = len(arr) / sr
-        fi, fo = (0.005, 0.03) if dur < 0.45 else (0.20, 0.35)
+        fi, fo = (0.006, 0.02) if dur < 0.45 else (0.012, 0.05)
         idx = np.arange(n, dtype=np.float32) + i
         t = idx / sr
         env = np.ones(n, dtype=np.float32)
