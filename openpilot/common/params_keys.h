@@ -61,11 +61,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HardwareSerial", {PERSISTENT, STRING}},
     {"HasAcceptedTerms", {PERSISTENT, STRING, "0"}},
     {"InstallDate", {PERSISTENT, TIME}},
-    {"WeatherNewsEnable", {PERSISTENT, BOOL, "1"}},
-    {"WeatherNewsAggressive", {PERSISTENT, BOOL, "0"}},
-    {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off, 1=nice, 2=aggressive (Unhinged)
-    {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},
-    {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
     {"IsDriverViewEnabled", {CLEAR_ON_MANAGER_START, BOOL}},
     {"IsEngaged", {PERSISTENT, BOOL}},
     {"IsLdwEnabled", {PERSISTENT, BOOL}},
@@ -141,4 +136,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"UsbGpuLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"Version", {PERSISTENT, STRING}},
+    {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off 1=nice 2=aggressive
+    {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},  // "nice" | "aggressive"
+    {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
 };

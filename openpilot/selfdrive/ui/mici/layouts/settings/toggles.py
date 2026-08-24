@@ -9,15 +9,15 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
-  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS, WX_MODE_LABELS,
+  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS,
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
   ludicrous_on, set_ludicrous, trigger_ludicrous, buckle_on, set_buckle, request_buckle_play,
   delorean_on, set_delorean, request_delorean_play,
   ludicrous_files_ok,
-  weather_news_mode, set_weather_news_mode, request_weather_news_preview, WX_OFF,
 )
+from openpilot.selfdrive.weather_news import mode as wx
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -89,16 +89,14 @@ class CompassSizeCycle(BigButton):
 
 
 class WeatherNewsCycle(BigMultiToggle):
-  """Off / Nice / Unhinged. First drive of the day plus parked preview."""
-
   def __init__(self, on_change: Callable[[], None] | None = None):
-    super().__init__("weather & news", list(WX_MODE_LABELS), select_callback=self._on_select)
+    super().__init__("weather & news", list(wx.LABELS), select_callback=self._on_select)
     self._params = Params()
     self._on_change = on_change
     self.refresh()
 
   def refresh(self):
-    value = WX_MODE_LABELS[weather_news_mode(self._params)]
+    value = wx.LABELS[wx.get(self._params)]
     if value != self.value:
       self.set_value(value)
 
@@ -107,21 +105,19 @@ class WeatherNewsCycle(BigMultiToggle):
     self.refresh()
 
   def _on_select(self, value: str):
-    set_weather_news_mode(WX_MODE_LABELS.index(value), self._params)
+    wx.set(wx.LABELS.index(value), self._params)
     if self._on_change:
       self._on_change()
 
 
 class WeatherNewsPreview(BigButton):
-  """Lights up for Nice and Unhinged. Dead while Off."""
-
   def __init__(self):
     super().__init__("preview", "off")
     self._params = Params()
     self.refresh()
 
   def refresh(self):
-    live = weather_news_mode(self._params) != WX_OFF
+    live = wx.get(self._params) != wx.OFF
     self.set_enabled(live)
     self.set_value("tap" if live else "off")
 
@@ -130,10 +126,10 @@ class WeatherNewsPreview(BigButton):
     self.refresh()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if weather_news_mode(self._params) == WX_OFF:
+    if wx.get(self._params) == wx.OFF:
       return
     super()._handle_mouse_release(mouse_pos)
-    request_weather_news_preview(self._params)
+    wx.request_preview(self._params)
 
 
 class LaneColorCycle(BigButton):

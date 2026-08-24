@@ -201,50 +201,6 @@ def request_delorean_play() -> None:
     f.write("1")
 
 
-WX_OFF, WX_NICE, WX_AGGRESSIVE = 0, 1, 2
-WX_MODE_LABELS = ("off", "nice", "unhinged")
-
-
-def weather_news_mode(params: Params | None = None) -> int:
-  params = params or Params()
-  try:
-    v = params.get("WeatherNewsMode", return_default=True)
-    if v is None:
-      return WX_NICE
-    return max(WX_OFF, min(WX_AGGRESSIVE, int(v)))
-  except Exception:
-    return WX_NICE
-
-
-def weather_news_mode_label(params: Params | None = None) -> str:
-  return WX_MODE_LABELS[weather_news_mode(params)]
-
-
-def set_weather_news_mode(mode: int, params: Params | None = None) -> None:
-  params = params or Params()
-  mode = max(WX_OFF, min(WX_AGGRESSIVE, int(mode)))
-  params.put("WeatherNewsMode", mode, block=True)
-  try:
-    params.put_bool("WeatherNewsEnable", mode != WX_OFF, block=True)
-    params.put_bool("WeatherNewsAggressive", mode == WX_AGGRESSIVE, block=True)
-  except Exception:
-    pass
-
-
-def request_weather_news_preview(params: Params | None = None) -> bool:
-  params = params or Params()
-  mode = weather_news_mode(params)
-  if mode == WX_OFF:
-    return False
-  preview = "aggressive" if mode == WX_AGGRESSIVE else "personable"
-  params.put("WeatherNewsPreview", preview, block=True)
-  return True
-
-
-def next_weather_news_mode(params: Params | None = None) -> int:
-  return (weather_news_mode(params) + 1) % 3
-
-
 def _first_file(paths) -> str | None:
   for p in paths:
     if os.path.isfile(p):

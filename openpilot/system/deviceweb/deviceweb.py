@@ -48,11 +48,9 @@ WRITE_BOOL = {
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode",
-  # Weather Lady + Elon news (bools kept as mirrors of WeatherNewsMode)
-  "WeatherNewsEnable", "WeatherNewsAggressive",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode"}
-WRITE_STR = {"WeatherNewsPreview"}  # personable | aggressive | ""
+WRITE_STR = {"WeatherNewsPreview"}  # nice | aggressive | ""
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
 READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
@@ -212,7 +210,7 @@ def _read_params() -> dict[str, str]:
           if path.exists():
             out[k] = "1" if path.read_text().strip().lower() in ("1", "true", "yes", "on") else "0"
           else:
-            out[k] = "1" if k in ("WeatherNewsEnable",) else "0"
+            out[k] = "0"
       else:
         v = p.get(k)
         if v is None or v == "":
@@ -220,7 +218,7 @@ def _read_params() -> dict[str, str]:
           if path.exists():
             out[k] = path.read_text().strip()
           else:
-            out[k] = ""
+            out[k] = "1" if k == "WeatherNewsMode" else ""
         else:
           out[k] = str(v)
     except Exception:
@@ -251,17 +249,9 @@ def _write_params(body: dict) -> None:
         p.put(k, str(int(v)), block=True)
       except Exception:
         (param_dir / k).write_text(str(int(v)))
-      if k == "WeatherNewsMode":
-        mode = max(0, min(2, int(v)))
-        try:
-          p.put_bool("WeatherNewsEnable", mode != 0, block=True)
-          p.put_bool("WeatherNewsAggressive", mode == 2, block=True)
-        except Exception:
-          (param_dir / "WeatherNewsEnable").write_text("1" if mode != 0 else "0")
-          (param_dir / "WeatherNewsAggressive").write_text("1" if mode == 2 else "0")
     elif k in WRITE_STR:
       s = str(v).strip().lower()
-      if k == "WeatherNewsPreview" and s not in ("", "personable", "aggressive"):
+      if k == "WeatherNewsPreview" and s not in ("", "nice", "aggressive"):
         continue
       try:
         p.put(k, s, block=True)
@@ -758,22 +748,16 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/weather/preview", "/api/device/weather/preview"):
         body = self._read_json()
         mode = str(body.get("mode") or "").strip().lower()
-        if mode in ("nice",):
-          mode = "personable"
-        if mode in ("unhinged",):
+        if mode == "unhinged":
           mode = "aggressive"
-        if mode not in ("personable", "aggressive"):
-          # fall back to current WeatherNewsMode
+        if mode not in ("nice", "aggressive"):
           try:
             cur = int(p.get("WeatherNewsMode", return_default=True) or 1)
           except Exception:
             cur = 1
-          if cur == 2:
-            mode = "aggressive"
-          elif cur == 1:
-            mode = "personable"
-          else:
+          if cur == 0:
             return self._json(400, {"ok": False, "error": "weather is off"})
+          mode = "aggressive" if cur == 2 else "nice"
         _write_params({"WeatherNewsPreview": mode})
         return self._json(200, {"ok": True, "mode": mode})
       self._json(404, {"error": "not found"})

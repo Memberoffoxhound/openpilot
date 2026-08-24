@@ -375,7 +375,7 @@ function bind() {
   const live = document.getElementById("openLive");
   if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
   const wxP = document.getElementById("wxPreview");
-  if (wxP) wxP.onclick = () => previewWeather(wxMode() === 2 ? "aggressive" : "personable");
+  if (wxP) wxP.onclick = () => previewWeather(wxMode() === 2 ? "aggressive" : "nice");
   const chk = document.getElementById("chk");
   if (chk) chk.onclick = () => startUpdate();
   const updCancel = document.getElementById("updCancel");

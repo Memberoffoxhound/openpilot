@@ -16,19 +16,42 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 
 Stalkless Teslas have no cruise stalk. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
 
-- Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
+You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
+
+comma 4 UI. comma 3X may boot; UI is not tailored to it.
+
+### Onroad
+
+<!-- docs/screenshots/onroad-custom.png -->
+Custom HUD (Theme → onroad UI): Tesla-blue lanes, compass (small left or large top-right). Stock comma HUD is one tap away.
+
+<!-- docs/screenshots/home.png -->
+Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
+
+Home stats: **Today** / **Week** miles and distance-engaged %.
+
+### Driving
+
 - Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
 - Cooperative steering — on. Based on dzid26's implementation of cooperative steering (VTB). AmyJeanes landed the sunnypilot Tesla Coop Steering path.
 - Scroll-wheel disengage — stalkless cancel. Based on dkiiv's implementation of stalkless scroll-wheel cancel, pulled from dzid26's Tesla fork.
-- Custom onroad UI — Tesla-blue lanes, compass (small left or large top-right; theme toggle)
-- Home — Today / Week miles and distance-engaged %
-- 3s display hold → screenshot (`/data/media/0/screenshots`)
-- LAN dashboard `http://<device-ip>:8088/` (local Wi-Fi, no login, alpha)
-- comma Connect livestream is **stock** (parked only)
 
-Theme extras, **off by default**: ludicrous overlay, buckle sound (once; rearm after a 20 min drive, else 3 hours), Delorean 88mph clip (on going onroad).
+### Theme
 
-comma 4 UI. comma 3X may boot; UI is not tailored to it.
+<!-- docs/screenshots/theme.png -->
+Theme extras, **off by default**: ludicrous overlay, buckle sound (once; rearm after a 20 min drive, else 3 hours), Delorean 88mph clip (on going onroad, after ignition settles).
+
+<!-- docs/screenshots/weather-preview.png -->
+**Weather & news** — first drive of the local day (GPS). Off / Nice / Unhinged. Preview from Theme (lit when not Off) or the LAN console.
+
+### Device
+
+3s display hold → screenshot (`/data/media/0/screenshots`).
+
+<!-- docs/screenshots/lan-console.png -->
+LAN dashboard `http://<device-ip>:8088/` — local Wi-Fi, no login. comma Connect livestream is **stock** (parked only).
+
+Planned shots live in [`docs/screenshots/`](docs/screenshots/README.md).
 
 ## Tesla compatibility
 
@@ -52,8 +75,6 @@ installer.comma.ai/Memberoffoxhound/Highland
 ```
 
 Username `Memberoffoxhound`, branch `Highland`. Repo is named `openpilot` so that installer URL works.
-
-You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
 
 Stock install: [`openpilot.comma.ai`](https://openpilot.comma.ai)
 

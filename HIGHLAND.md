@@ -23,12 +23,12 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
 | `BuckleSound` | off | Once, offroad or onroad. Rearm after a drive ≥20 min, else after 3 hours. |
-| Delorean (`/data/delorean_sound`) | off | 88mph clip on going onroad. Once per drive after 1.5s stable. Personal use. |
-| `WeatherNewsMode` | nice | Off / Nice / Unhinged. First drive of the Chicago-local day. Theme + LAN preview. |
+| Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
+| `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. First drive of the local day (GPS). Theme + LAN preview. |
 
 ## Screenshots
 
-Hold the display 3s (don’t drag). White flash + shutter. PNG in `/data/media/0/screenshots`. LAN dashboard **Shots** tab (1px white frame). SSH/SFTP same path.
+Hold the display 3s (don’t drag). White flash + shutter. PNG in `/data/media/0/screenshots`. LAN dashboard **Shots** tab. Repo copies go in [`docs/screenshots/`](docs/screenshots/README.md).
 
 ## LAN console
 

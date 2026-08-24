@@ -50,8 +50,8 @@ WXNEWS_WAVS = ("/data/wxnews.wav",)
 BUCKLE_GATE = "/data/buckle_gate.json"
 BUCKLE_DRIVE_S = 20 * 60
 BUCKLE_WAIT_S = 3 * 3600
-DELOREAN_HOLD_S = 1.5
-DELOREAN_OFFROAD_RESET_S = 10.0
+DELOREAN_HOLD_S = 1.5          # wait for ignition to settle
+DELOREAN_OFFROAD_RESET_S = 10.0  # blips shorter than this are the same drive
 
 
 def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
