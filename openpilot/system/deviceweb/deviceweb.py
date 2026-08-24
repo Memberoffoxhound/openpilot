@@ -48,14 +48,18 @@ WRITE_BOOL = {
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode",
+  # Weather Lady + Elon news
+  "WeatherNewsEnable", "WeatherNewsAggressive",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize"}
+WRITE_STR = {"WeatherNewsPreview"}  # personable | aggressive | ""
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
-READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
+READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
+  "WeatherNewsLastRunDate",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
@@ -200,10 +204,25 @@ def _read_params() -> dict[str, str]:
       continue
     try:
       if k in WRITE_BOOL:
-        out[k] = "1" if p.get_bool(k) else "0"
+        # custom bools may live only on disk until first write
+        try:
+          out[k] = "1" if p.get_bool(k) else "0"
+        except Exception:
+          path = Path("/data/params/d") / k
+          if path.exists():
+            out[k] = "1" if path.read_text().strip().lower() in ("1", "true", "yes", "on") else "0"
+          else:
+            out[k] = "1" if k == "WeatherNewsEnable" else "0"
       else:
         v = p.get(k)
-        out[k] = "" if v is None else str(v)
+        if v is None or v == "":
+          path = Path("/data/params/d") / k
+          if path.exists():
+            out[k] = path.read_text().strip()
+          else:
+            out[k] = ""
+        else:
+          out[k] = str(v)
     except Exception:
       out[k] = ""
   return out
@@ -211,16 +230,35 @@ def _read_params() -> dict[str, str]:
 
 def _write_params(body: dict) -> None:
   p = _params()
+  param_dir = Path("/data/params/d")
+  param_dir.mkdir(parents=True, exist_ok=True)
   for k, v in body.items():
     if k in SECRET_NAMES or k in DEVICE_ONLY:
       continue
     if k in WRITE_BOOL:
       on = str(v) in ("1", "true", "True", "yes")
-      p.put_bool(k, on, block=True)
+      try:
+        p.put_bool(k, on, block=True)
+      except Exception:
+        (param_dir / k).write_text("1" if on else "0")
       if k == "ExperimentalMode" and on:
-        p.put_bool("ExperimentalModeConfirmed", True, block=True)
+        try:
+          p.put_bool("ExperimentalModeConfirmed", True, block=True)
+        except Exception:
+          pass
     elif k in WRITE_INT:
-      p.put(k, str(int(v)), block=True)
+      try:
+        p.put(k, str(int(v)), block=True)
+      except Exception:
+        (param_dir / k).write_text(str(int(v)))
+    elif k in WRITE_STR:
+      s = str(v).strip().lower()
+      if k == "WeatherNewsPreview" and s not in ("", "personable", "aggressive"):
+        continue
+      try:
+        p.put(k, s, block=True)
+      except Exception:
+        (param_dir / k).write_text(s)
 
 
 _update_lock = threading.Lock()
@@ -709,6 +747,13 @@ class Handler(BaseHTTPRequestHandler):
         if not start or not end:
           start, end = drive_stats.default_range()
         return self._json(200, drive_stats.start(start, end, p.get_bool("IsOffroad")))
+      if path in ("/api/weather/preview", "/api/device/weather/preview"):
+        body = self._read_json()
+        mode = str(body.get("mode") or "").strip().lower()
+        if mode not in ("personable", "aggressive"):
+          return self._json(400, {"ok": False, "error": "mode must be personable or aggressive"})
+        _write_params({"WeatherNewsPreview": mode})
+        return self._json(200, {"ok": True, "mode": mode})
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb POST")
