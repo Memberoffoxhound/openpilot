@@ -118,7 +118,6 @@ procs = [
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
   PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
   PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", always_run),  # LAN console, no auth
-  PythonProcess("tesla_energy_log", "openpilot.selfdrive.tesla_energy_log", always_run),  # trip meter + Party energy jsonl
   PythonProcess("weather_news_d", "openpilot.selfdrive.weather_news.weather_news_d", always_run),
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),
 ]

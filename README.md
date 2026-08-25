@@ -42,7 +42,13 @@ Home stats: **Today** / **Week** miles and distance-engaged %.
 Theme extras, **off by default**: ludicrous overlay, buckle sound (once; rearm after a 20 min drive, else 3 hours), Delorean 88mph clip (on going onroad, after ignition settles).
 
 <!-- docs/screenshots/weather-preview.png -->
-**Weather & news** — first drive of the local day (GPS). Off / Nice / Unhinged. Unhinged is NSFW (confirm on enable). Preview from Theme (lit when not Off) or the LAN console.
+**Grok voice** — Theme → grok voice On, then scan the QR (or open `http://<c4-ip>:8088/grok`) and paste an [xAI API key](https://console.x.ai). Ara speaks. A 50px Grok mark sits after the Wi-Fi/LTE icon on home while it is on.
+
+**Weather & news** — first drive of the local day (GPS). Off / Nice / Unhinged. Unhinged is NSFW (confirm on enable). Briefing: forecast, new Aptera Motors headlines when they exist, one CNN world story, then Tesla/SpaceX/xAI. Theme → preview is a short Ara sample and does not consume the day.
+
+On LTE a daily briefing is about **3–4 MB** (almost all of it is the Ara WAV). RSS + Grok chat are tens of KB. A preview is about **0.3 MB**. One briefing a day is roughly **90–120 MB/month**.
+
+Setup and free-TTS notes: [`openpilot/selfdrive/weather_news/README.md`](openpilot/selfdrive/weather_news/README.md).
 
 ### Device
 

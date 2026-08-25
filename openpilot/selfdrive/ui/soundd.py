@@ -109,8 +109,8 @@ def _soft_limit(x: np.ndarray) -> np.ndarray:
 
 
 def _theme_prep(x: np.ndarray) -> np.ndarray:
-  # Short clicks keep their shape. Movie clips: dialog EQ, AGC, never 1.0.
-  if len(x) < int(0.45 * SAMPLE_RATE):
+  # rfft of a 60s clip stalls the 20 Hz thread; peak-limit long oneshots instead.
+  if len(x) < int(0.45 * SAMPLE_RATE) or len(x) > int(8.0 * SAMPLE_RATE):
     peak = float(np.max(np.abs(x))) if len(x) else 0.0
     if peak > THEME_PEAK:
       x = x * (THEME_PEAK / peak)
@@ -121,8 +121,14 @@ def _theme_prep(x: np.ndarray) -> np.ndarray:
 def load_wav(*paths) -> np.ndarray | None:
   for path in paths:
     try:
+      size = os.path.getsize(path)
       with wave.open(path, "r") as w:
         ch, sw, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        framesize = max(int(ch), 1) * max(int(sw), 1)
+        cap = max(0, int(size) // framesize)
+        if n < 0 or n > cap:
+          cloudlog.warning(f"soundd: wav header nframes={n} capped to {cap} for {path} ({size} bytes)")
+          n = cap
         raw = w.readframes(n)
       if sw != 2:
         continue
@@ -136,6 +142,7 @@ def load_wav(*paths) -> np.ndarray | None:
         x = _resample_cubic(x, rate, SAMPLE_RATE)
       return _theme_prep(x)
     except Exception:
+      cloudlog.exception(f"soundd: failed to load {path}")
       continue
   return None
 

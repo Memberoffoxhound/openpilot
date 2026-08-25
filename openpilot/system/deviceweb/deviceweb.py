@@ -19,6 +19,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.weather_news import config as grok_cfg
+from openpilot.selfdrive.weather_news import grok as grok_api
 
 try:
   from openpilot.system.deviceweb import stats as drive_stats
@@ -41,23 +43,24 @@ FILE_ROOTS = (
 )
 SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
+  "XaiApiKey",
 }
 WRITE_BOOL = {
   "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
   "AutoLaneChangeEnabled", "IsLdwEnabled", "AlwaysOnDM", "IsMetric",
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
-  "ShowDebugInfo", "JoystickDebugMode",
+  "ShowDebugInfo", "JoystickDebugMode", "GrokVoiceEnabled",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode"}
-WRITE_STR = {"WeatherNewsPreview", "WeatherNewsVoice"}  # preview: nice|aggressive; voice: gps|high|human
+WRITE_STR = {"WeatherNewsPreview"}  # preview: nice|aggressive
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
 READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
-  "WeatherNewsLastRunDate", "WeatherNewsStatus",
+  "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
@@ -253,12 +256,29 @@ def _write_params(body: dict) -> None:
       s = str(v).strip().lower()
       if k == "WeatherNewsPreview" and s not in ("", "nice", "aggressive"):
         continue
-      if k == "WeatherNewsVoice" and s not in ("gps", "high", "human"):
-        continue
       try:
         p.put(k, s, block=True)
       except Exception:
         (param_dir / k).write_text(s)
+    if k == "GrokVoiceEnabled":
+      grok_cfg.set_voice_enabled(str(v) in ("1", "true", "True", "yes"))
+
+
+def _grok_status() -> dict:
+  return {
+    "voice_on": grok_cfg.voice_enabled(),
+    "configured": grok_cfg.configured(),
+    "masked": grok_cfg.masked_key(),
+    "url": grok_api.console_url("/grok"),
+  }
+
+
+def _write_grok(body: dict) -> dict:
+  if "api_key" in body:
+    grok_cfg.set_api_key(str(body.get("api_key") or ""))
+  if "voice_on" in body:
+    grok_cfg.set_voice_enabled(str(body.get("voice_on")) in ("1", "true", "True", "yes", "on"))
+  return _grok_status()
 
 
 _update_lock = threading.Lock()
@@ -642,6 +662,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, _info())
       if path in ("/api/params", "/api/device/params"):
         return self._json(200, _read_params())
+      if path in ("/api/grok", "/api/device/grok"):
+        return self._json(200, _grok_status())
       if path in ("/api/files", "/api/device/files"):
         target = (qs.get("path") or [""])[0]
         return self._json(200, {"path": target, "items": _list_dir(target)})
@@ -713,6 +735,8 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/params", "/api/device/params"):
         _write_params(self._read_json())
         return self._json(200, _read_params())
+      if path in ("/api/grok", "/api/device/grok"):
+        return self._json(200, _write_grok(self._read_json()))
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb PUT")
@@ -747,6 +771,11 @@ class Handler(BaseHTTPRequestHandler):
         if not start or not end:
           start, end = drive_stats.default_range()
         return self._json(200, drive_stats.start(start, end, p.get_bool("IsOffroad")))
+      if path in ("/api/grok/test", "/api/device/grok/test"):
+        body = self._read_json()
+        key = str(body.get("api_key") or "").strip() or None
+        ok, msg = grok_api.test_key(key)
+        return self._json(200, {"ok": ok, "status": msg, **_grok_status()})
       if path in ("/api/weather/preview", "/api/device/weather/preview"):
         body = self._read_json()
         mode = str(body.get("mode") or "").strip().lower()

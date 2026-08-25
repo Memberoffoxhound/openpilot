@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""First drive of the local day (GPS): forecast + two news bites. Preview anytime."""
+"""First drive of the local day (GPS): Grok briefing + Ara TTS. Preview anytime."""
 
 from __future__ import annotations
 
@@ -11,20 +11,20 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
+from openpilot.selfdrive.weather_news import config as grok_cfg
+from openpilot.selfdrive.weather_news import grok as grok_api
 from openpilot.selfdrive.weather_news import mode as wx
-from openpilot.selfdrive.weather_news import voices as wv
-from openpilot.selfdrive.weather_news.news_bites import get_news_cycle
-from openpilot.selfdrive.weather_news.voice import speak_lines, ready as voice_ready, ensure as voice_ensure
+from openpilot.selfdrive.weather_news.news_bites import fetch_rss_items
+from openpilot.selfdrive.weather_news.voice import speak_lines
 from openpilot.selfdrive.weather_news.weather_lady import generate_forecast_script, generate_overnight_note, enjoy_your_drive, pay_attention
 
 ONROAD_DELAY_S = 10.0
 ONROAD_STABLE_S = 2.0
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
-USER_AGENT = "S3XYPilot-WeatherNews/0.5"
+USER_AGENT = "S3XYPilot-WeatherNews/0.6"
 
 
 def local_day(lon: float) -> str:
-  # C4 clock is UTC. 15° ≈ 1h. DST is ±1h; first drive of the day does not care.
   hours = max(-12, min(14, int(round(float(lon) / 15.0))))
   return datetime.now(timezone(timedelta(hours=hours))).date().isoformat()
 
@@ -56,13 +56,10 @@ def peek_preview(params: Params) -> str:
 
 
 def poll(params: Params, sm: messaging.SubMaster, seconds: float, *, need_onroad: bool) -> bool:
-  """Sleep up to `seconds`. False if preview arrives or (need_onroad and we drop offroad)."""
   deadline = time.time() + seconds
   while time.time() < deadline:
     sm.update(0)
     if peek_preview(params):
-      return False
-    if not voice_ready(wv.get(params)):
       return False
     if need_onroad and not onroad(sm):
       return False
@@ -118,10 +115,8 @@ def fetch_weather(lat: float, lon: float) -> dict[str, Any] | None:
     return None
 
 
-def build_lines(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> list[str]:
+def fallback_lines(aggressive: bool, loc: tuple[float, float, str] | None, day: dict[str, Any] | None) -> list[str]:
   lines: list[str] = []
-  _put(params, "WeatherNewsStatus", "fetching weather")
-  day = fetch_weather(loc[0], loc[1]) if loc else None
   if day:
     name = loc[2] if loc else "your area"
     lines.append(generate_forecast_script(day, aggressive=aggressive, location_name=name))
@@ -132,23 +127,46 @@ def build_lines(params: Params, aggressive: bool, loc: tuple[float, float, str] 
       if aggressive else
       "Weather data is being shy right now. Skipping the forecast."
     )
-  _put(params, "WeatherNewsStatus", "getting news")
-  lines.extend(get_news_cycle(num_bites=2, aggressive=aggressive))
   lines.append(enjoy_your_drive(aggressive=aggressive))
   lines.append(pay_attention(aggressive=aggressive))
   return lines
 
 
-def run_cycle(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
-  lines = build_lines(params, aggressive, loc)
+def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
+  if not grok_cfg.voice_enabled():
+    _put(params, "WeatherNewsStatus", "enable grok")
+    time.sleep(1.2)
+    _put(params, "WeatherNewsStatus", "")
+    return False
+  if not grok_cfg.configured():
+    _put(params, "WeatherNewsStatus", "scan QR")
+    time.sleep(1.5)
+    _put(params, "WeatherNewsStatus", "")
+    return False
+
+  _put(params, "WeatherNewsStatus", "fetching weather")
+  day = fetch_weather(loc[0], loc[1]) if loc else None
+  _put(params, "WeatherNewsStatus", "getting news")
+  news = fetch_rss_items(max_items=6)
+  name = loc[2] if loc else "your area"
+
+  _put(params, "WeatherNewsStatus", "asking grok")
+  script = grok_api.write_script(day, news, unhinged=aggressive, location_name=name)
+  if not script:
+    cloudlog.warning("weather_news: grok chat missed, using local script")
+    script = " ".join(fallback_lines(aggressive, loc, day))
+
   ok = speak_lines(
-    lines, aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
-    voice=wv.get(params),
+    [script], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
   )
   _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
   time.sleep(1.5 if ok else 2.5)
   _put(params, "WeatherNewsStatus", "")
   return ok
+
+
+PREVIEW_NICE = "Hi. I'm Ara. Nice mode. This is how I'll sound on the first drive of the day."
+PREVIEW_UNHINGED = "Hi. I'm Ara. Unhinged. I'll say whatever I want through this speaker. Not for kids."
 
 
 def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
@@ -160,24 +178,23 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
   else:
     return False
   _put(params, "WeatherNewsPreview", "")
+  if not grok_cfg.voice_enabled():
+    _put(params, "WeatherNewsStatus", "enable grok")
+    time.sleep(1.2)
+    _put(params, "WeatherNewsStatus", "")
+    return True
+  if not grok_cfg.configured():
+    _put(params, "WeatherNewsStatus", "scan QR")
+    time.sleep(1.5)
+    _put(params, "WeatherNewsStatus", "")
+    return True
   _put(params, "WeatherNewsStatus", "queued")
-  ok = run_cycle(params, aggressive, location(sm, params))
-  cloudlog.info(f"weather_news: preview queued={ok}")
-  return True
-
-
-def handle_voice_setup(params: Params) -> bool:
-  vid = wv.get(params)
-  if voice_ready(vid):
-    return False
-  _put(params, "WeatherNewsStatus", "queued")
-  ok = voice_ensure(vid, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
-  _put(params, "WeatherNewsStatus", "ready" if ok else "failed")
-  time.sleep(1.2 if ok else 2.5)
-  if not ok:
-    cloudlog.warning(f"weather_news: voice {vid} install failed, reverting to {wv.DEFAULT}")
-    wv.set(wv.DEFAULT, params)
+  line = PREVIEW_UNHINGED if aggressive else PREVIEW_NICE
+  ok = speak_lines([line], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
+  _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
+  time.sleep(1.2 if ok else 2.0)
   _put(params, "WeatherNewsStatus", "")
+  cloudlog.info(f"weather_news: preview queued={ok}")
   return True
 
 
@@ -190,13 +207,11 @@ def main() -> None:
   while True:
     try:
       sm.update(0)
-      if handle_voice_setup(params):
-        continue
       if handle_preview(params, sm):
         continue
 
       m = wx.get(params)
-      if m == wx.OFF:
+      if m == wx.OFF or not grok_cfg.voice_enabled():
         stable_t = None
         poll(params, sm, 15, need_onroad=False)
         continue
@@ -231,11 +246,11 @@ def main() -> None:
       loc = location(sm, params) or loc
       today = local_day(loc[1])
       m = wx.get(params)
-      if m == wx.OFF or _str(params, "WeatherNewsLastRunDate") == today or not onroad(sm):
+      if m == wx.OFF or not grok_cfg.voice_enabled() or _str(params, "WeatherNewsLastRunDate") == today or not onroad(sm):
         stable_t = None
         continue
 
-      ok = run_cycle(params, m == wx.AGGRESSIVE, loc)
+      ok = build_and_speak(params, m == wx.AGGRESSIVE, loc)
       if ok:
         _put(params, "WeatherNewsLastRunDate", today)
         cloudlog.info("weather_news: daily queued")

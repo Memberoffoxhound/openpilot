@@ -17,8 +17,9 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   delorean_on, set_delorean, request_delorean_play,
   ludicrous_files_ok,
 )
+from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.selfdrive.weather_news import mode as wx
-from openpilot.selfdrive.weather_news import voices as wv
+from openpilot.selfdrive.ui.mici.widgets.grok_qr import GrokQrPage
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -139,21 +140,43 @@ class WeatherNewsCycle(BigMultiToggle):
       self._on_change()
 
 
-class WeatherNewsVoiceCycle(BigMultiToggle):
-  def __init__(self):
-    super().__init__("voice", list(wv.LABELS), select_callback=self._on_select)
-    self._params = Params()
+class GrokVoiceCycle(BigButton):
+  """Master switch for Grok Ara (Nice / Unhinged). Enabling opens the setup QR."""
+
+  def __init__(self, on_change=None):
+    super().__init__("grok voice", "")
+    self._on_change = on_change
     self.refresh()
 
   def refresh(self):
-    st = wx.status_text(self._params)
-    disp = wv.display(params=self._params)
-    if not st and self.value != disp:
-      self.set_value(disp)
-    elif st:
-      if self.value != disp:
-        self.set_value(disp)
-      self._sub_label.set_text(st)
+    value = "on" if grok_cfg.voice_enabled() else "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    on = not grok_cfg.voice_enabled()
+    grok_cfg.set_voice_enabled(on)
+    self.set_value("on" if on else "off")
+    if on:
+      gui_app.push_widget(GrokQrPage())
+    if self._on_change:
+      self._on_change()
+
+
+class GrokQrButton(BigButton):
+  def __init__(self):
+    super().__init__("grok setup", "QR")
+    self.refresh()
+
+  def refresh(self):
+    on = grok_cfg.voice_enabled()
+    self.set_enabled(on)
+    self.set_value("QR" if on else "off")
 
   def show_event(self):
     super().show_event()
@@ -163,9 +186,11 @@ class WeatherNewsVoiceCycle(BigMultiToggle):
     super()._update_state()
     self.refresh()
 
-  def _on_select(self, value: str):
-    wv.set(wv.id_from_display(value), self._params)
-    self.refresh()
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    if not grok_cfg.voice_enabled():
+      return
+    super()._handle_mouse_release(mouse_pos)
+    gui_app.push_widget(GrokQrPage())
 
 
 class WeatherNewsPreview(BigButton):
@@ -175,14 +200,18 @@ class WeatherNewsPreview(BigButton):
     self.refresh()
 
   def refresh(self):
-    live = wx.get(self._params) != wx.OFF
+    live = wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled()
     st = wx.status_text(self._params)
     busy = bool(st)
     self.set_enabled(live and not busy)
-    if not live:
+    if not grok_cfg.voice_enabled():
+      self.set_value("enable grok")
+    elif not live:
       self.set_value("off")
     elif busy:
       self.set_value(st)
+    elif not grok_cfg.configured():
+      self.set_value("scan QR")
     else:
       self.set_value("tap")
 
@@ -195,9 +224,12 @@ class WeatherNewsPreview(BigButton):
     self.refresh()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if wx.get(self._params) == wx.OFF:
+    if wx.get(self._params) == wx.OFF or not grok_cfg.voice_enabled():
       return
     if wx.status_text(self._params):
+      return
+    if not grok_cfg.configured():
+      gui_app.push_widget(GrokQrPage())
       return
     super()._handle_mouse_release(mouse_pos)
     wx.request_preview(self._params)
@@ -348,7 +380,8 @@ class ThemeLayoutMici(NavScroller):
     self._compass_size = CompassSizeCycle()
     self._wx_preview = WeatherNewsPreview()
     self._wx_mode = WeatherNewsCycle(on_change=self._wx_preview.refresh)
-    self._wx_voice = WeatherNewsVoiceCycle()
+    self._grok = GrokVoiceCycle(on_change=self._wx_preview.refresh)
+    self._grok_qr = GrokQrButton()
     self._lane_color = LaneColorCycle()
     self._ludicrous = LudicrousCycle()
     self._ludi_preview = LudicrousPreview()
@@ -358,7 +391,7 @@ class ThemeLayoutMici(NavScroller):
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
-      self._wx_mode, self._wx_voice, self._wx_preview,
+      self._grok, self._grok_qr, self._wx_mode, self._wx_preview,
       self._ludicrous, self._ludi_preview,
       self._buckle, self._buckle_preview,
       self._delorean, self._delorean_preview,

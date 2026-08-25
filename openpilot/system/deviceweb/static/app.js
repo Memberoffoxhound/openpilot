@@ -12,8 +12,8 @@ const GROUPS = [
     {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
   ]},
   {id:"weather", title:"Weather & News", items:[
-    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites. Unhinged is NSFW.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]], confirmValue:"2", confirm:"NSFW. Explicit language through the speaker. Not for kids. Not for passengers who didn't ask."},
-    {key:"WeatherNewsVoice", label:"Voice", type:"select", desc:"How human it sounds. gps 3/10 · high 5/10 · human 8/10. Tapping an uninstalled voice downloads it.", options:[["gps","gps · 3/10 GPS"],["high","high · 5/10 news"],["human","human · 8/10 person"]]},
+    {key:"GrokVoiceEnabled", label:"Grok voice", type:"bool", desc:"Ara speaks the daily briefing. Nice and Unhinged share Ara. Paste your xAI API key on the Grok tab."},
+    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites, spoken by Grok Ara. Unhinged is NSFW.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]], confirmValue:"2", confirm:"NSFW. Explicit language through the speaker. Tesla Grok Unhinged energy. Not for kids. Not for passengers who didn't ask."},
   ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
@@ -38,8 +38,10 @@ const GROUPS = [
     {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
   ]},
 ];
-const TABS = [["status","Status"],["settings","Settings"],["files","Files"],["shots","Shots"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
-let tab = "status", info = {}, params = {}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
+const TABS = [["status","Status"],["settings","Settings"],["grok","Grok"],["files","Files"],["shots","Shots"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
+let tab = (location.pathname.replace(/\/+$/,"") === "/grok" || location.hash === "#grok") ? "grok" : "status";
+let info = {}, params = {}, grok = {voice_on:false, configured:false, masked:"", url:""}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
+let grokKeyDraft = "";
 let routes = [], clipJob = {state:"idle"}, clipTimer = null;
 let updateJob = {state:"idle", percent:0, status:"", eta:null}, updateTimer = null;
 let statsMonth = new Date();
@@ -71,6 +73,7 @@ async function load() {
   try {
     info = await api("/api/info");
     params = await api("/api/params");
+    try { grok = await api("/api/grok"); } catch (e) {}
   } catch (e) { toast = (e && e.message) || "device unreachable"; }
   render();
 }
@@ -101,6 +104,34 @@ function wxMode() {
 }
 function wxLive() { return wxMode() === 1 || wxMode() === 2; }
 function wxStatus() { return String(params.WeatherNewsStatus || "").trim(); }
+function grokOn() { return params.GrokVoiceEnabled === "1" || grok.voice_on; }
+function grokView() {
+  const keyed = grok.configured;
+  return `<div class="wrap">
+    <div class="warn">Paste an xAI API key from console.x.ai. It stays on this device and is never logged. This page is LAN-only, no password.</div>
+    <div class="card">
+      <div class="set">
+        <div class="meta"><b>Grok voice</b><p>Ara. Nice and Unhinged are personalities, not different TTS engines.</p></div>
+        <button class="tog ${grokOn()?"on":""}" data-k="GrokVoiceEnabled" data-n="${grokOn()?"0":"1"}"><i></i></button>
+      </div>
+      <div class="set">
+        <div class="meta"><b>Weather & news</b><p>First drive of the local day. Unhinged is NSFW.</p></div>
+        <select data-k="WeatherNewsMode">${[["0","Off"],["1","Nice"],["2","Unhinged"]].map(([v,l]) => `<option value="${v}" ${String(wxMode())===v?"selected":""}>${l}</option>`).join("")}</select>
+      </div>
+      <div class="field">
+        <label>xAI API key</label>
+        <input id="grokKey" type="password" autocomplete="off" placeholder="${keyed ? (grok.masked || "saved") : "xai-…"}" value="${esc(grokKeyDraft)}"/>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="grokSave">Save key</button>
+      <button class="btn" id="grokTest">Test</button>
+      <button class="btn" id="grokClear">Clear key</button>
+      <button class="btn ${wxLive() && grokOn()?"primary":""}" id="wxPreview" ${wxLive() && grokOn()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
+    </div>
+    <p class="tiny">${keyed ? "Key on device: "+esc(grok.masked) : "No key yet. Theme → grok voice → scan QR lands here."}</p>
+  </div>`;
+}
 async function loadFiles() {
   const j = await api("/api/files?path=" + encodeURIComponent(path));
   files = j.items || [];
@@ -108,7 +139,7 @@ async function loadFiles() {
 }
 function render() {
   const app = document.getElementById("app");
-  const title = {status:"Device", settings:"Settings", files:"Files", shots:"Shots", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
+  const title = {status:"Device", settings:"Settings", grok:"Grok", files:"Files", shots:"Shots", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
   app.innerHTML = `
     <aside>
       <div class="brand"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN console · no lock</p></div>
@@ -146,6 +177,7 @@ function esc(s){ s = String(s == null ? "" : s); return s.replace(/&/g,"&#38;").
 function view() {
   if (tab==="status") return statusView();
   if (tab==="settings") return settingsView();
+  if (tab==="grok") return grokView();
   if (tab==="files") return filesView();
   if (tab==="shots") return shotsView();
   if (tab==="clips") return clipsView();
@@ -174,12 +206,13 @@ function statusView() {
       ${row("Personality", pers)}
       ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
       ${row("Compass", params.CompassSize==="1"?"large":"small")}
+      ${row("Grok voice", grok.voice_on ? (grok.configured ? "Ara · "+(grok.masked||"keyed") : "on · scan QR") : "off")}
       ${row("Weather & news", wx)}
       ${row("Last weather run", params.WeatherNewsLastRunDate || "never")}
     </div>
     <div class="card pad">
       <p class="ghead">Weather preview</p>
-      <p class="muted" style="margin:8px 0 12px">Lights up for Nice or Unhinged. Speaks through the C4 speaker, parked or not.</p>
+      <p class="muted" style="margin:8px 0 12px">Grok Ara. Nice or Unhinged. Speaks through the C4 speaker, parked or not.</p>
       <div class="btns">
         <button class="btn ${wxLive()?"primary":""}" id="wxPreview" ${wxLive()?"":"disabled"}>Preview</button>
       </div>
@@ -200,9 +233,9 @@ function settingsView() {
       let extra = "";
       if (g.id === "weather") {
         extra = `<div class="card pad" style="margin-top:12px">
-          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off. First tap of a new voice downloads it (gps/high ~60–110 MB, human ~150 MB, once).</p>
+          <p class="muted" style="margin-bottom:12px">Ara speaks after Grok voice is on and an xAI key is saved on the Grok tab.</p>
           <div class="btns">
-            <button class="btn ${wxLive() && !wxStatus()?"primary":""}" id="wxPreview" ${wxLive() && !wxStatus()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
+            <button class="btn ${wxLive() && grokOn() && !wxStatus()?"primary":""}" id="wxPreview" ${wxLive() && grokOn() && !wxStatus()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
           </div>
         </div>`;
       }
@@ -213,7 +246,7 @@ function settingsView() {
 function setRow(it) {
   let fallback = "0";
   if (it.type === "select") {
-    fallback = it.key === "WeatherNewsMode" ? "1" : (it.key === "WeatherNewsVoice" ? "high" : it.options[0][0]);
+    fallback = it.key === "WeatherNewsMode" ? "1" : it.options[0][0];
   }
   const val = params[it.key] ?? fallback;
   const locked = !!it.deviceOnly;
@@ -392,6 +425,33 @@ function bind() {
   if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
   const wxP = document.getElementById("wxPreview");
   if (wxP) wxP.onclick = () => previewWeather(wxMode() === 2 ? "aggressive" : "nice");
+  const grokKey = document.getElementById("grokKey");
+  if (grokKey) grokKey.oninput = (e) => { grokKeyDraft = e.target.value; };
+  const grokSave = document.getElementById("grokSave");
+  if (grokSave) grokSave.onclick = async () => {
+    const key = (document.getElementById("grokKey") || {}).value || grokKeyDraft;
+    if (!key) { say("paste a key first"); return; }
+    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: key, voice_on: true})});
+    grokKeyDraft = "";
+    params.GrokVoiceEnabled = "1";
+    say(grok.configured ? "Key saved." : "Save failed");
+    render();
+  };
+  const grokTest = document.getElementById("grokTest");
+  if (grokTest) grokTest.onclick = async () => {
+    const key = (document.getElementById("grokKey") || {}).value || grokKeyDraft || "";
+    const j = await api("/api/grok/test", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: key})});
+    grok = j;
+    say(j.ok ? "Grok is reachable." : ("Nope: " + (j.status || "failed")));
+    render();
+  };
+  const grokClear = document.getElementById("grokClear");
+  if (grokClear) grokClear.onclick = async () => {
+    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: ""})});
+    grokKeyDraft = "";
+    say("Key cleared");
+    render();
+  };
   const chk = document.getElementById("chk");
   if (chk) chk.onclick = () => startUpdate();
   const updCancel = document.getElementById("updCancel");

@@ -57,6 +57,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"GitRemote", {PERSISTENT, STRING}},
     {"GsmApn", {PERSISTENT, STRING}},
     {"GsmMetered", {PERSISTENT, BOOL, "1"}},
+    {"GrokVoiceEnabled", {PERSISTENT, BOOL, "0"}},
     {"GsmRoaming", {PERSISTENT, BOOL}},
     {"HardwareSerial", {PERSISTENT, STRING}},
     {"HasAcceptedTerms", {PERSISTENT, STRING, "0"}},
@@ -137,8 +138,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"Version", {PERSISTENT, STRING}},
     {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off 1=nice 2=aggressive
-    {"WeatherNewsVoice", {PERSISTENT, STRING, "high"}},  // gps | high | human
     {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},  // "nice" | "aggressive"
     {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
     {"WeatherNewsStatus", {CLEAR_ON_MANAGER_START, STRING}},  // button text while working
+    {"XaiApiKey", {PERSISTENT | DONT_LOG, STRING}},
 };

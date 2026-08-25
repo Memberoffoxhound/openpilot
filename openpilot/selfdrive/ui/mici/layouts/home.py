@@ -13,6 +13,7 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
@@ -206,12 +207,14 @@ class MiciHomeLayout(Widget):
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
+    self._grok_icon = IconWidget("icons_mici/grok.png", (50, 50), opacity=0.9)
 
     self._alerts_pill = AlertsPill()
 
     self._status_bar_layout = HBoxLayout([
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
+      self._grok_icon,
       self._long_badge,
       self._experimental_icon,
       self._egpu_icon,
@@ -353,6 +356,7 @@ class MiciHomeLayout(Widget):
     self._egpu_icon_gray.set_visible(ui_state.sm["deviceState"].chestnutPresent and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)
     self._body_icon.set_visible(bool(ui_state.is_body))
+    self._grok_icon.set_visible(grok_cfg.voice_enabled())
 
     footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 48, self.rect.width - HOME_PADDING, 48)
     self._status_bar_layout.render(footer_rect)
