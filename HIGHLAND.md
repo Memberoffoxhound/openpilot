@@ -22,8 +22,9 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
-| `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. First drive of the local day (GPS). Weather + topics. Default topic is NPR world. Unhinged is NSFW. Theme preview is a short sample. |
+| `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. Morning, afternoon, and after 7pm — one briefing per window, never stacked. Weather is current to that time and GPS place. Default topic is NPR world. Unhinged is NSFW. Theme preview is a short sample. |
 | `WeatherNewsTopics` | `npr` | One topic per line on LAN `/grok`. Aliases: npr, cnn, comma, reddit[:sub], x[:query]. Else Google News. |
+| `WeatherNewsPlayback` | boosted | Theme → briefing playback. `0` standard `1` boosted. Boosted is louder for road noise, less C4 crackle. Voice only. |
 | `GrokVoiceEnabled` | off | Theme → grok voice. Ara TTS. QR to `http://<c4-ip>:8088/grok`. 50px Grok mark after Wi-Fi/LTE; tap it for an on-demand briefing (test hook). |
 
 ## Alpha longitudinal (stock)

@@ -334,7 +334,7 @@ class BriefScheduleCycle(BigButton):
     self.refresh()
 
   def refresh(self):
-    self.set_value("every drive" if grok_cfg.every_drive() else "once a day")
+    self.set_value("every drive" if grok_cfg.every_drive() else "3x a day")
 
   def show_event(self):
     super().show_event()
@@ -343,6 +343,24 @@ class BriefScheduleCycle(BigButton):
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
     grok_cfg.set_every_drive(not grok_cfg.every_drive())
+    self.refresh()
+
+
+class BriefPlaybackCycle(BigButton):
+  def __init__(self):
+    super().__init__("briefing playback", "")
+    self.refresh()
+
+  def refresh(self):
+    self.set_value("boosted" if grok_cfg.playback_boosted() else "standard")
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    grok_cfg.set_playback(grok_cfg.PLAYBACK_STANDARD if grok_cfg.playback_boosted() else grok_cfg.PLAYBACK_BOOSTED)
     self.refresh()
 
 
@@ -361,11 +379,13 @@ class ThemeLayoutMici(NavScroller):
     self._wx_dur = BriefDurationCycle()
     self._wx_wifi = WifiOnlyCycle()
     self._wx_sched = BriefScheduleCycle()
+    self._wx_play = BriefPlaybackCycle()
     self._delorean = DeloreanCycle()
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
-      self._grok, self._grok_qr, self._wx_mode, self._wx_preview, self._wx_dur, self._wx_wifi, self._wx_sched,
+      self._grok, self._grok_qr, self._wx_mode, self._wx_preview, self._wx_dur, self._wx_wifi,
+      self._wx_play, self._wx_sched,
       self._delorean, self._delorean_preview,
     ])
 

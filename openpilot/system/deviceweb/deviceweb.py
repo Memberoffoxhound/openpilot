@@ -56,7 +56,7 @@ WRITE_BOOL = {
   "WeatherNewsWifiOnly", "IsLiveStreaming",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode",
-             "WeatherNewsDuration", "CustomOnroadUi"}
+             "WeatherNewsDuration", "WeatherNewsPlayback", "CustomOnroadUi"}
 WRITE_STR = {"WeatherNewsPreview"}  # preview: nice|aggressive
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
@@ -65,7 +65,7 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
   "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled", "WeatherNewsTopics",
-  "WeatherNewsDuration", "WeatherNewsWifiOnly", "GrokProvider", "IsLiveStreaming",
+  "WeatherNewsDuration", "WeatherNewsWifiOnly", "WeatherNewsPlayback", "GrokProvider", "IsLiveStreaming",
   "LastGPSPosition", "CustomOnroadUi",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
@@ -307,7 +307,7 @@ def _read_params() -> dict[str, str]:
           if path.exists():
             out[k] = path.read_text().strip()
           else:
-            out[k] = "1" if k == "WeatherNewsMode" else ""
+            out[k] = "1" if k in ("WeatherNewsMode", "WeatherNewsPlayback") else ""
         else:
           out[k] = str(v)
     except Exception:
@@ -374,6 +374,7 @@ def _grok_status() -> dict:
     "duration": grok_cfg.duration(),
     "wifi_only": grok_cfg.wifi_only(),
     "every_drive": grok_cfg.every_drive(),
+    "playback": grok_cfg.playback(),
     "provider": grok_cfg.provider(),
     "howto": GROK_HOWTO,
   }
@@ -398,6 +399,8 @@ def _write_grok(body: dict) -> dict:
     grok_cfg.set_wifi_only(str(body.get("wifi_only")) in ("1", "true", "True", "yes", "on"))
   if "every_drive" in body:
     grok_cfg.set_every_drive(str(body.get("every_drive")) in ("1", "true", "True", "yes", "on"))
+  if "playback" in body:
+    grok_cfg.set_playback(int(body.get("playback") or grok_cfg.PLAYBACK_BOOSTED))
   return _grok_status()
 
 

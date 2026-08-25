@@ -31,21 +31,32 @@ def last_bytes() -> dict[str, int]:
 def _note_bytes(kind: str, n: int) -> None:
   _last_bytes[kind] = max(0, int(n))
 
-def _brief_sys(unhinged: bool) -> str:
+def _brief_sys(unhinged: bool, window: str = "") -> str:
   sec = grok_cfg.duration()
+  slot = {
+    "morning": "This is the morning briefing.",
+    "afternoon": "This is the afternoon briefing.",
+    "evening": "This is the evening briefing (after 7pm).",
+  }.get(window, "This is a current briefing.")
+  loc = (
+    "The user JSON has the driver's current latitude, longitude, local time, and a place name when known. "
+    "Identify the city or area from those coordinates and use that location. Do not read the numbers aloud. "
+    "Weather must be current to this time and place — lead with conditions right now, then the rest of this window. "
+    f"{slot} Do not recap other time windows from today. Skip empty lists."
+  )
   if unhinged:
     return (
-      "You are Ara, Tesla Grok Unhinged. Write a spoken daily briefing a driver hears through a car speaker. "
+      "You are Ara, Tesla Grok Unhinged. Write a spoken briefing a driver hears through a car speaker. "
       f"{sec} seconds. NSFW, vulgar, unfiltered. Roast the weather and the headlines. "
-      "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
+      f"{loc} Cover each provided headline in order. "
       "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
       "You may insert TTS tags like [laugh], [pause], [sigh]. "
       "End by telling them not to crash and to keep their eyes on the road."
     )
   return (
-    "You are Ara, the Grok voice, in Nice mode. Write a spoken daily briefing a driver hears "
+    "You are Ara, the Grok voice, in Nice mode. Write a spoken briefing a driver hears "
     f"through a car speaker. {sec} seconds when read aloud. Warm, PG, first person. "
-    "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
+    f"{loc} Cover each provided headline in order. "
     "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
     "Plain sentences. End by telling them to enjoy the drive and keep their eyes on the road."
   )
@@ -124,7 +135,8 @@ def test_key(key: str | None = None, provider: str | None = None) -> tuple[bool,
 
 
 def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: bool,
-                 location_name: str = "your area") -> str | None:
+                 location_name: str = "your area", lat: float | None = None,
+                 lon: float | None = None, local_time: str = "", window: str = "") -> str | None:
   if not grok_cfg.configured():
     return None
 
@@ -134,13 +146,20 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
     if t:
       items.append({"source": item.get("source") or "news", "title": t})
   user = {
-    "location": location_name,
+    "request_location": True,
+    "location": {
+      "name": location_name,
+      "latitude": None if lat is None else round(float(lat), 5),
+      "longitude": None if lon is None else round(float(lon), 5),
+      "local_time": local_time,
+      "window": window or "current",
+    },
     "weather": weather or {},
     "topics": grok_cfg.topics(),
     "items": items[:8],
   }
   return _chat(
-    _brief_sys(unhinged),
+    _brief_sys(unhinged, window=window),
     json.dumps(user),
     temperature=1.0 if unhinged else 0.6,
   )

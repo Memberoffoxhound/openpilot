@@ -1,4 +1,4 @@
-Spoken briefing on the **first drive of the local day** (GPS day + coords), or **every drive** if that toggle is on.
+Spoken briefing **three times a day**: once in the morning (5am–noon), once in the afternoon (noon–7pm), once after 7pm. The window you start the drive in is the only one that runs — missed windows stay missed. Or **every drive** if that toggle is on.
 
 ## Use Grok
 
@@ -11,12 +11,13 @@ Spoken briefing on the **first drive of the local day** (GPS day + coords), or *
 4. Theme → weather & news: **Off / Nice / Unhinged**. Unhinged is NSFW; confirm on enable.
 5. Topics: up to 6, autocomplete on the Grok page. Default is weather + `npr`.
 6. Theme → **briefing length** 60 / 90 / 120 s. **briefing on wifi only** skips LTE.
-7. Theme → **briefing schedule**: **once a day** (default) or **every drive**. Every drive waits ~10s after onroad, same as the first-drive path. Use it to test reliability.
-8. Theme → **preview** speaks a short Ara sample. Tap the **home Grok mark** for a full on-demand briefing (test hook). Neither consumes the day / this drive.
+7. Theme → **briefing playback**: **Standard** (clean) or **Boosted** (default, louder for road noise, less C4 crackle). Voice only.
+8. Theme → **briefing schedule**: **3x a day** (default) or **every drive**. 3x a day is morning / afternoon / after 7pm, one each, never stacked. Every drive waits ~10s after onroad. Use it to test reliability.
+9. Theme → **preview** speaks a short Ara sample. Tap the **home Grok mark** for a full on-demand briefing (test hook). Neither consumes the window / this drive.
 
 While Grok writes and speaks, a **60px round Grok bug** sits top-right onroad (same translucent dm_background as the DM / compass bugs). The mark starts dark and fills bottom-up like an old iOS app install, with a round progress ring.
 
-The active provider writes the briefing from weather + your topics. TTS speaks that text only — no canned scripts. weather_news_d enhances the WAV (warmth + loudness + 48 kHz) then soundd plays `/data/wxnews.wav` from a background decode so the 20 Hz audio thread does not stall.
+The active provider writes the briefing from **current** weather at your GPS location (city is requested in the prompt) plus your topics. TTS speaks that text only — no canned scripts. weather_news_d enhances the WAV (standard or boosted, 48 kHz) then soundd plays `/data/wxnews.wav` from a background decode so the 20 Hz audio thread does not stall.
 
 Topic aliases: `npr`, `cnn`, `comma` (blog.comma.ai), `reddit` or `reddit:commaai`, `x` or `x:ApteraMotors`. Anything else is a Google News search (`Aptera Motors`).
 
@@ -37,7 +38,7 @@ Chat itself is ~5–30 KB (grok-4-fast). A long reasoning dump can push that tow
 
 | Cadence (60 s briefing) | Month |
 |---|---|
-| Once a day | **~90 MB** |
+| 3x a day | **~270 MB** |
 | Every drive, 4 drives/day | **~360 MB** |
 | Every drive, 8 drives/day | **~720 MB** |
 | Preview once a day extra | +~15 MB |
@@ -70,10 +71,11 @@ This fork stays on Grok Ara. Do not re-add Piper/Kokoro on the C4.
 | `WeatherNewsTopics` | Newline-separated topics, max 6. Default `npr`. |
 | `WeatherNewsDuration` | `60` / `90` / `120` seconds. Default 60. |
 | `WeatherNewsWifiOnly` | Skip fetch + TTS on cellular. Default off. |
-| `WeatherNewsEveryDrive` | `0` first drive of the local day, `1` start of every drive. Default off. |
-| `WeatherNewsOnDemand` | Home Grok-mark tap. Full briefing, no day consume. Test hook. |
+| `WeatherNewsPlayback` | `0` standard, `1` boosted. Default boosted. |
+| `WeatherNewsEveryDrive` | `0` 3x/day slots, `1` start of every drive. Default off. |
+| `WeatherNewsOnDemand` | Home Grok-mark tap. Full briefing, no window consume. Test hook. |
 | `WeatherNewsPreview` | `nice` or `aggressive`. Cleared on manager start. |
-| `WeatherNewsLastRunDate` | `YYYY-MM-DD` after a wav is queued. |
+| `WeatherNewsLastRunDate` | `YYYY-MM-DD:morning\|afternoon\|evening` after a wav is queued. |
 | `WeatherNewsStatus` | live button / onroad bug while a cycle runs |
 
 `weather_news_d` is `always_run` and optional — a crash does not block engage.

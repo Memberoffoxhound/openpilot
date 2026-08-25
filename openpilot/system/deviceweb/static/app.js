@@ -46,7 +46,7 @@ const S = {
   page: (location.hash.replace("#", "") || "home"),
   home: null,
   params: {},
-  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, provider: "xai", howto: {} },
+  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, playback: 1, provider: "xai", howto: {} },
   routes: [],
   topicDraft: "",
   toast: "",
@@ -281,7 +281,12 @@ function grokHTML() {
         <div class="seg">${[60, 90, 120].map(s => `<button class="btn${g.duration === s ? " on" : ""}" data-dur="${s}">${s}s</button>`).join("")}</div></div>
       <div class="set"><div class="meta"><b>Wi-Fi only</b><p>Skip LTE for fetch + TTS.</p></div>
         <button class="tog${g.wifi_only ? " on" : ""}" id="wifiOnly"><i></i></button></div>
-      <div class="set"><div class="meta"><b>Every drive</b><p>Off = first drive of the day. On = start of every drive. For reliability testing.</p></div>
+      <div class="set"><div class="meta"><b>Playback</b><p>Voice only. Boosted is louder for road noise, with less C4 crackle.</p></div>
+        <div class="seg">
+          <button class="btn${Number(g.playback ?? 1) === 0 ? " on" : ""}" data-play="0">Standard</button>
+          <button class="btn${Number(g.playback ?? 1) === 1 ? " on" : ""}" data-play="1">Boosted</button>
+        </div></div>
+      <div class="set"><div class="meta"><b>Every drive</b><p>Off = morning, afternoon, and after 7pm — one each, never stacked. On = start of every drive.</p></div>
         <button class="tog${g.every_drive ? " on" : ""}" id="everyDrive"><i></i></button></div>
     </div>
     <p class="h-label">Topics · ${topics.length}/6</p>
@@ -424,6 +429,7 @@ function bindPage() {
     $("everyDrive").onclick = () => saveGrok({ every_drive: !S.grok.every_drive });
     $("page").querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
     $("page").querySelectorAll("[data-dur]").forEach(b => b.onclick = () => saveGrok({ duration: Number(b.dataset.dur) }));
+    $("page").querySelectorAll("[data-play]").forEach(b => b.onclick = () => saveGrok({ playback: Number(b.dataset.play) }));
     $("page").querySelectorAll("[data-prov]").forEach(b => b.onclick = () => saveGrok({ provider: b.dataset.prov }));
     $("page").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => rmTopic(Number(b.dataset.rm)));
     $("page").querySelectorAll("[data-add]").forEach(b => b.onclick = () => addTopic(b.dataset.add));

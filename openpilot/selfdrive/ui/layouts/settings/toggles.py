@@ -48,7 +48,10 @@ DESCRIPTIONS = {
     "Local forecast plus news, spoken by Grok Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
   ),
   "WeatherNewsSchedule": tr_noop(
-    "Once a day plays on the first drive after local midnight. Every drive plays at the start of each onroad session. Use every drive to test reliability."
+    "3x a day plays once in the morning, once in the afternoon, and once after 7pm. Missed windows stay missed — never stacked. Every drive plays at the start of each onroad session."
+  ),
+  "WeatherNewsPlayback": tr_noop(
+    "Voice-only. Standard is clean. Boosted is louder for road noise, with less speaker crackle."
   ),
   "GrokVoice": tr_noop(
     "Grok Ara for weather and news. Nice and Unhinged share Ara. Scan the QR to paste your xAI API key on the LAN console."
@@ -194,9 +197,19 @@ class TogglesLayout(Widget):
 
     self._weather_schedule_setting = button_item(
       lambda: tr("Theme: Briefing Schedule"),
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day"),
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day"),
       description=lambda: tr(DESCRIPTIONS["WeatherNewsSchedule"]),
       callback=self._toggle_weather_schedule,
+    )
+
+    self._weather_playback_setting = multiple_button_item(
+      lambda: tr("Theme: Briefing Playback"),
+      lambda: tr(DESCRIPTIONS["WeatherNewsPlayback"]),
+      buttons=[lambda: tr("Standard"), lambda: tr("Boosted")],
+      button_width=255,
+      callback=self._set_weather_playback,
+      selected_index=1 if grok_cfg.playback_boosted() else 0,
+      icon="speed_limit.png",
     )
 
     self._toggles = {}
@@ -238,6 +251,7 @@ class TogglesLayout(Widget):
         self._toggles["GrokVoice"] = self._grok_voice_setting
         self._toggles["GrokQr"] = self._grok_qr_setting
         self._toggles["WeatherNewsPreview"] = self._weather_preview_setting
+        self._toggles["WeatherNewsPlayback"] = self._weather_playback_setting
         self._toggles["WeatherNewsSchedule"] = self._weather_schedule_setting
 
     self._update_experimental_mode_icon()
@@ -325,8 +339,9 @@ class TogglesLayout(Widget):
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
     self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
     self._weather_schedule_setting.action_item.set_text(
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day")
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day")
     )
+    self._weather_playback_setting.action_item.set_selected_button(1 if grok_cfg.playback_boosted() else 0)
     st = wx.status_text(self._params)
     self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
     self._weather_preview_setting.action_item.set_enabled(
@@ -447,5 +462,8 @@ class TogglesLayout(Widget):
   def _toggle_weather_schedule(self):
     grok_cfg.set_every_drive(not grok_cfg.every_drive())
     self._weather_schedule_setting.action_item.set_text(
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day")
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day")
     )
+
+  def _set_weather_playback(self, button_index: int):
+    grok_cfg.set_playback(grok_cfg.PLAYBACK_BOOSTED if button_index == 1 else grok_cfg.PLAYBACK_STANDARD)

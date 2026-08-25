@@ -17,6 +17,9 @@ PROVIDER_KEY = "GrokProvider"
 OPENAI_KEY = "OpenaiApiKey"
 GROQ_KEY = "GroqApiKey"
 EVERY_DRIVE_KEY = "WeatherNewsEveryDrive"
+PLAYBACK_KEY = "WeatherNewsPlayback"
+PLAYBACK_STANDARD = 0
+PLAYBACK_BOOSTED = 1
 DEFAULT_TOPICS = "npr"
 TOPIC_SUGGESTIONS = (
   "npr", "cnn", "comma", "reddit", "reddit:commaai", "reddit:openpilot",
@@ -250,6 +253,32 @@ def set_every_drive(on: bool) -> None:
   except Exception:
     PARAM_DIR.mkdir(parents=True, exist_ok=True)
     (PARAM_DIR / EVERY_DRIVE_KEY).write_text("1" if on else "0")
+
+
+def playback() -> int:
+  try:
+    v = _params().get(PLAYBACK_KEY, return_default=True)
+    n = int(v if v is not None else PLAYBACK_BOOSTED)
+  except Exception:
+    f = PARAM_DIR / PLAYBACK_KEY
+    try:
+      n = int(f.read_text().strip()) if f.exists() else PLAYBACK_BOOSTED
+    except Exception:
+      n = PLAYBACK_BOOSTED
+  return PLAYBACK_BOOSTED if n == PLAYBACK_BOOSTED else PLAYBACK_STANDARD
+
+
+def playback_boosted() -> bool:
+  return playback() == PLAYBACK_BOOSTED
+
+
+def set_playback(mode: int) -> None:
+  v = PLAYBACK_BOOSTED if int(mode) == PLAYBACK_BOOSTED else PLAYBACK_STANDARD
+  try:
+    _params().put(PLAYBACK_KEY, v, block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / PLAYBACK_KEY).write_text(str(v))
 
 
 def set_topics(text: str) -> None:
