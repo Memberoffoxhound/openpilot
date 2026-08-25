@@ -46,7 +46,7 @@ const S = {
   page: (location.hash.replace("#", "") || "home"),
   home: null,
   params: {},
-  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, provider: "xai", howto: {} },
+  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, provider: "xai", howto: {} },
   routes: [],
   topicDraft: "",
   toast: "",
@@ -281,6 +281,8 @@ function grokHTML() {
         <div class="seg">${[60, 90, 120].map(s => `<button class="btn${g.duration === s ? " on" : ""}" data-dur="${s}">${s}s</button>`).join("")}</div></div>
       <div class="set"><div class="meta"><b>Wi-Fi only</b><p>Skip LTE for fetch + TTS.</p></div>
         <button class="tog${g.wifi_only ? " on" : ""}" id="wifiOnly"><i></i></button></div>
+      <div class="set"><div class="meta"><b>Every drive</b><p>Off = first drive of the day. On = start of every drive. For reliability testing.</p></div>
+        <button class="tog${g.every_drive ? " on" : ""}" id="everyDrive"><i></i></button></div>
     </div>
     <p class="h-label">Topics · ${topics.length}/6</p>
     <div class="card" style="padding:12px 14px">
@@ -419,6 +421,7 @@ function bindPage() {
   if (S.page === "grok") {
     $("voiceOn").onclick = () => saveGrok({ voice_on: !S.grok.voice_on });
     $("wifiOnly").onclick = () => saveGrok({ wifi_only: !S.grok.wifi_only });
+    $("everyDrive").onclick = () => saveGrok({ every_drive: !S.grok.every_drive });
     $("page").querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
     $("page").querySelectorAll("[data-dur]").forEach(b => b.onclick = () => saveGrok({ duration: Number(b.dataset.dur) }));
     $("page").querySelectorAll("[data-prov]").forEach(b => b.onclick = () => saveGrok({ provider: b.dataset.prov }));

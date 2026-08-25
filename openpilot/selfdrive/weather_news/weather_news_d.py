@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""First drive of the local day (GPS): Grok briefing + Ara TTS. Preview anytime."""
+"""First drive of the local day (GPS), or every drive. Grok briefing + Ara TTS."""
 
 from __future__ import annotations
 
@@ -19,8 +19,9 @@ from openpilot.selfdrive.weather_news.voice import speak_lines
 
 ONROAD_DELAY_S = 10.0
 ONROAD_STABLE_S = 2.0
+OFFROAD_RESET_S = 8.0
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
-USER_AGENT = "S3XYPilot-WeatherNews/0.6"
+USER_AGENT = "S3XYPilot-WeatherNews/0.7"
 
 
 def local_day(lon: float) -> str:
@@ -157,6 +158,12 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   ok = speak_lines(
     [script], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
   )
+  b = grok_api.last_bytes()
+  total = b.get("chat", 0) + b.get("tts", 0)
+  cloudlog.info(
+    f"weather_news: lte chat={b.get('chat', 0)/1024:.1f}kB tts={b.get('tts', 0)/1048576:.2f}MB "
+    f"total={total/1048576:.2f}MB queued={ok}"
+  )
   _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
   time.sleep(1.5 if ok else 2.5)
   _put(params, "WeatherNewsStatus", "")
@@ -227,6 +234,8 @@ def main() -> None:
   params = Params()
   sm = messaging.SubMaster(["deviceState", "gpsLocationExternal"])
   stable_t: float | None = None
+  ran_this_onroad = False
+  offroad_since = 0.0
 
   while True:
     try:
@@ -247,15 +256,28 @@ def main() -> None:
         poll(params, sm, 5, need_onroad=False)
         continue
 
-      today = local_day(loc[1])
-      if _str(params, "WeatherNewsLastRunDate") == today:
-        stable_t = None
-        poll(params, sm, 30, need_onroad=False)
-        continue
-
       if not onroad(sm):
         stable_t = None
+        if ran_this_onroad:
+          if not offroad_since:
+            offroad_since = time.time()
+          elif time.time() - offroad_since >= OFFROAD_RESET_S:
+            ran_this_onroad = False
+            offroad_since = 0.0
+        else:
+          offroad_since = 0.0
         time.sleep(0.5)
+        continue
+
+      offroad_since = 0.0
+      today = local_day(loc[1])
+      if grok_cfg.every_drive():
+        already = ran_this_onroad
+      else:
+        already = _str(params, "WeatherNewsLastRunDate") == today
+      if already:
+        stable_t = None
+        poll(params, sm, 30, need_onroad=False)
         continue
 
       if stable_t is None:
@@ -264,7 +286,7 @@ def main() -> None:
         time.sleep(0.4)
         continue
 
-      cloudlog.info(f"weather_news: first drive {today} lon={loc[1]:.2f}, waiting {ONROAD_DELAY_S:.0f}s")
+      cloudlog.info(f"weather_news: drive {today} every={int(grok_cfg.every_drive())} lon={loc[1]:.2f}, waiting {ONROAD_DELAY_S:.0f}s")
       if not poll(params, sm, ONROAD_DELAY_S, need_onroad=True):
         stable_t = None
         continue
@@ -272,14 +294,19 @@ def main() -> None:
       loc = location(sm, params) or loc
       today = local_day(loc[1])
       m = wx.get(params)
-      if m == wx.OFF or not grok_cfg.voice_enabled() or _str(params, "WeatherNewsLastRunDate") == today or not onroad(sm):
+      if grok_cfg.every_drive():
+        already = ran_this_onroad
+      else:
+        already = _str(params, "WeatherNewsLastRunDate") == today
+      if m == wx.OFF or not grok_cfg.voice_enabled() or already or not onroad(sm):
         stable_t = None
         continue
 
       ok = build_and_speak(params, m == wx.AGGRESSIVE, loc, sm)
       if ok:
+        ran_this_onroad = True
         _put(params, "WeatherNewsLastRunDate", today)
-        cloudlog.info("weather_news: daily queued")
+        cloudlog.info("weather_news: briefing queued")
       else:
         cloudlog.warning("weather_news: no audio queued, will retry")
       time.sleep(5)

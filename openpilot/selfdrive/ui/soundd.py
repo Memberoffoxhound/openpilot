@@ -105,7 +105,7 @@ def _theme_prep(x: np.ndarray) -> np.ndarray:
   return _soft_limit(_agc(_dialog_eq(x)))
 
 
-def load_wav(*paths) -> np.ndarray | None:
+def load_wav(*paths, prep: bool = True) -> np.ndarray | None:
   for path in paths:
     try:
       size = os.path.getsize(path)
@@ -127,7 +127,7 @@ def load_wav(*paths) -> np.ndarray | None:
       x /= 32768.0
       if rate != SAMPLE_RATE:
         x = _resample_cubic(x, rate, SAMPLE_RATE)
-      return _theme_prep(x)
+      return _theme_prep(x) if prep else x.astype(np.float32)
     except Exception:
       cloudlog.exception(f"soundd: failed to load {path}")
       continue
@@ -200,6 +200,7 @@ class Soundd:
     self._onroad_t0, self._eighty_played = self._load_gate()
     self._started_since = 0.0
     self._offroad_since = 0.0
+    self._wx_loading = False
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -230,13 +231,22 @@ class Soundd:
     except OSError:
       pass
 
-  def _push(self, tag: str, paths: tuple[str, ...]) -> None:
+  def _push(self, tag: str, paths: tuple[str, ...], *, prep: bool = True) -> None:
     # Decode here (20 Hz thread), never in the PortAudio callback. Buffer dies with the oneshot.
-    w = load_wav(*paths)
+    w = load_wav(*paths, prep=prep)
     if w is None:
       return
     with self._lock:
       self._queue.append([w, 0, tag])
+
+  def _push_bg(self, tag: str, paths: tuple[str, ...], *, prep: bool = True) -> None:
+    try:
+      self._push(tag, paths, prep=prep)
+    except Exception:
+      cloudlog.exception(f"soundd: bg load {tag}")
+    finally:
+      if tag == "wxnews":
+        self._wx_loading = False
 
   def _tag_busy(self, tag: str) -> bool:
     with self._lock:
@@ -252,8 +262,10 @@ class Soundd:
         self._play_eighty = False
         _clear(DELOREAN_PLAY)
     if _flag(WXNEWS_PLAY):
-      if not self._tag_busy("wxnews"):
-        self._push("wxnews", WXNEWS_WAVS)
+      if not self._tag_busy("wxnews") and not self._wx_loading:
+        self._wx_loading = True
+        threading.Thread(target=self._push_bg, args=("wxnews", WXNEWS_WAVS),
+                         kwargs={"prep": False}, daemon=True).start()
         _clear(WXNEWS_PLAY)
 
   def load_sounds(self):
@@ -309,14 +321,19 @@ class Soundd:
       if n > 0:
         dur = len(arr) / sr
         fi, fo = (0.006, 0.02) if dur < 0.45 else (0.012, 0.05)
-        idx = np.arange(n, dtype=np.float32) + i
-        t = idx / sr
-        env = np.ones(n, dtype=np.float32)
-        if fi > 0:
-          env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
-        if fo > 0:
-          env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
-        out[:n] += arr[i:i + n] * env
+        start_s = i / sr
+        end_s = (i + n) / sr
+        if start_s >= fi and end_s <= dur - fo:
+          out[:n] += arr[i:i + n]
+        else:
+          idx = np.arange(n, dtype=np.float32) + i
+          t = idx / sr
+          env = np.ones(n, dtype=np.float32)
+          if fi > 0:
+            env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
+          if fo > 0:
+            env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
+          out[:n] += arr[i:i + n] * env
         i += n
       if i < len(arr):
         live.append([arr, i, tag])

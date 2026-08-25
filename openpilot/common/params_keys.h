@@ -139,6 +139,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"WeatherNewsTopics", {PERSISTENT, STRING, "npr"}},
     {"WeatherNewsDuration", {PERSISTENT, INT, "60"}},  // 60 | 90 | 120 seconds
     {"WeatherNewsWifiOnly", {PERSISTENT, BOOL, "0"}},
+    {"WeatherNewsEveryDrive", {PERSISTENT, BOOL, "0"}},  // 0 = first drive of day, 1 = start of every drive
     {"GrokProvider", {PERSISTENT, STRING, "xai"}},  // xai | openai | groq
     {"OpenaiApiKey", {PERSISTENT | DONT_LOG, STRING}},
     {"GroqApiKey", {PERSISTENT | DONT_LOG, STRING}},

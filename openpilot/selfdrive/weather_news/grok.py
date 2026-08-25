@@ -21,6 +21,16 @@ VOICE_ID = "ara"
 TIMEOUT_CHAT = 60
 TIMEOUT_TTS = 90
 
+_last_bytes = {"chat": 0, "tts": 0}
+
+
+def last_bytes() -> dict[str, int]:
+  return dict(_last_bytes)
+
+
+def _note_bytes(kind: str, n: int) -> None:
+  _last_bytes[kind] = max(0, int(n))
+
 def _brief_sys(unhinged: bool) -> str:
   sec = grok_cfg.duration()
   if unhinged:
@@ -176,6 +186,7 @@ def _chat(system: str, user: str, *, temperature: float) -> str | None:
         },
         timeout=TIMEOUT_CHAT,
       )
+      _note_bytes("chat", len(system) + len(user) + 180 + len(r.content))
       if r.status_code != 200:
         last_err = f"http {r.status_code} {r.text[:160]}"
         cloudlog.warning(f"weather_news: grok chat {last_err}")
@@ -261,8 +272,9 @@ def tts_wav(text: str, dest: Path, *, unhinged: bool = False) -> bool:
         },
         timeout=TIMEOUT_TTS,
       )
-      r.raise_for_status()
-      data = r.content
+    r.raise_for_status()
+    data = r.content
+    _note_bytes("tts", len(data) + 256)
     if len(data) < 800:
       return False
     if data[:4] == b"RIFF":

@@ -45,7 +45,10 @@ DESCRIPTIONS = {
     "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
   ),
   "WeatherNewsMode": tr_noop(
-    "First drive of the day: local forecast plus two news bites, spoken by Grok Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
+    "Local forecast plus news, spoken by Grok Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
+  ),
+  "WeatherNewsSchedule": tr_noop(
+    "Once a day plays on the first drive after local midnight. Every drive plays at the start of each onroad session. Use every drive to test reliability."
   ),
   "GrokVoice": tr_noop(
     "Grok Ara for weather and news. Nice and Unhinged share Ara. Scan the QR to paste your xAI API key on the LAN console."
@@ -189,6 +192,13 @@ class TogglesLayout(Widget):
       enabled=lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled(),
     )
 
+    self._weather_schedule_setting = button_item(
+      lambda: tr("Theme: Briefing Schedule"),
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day"),
+      description=lambda: tr(DESCRIPTIONS["WeatherNewsSchedule"]),
+      callback=self._toggle_weather_schedule,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -228,6 +238,7 @@ class TogglesLayout(Widget):
         self._toggles["GrokVoice"] = self._grok_voice_setting
         self._toggles["GrokQr"] = self._grok_qr_setting
         self._toggles["WeatherNewsPreview"] = self._weather_preview_setting
+        self._toggles["WeatherNewsSchedule"] = self._weather_schedule_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -313,11 +324,13 @@ class TogglesLayout(Widget):
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
     self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
-    self._weather_voice_setting.action_item.set_selected_button(wv.IDS.index(wv.get(self._params)))
+    self._weather_schedule_setting.action_item.set_text(
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day")
+    )
     st = wx.status_text(self._params)
     self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
     self._weather_preview_setting.action_item.set_enabled(
-      lambda: wx.get(self._params) != wx.OFF and not wx.status_text(self._params)
+      lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled() and not wx.status_text(self._params)
     )
 
   def _render(self, rect):
@@ -430,3 +443,9 @@ class TogglesLayout(Widget):
 
   def _preview_weather_news(self):
     wx.request_preview(self._params)
+
+  def _toggle_weather_schedule(self):
+    grok_cfg.set_every_drive(not grok_cfg.every_drive())
+    self._weather_schedule_setting.action_item.set_text(
+      lambda: tr("Every drive" if grok_cfg.every_drive() else "Once a day")
+    )

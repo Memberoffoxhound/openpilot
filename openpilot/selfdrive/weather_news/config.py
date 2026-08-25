@@ -16,6 +16,7 @@ WIFI_KEY = "WeatherNewsWifiOnly"
 PROVIDER_KEY = "GrokProvider"
 OPENAI_KEY = "OpenaiApiKey"
 GROQ_KEY = "GroqApiKey"
+EVERY_DRIVE_KEY = "WeatherNewsEveryDrive"
 DEFAULT_TOPICS = "npr"
 TOPIC_SUGGESTIONS = (
   "npr", "cnn", "comma", "reddit", "reddit:commaai", "reddit:openpilot",
@@ -233,6 +234,22 @@ def set_wifi_only(on: bool) -> None:
   except Exception:
     PARAM_DIR.mkdir(parents=True, exist_ok=True)
     (PARAM_DIR / WIFI_KEY).write_text("1" if on else "0")
+
+
+def every_drive() -> bool:
+  try:
+    return bool(_params().get_bool(EVERY_DRIVE_KEY))
+  except Exception:
+    f = PARAM_DIR / EVERY_DRIVE_KEY
+    return f.exists() and f.read_text().strip().lower() in ("1", "true", "on", "yes")
+
+
+def set_every_drive(on: bool) -> None:
+  try:
+    _params().put_bool(EVERY_DRIVE_KEY, bool(on), block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / EVERY_DRIVE_KEY).write_text("1" if on else "0")
 
 
 def set_topics(text: str) -> None:

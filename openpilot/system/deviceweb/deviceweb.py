@@ -373,6 +373,7 @@ def _grok_status() -> dict:
     "suggestions": list(grok_cfg.TOPIC_SUGGESTIONS),
     "duration": grok_cfg.duration(),
     "wifi_only": grok_cfg.wifi_only(),
+    "every_drive": grok_cfg.every_drive(),
     "provider": grok_cfg.provider(),
     "howto": GROK_HOWTO,
   }
@@ -395,6 +396,8 @@ def _write_grok(body: dict) -> dict:
     grok_cfg.set_duration(int(body.get("duration") or 60))
   if "wifi_only" in body:
     grok_cfg.set_wifi_only(str(body.get("wifi_only")) in ("1", "true", "True", "yes", "on"))
+  if "every_drive" in body:
+    grok_cfg.set_every_drive(str(body.get("every_drive")) in ("1", "true", "True", "yes", "on"))
   return _grok_status()
 
 

@@ -1,6 +1,4 @@
-# weather_news
-
-Spoken briefing on the **first drive of the local day** (GPS day + coords).
+Spoken briefing on the **first drive of the local day** (GPS day + coords), or **every drive** if that toggle is on.
 
 ## Use Grok
 
@@ -13,25 +11,38 @@ Spoken briefing on the **first drive of the local day** (GPS day + coords).
 4. Theme → weather & news: **Off / Nice / Unhinged**. Unhinged is NSFW; confirm on enable.
 5. Topics: up to 6, autocomplete on the Grok page. Default is weather + `npr`.
 6. Theme → **briefing length** 60 / 90 / 120 s. **briefing on wifi only** skips LTE.
-7. Theme → **preview** speaks a short Ara sample. Tap the **home Grok mark** for a full on-demand briefing (test hook). Neither consumes the day.
+7. Theme → **briefing schedule**: **once a day** (default) or **every drive**. Every drive waits ~10s after onroad, same as the first-drive path. Use it to test reliability.
+8. Theme → **preview** speaks a short Ara sample. Tap the **home Grok mark** for a full on-demand briefing (test hook). Neither consumes the day / this drive.
 
-The active provider writes the briefing from weather + your topics. TTS speaks that text only — no canned scripts. soundd plays `/data/wxnews.wav`.
+While Grok writes and speaks, a **60px round Grok bug** sits top-right onroad (same translucent dm_background as the DM / compass bugs). The mark starts dark and fills bottom-up like an old iOS app install, with a round progress ring.
+
+The active provider writes the briefing from weather + your topics. TTS speaks that text only — no canned scripts. weather_news_d enhances the WAV (warmth + loudness + 48 kHz) then soundd plays `/data/wxnews.wav` from a background decode so the 20 Hz audio thread does not stall.
 
 Topic aliases: `npr`, `cnn`, `comma` (blog.comma.ai), `reddit` or `reddit:commaai`, `x` or `x:ApteraMotors`. Anything else is a Google News search (`Aptera Motors`).
 
 ## LTE
 
-Almost all of the bytes are the WAV.
+Almost all of the bytes are the **TTS WAV**. Chat, RSS, and weather are noise next to it.
 
-| Event | On the wire |
+24 kHz 16-bit mono PCM from Ara:
+
+| Duration | WAV on the wire | Chat + RSS + weather | **Per briefing** |
+|---|---|---|---|
+| 60 s | ~2.8 MB | ~0.05–0.25 MB | **~3.0 MB** |
+| 90 s | ~4.1 MB | ~0.05–0.25 MB | **~4.3 MB** |
+| 120 s | ~5.5 MB | ~0.05–0.25 MB | **~5.7 MB** |
+| Theme preview (~10 s) | ~0.5 MB | ~10 KB | **~0.5 MB** |
+
+Chat itself is ~5–30 KB (grok-4-fast). A long reasoning dump can push that toward 100 KB. Still <5% of the WAV.
+
+| Cadence (60 s briefing) | Month |
 |---|---|
-| Daily briefing | ~3–4 MB (60–80 s, 24 kHz PCM) |
-| Theme preview | ~0.3 MB (~6 s) |
-| RSS (NPR + extra topics) | ~50–150 KB |
-| Grok chat | ~10 KB |
-| Open-Meteo | ~5 KB |
+| Once a day | **~90 MB** |
+| Every drive, 4 drives/day | **~360 MB** |
+| Every drive, 8 drives/day | **~720 MB** |
+| Preview once a day extra | +~15 MB |
 
-One briefing/day ≈ **90–120 MB/month**. Preview every day adds ~10 MB. Wi-Fi uses none of the SIM.
+Wi-Fi only uses none of the SIM. Logs print `weather_news: lte chat=… tts=… total=…` after each briefing.
 
 ## Free TTS (few queries)
 
@@ -59,9 +70,10 @@ This fork stays on Grok Ara. Do not re-add Piper/Kokoro on the C4.
 | `WeatherNewsTopics` | Newline-separated topics, max 6. Default `npr`. |
 | `WeatherNewsDuration` | `60` / `90` / `120` seconds. Default 60. |
 | `WeatherNewsWifiOnly` | Skip fetch + TTS on cellular. Default off. |
+| `WeatherNewsEveryDrive` | `0` first drive of the local day, `1` start of every drive. Default off. |
 | `WeatherNewsOnDemand` | Home Grok-mark tap. Full briefing, no day consume. Test hook. |
 | `WeatherNewsPreview` | `nice` or `aggressive`. Cleared on manager start. |
 | `WeatherNewsLastRunDate` | `YYYY-MM-DD` after a wav is queued. |
-| `WeatherNewsStatus` | live button text while a cycle runs |
+| `WeatherNewsStatus` | live button / onroad bug while a cycle runs |
 
 `weather_news_d` is `always_run` and optional — a crash does not block engage.
