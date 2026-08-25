@@ -21,8 +21,6 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot). |
 | `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
-| `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
-| `BuckleSound` | off | Once, offroad or onroad. Rearm after a drive ≥20 min, else after 3 hours. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
 | `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. First drive of the local day (GPS). Weather + topics. Default topic is NPR world. Unhinged is NSFW. Theme preview is a short sample. |
 | `WeatherNewsTopics` | `npr` | One topic per line on LAN `/grok`. Aliases: npr, cnn, comma, reddit[:sub], x[:query]. Else Google News. |

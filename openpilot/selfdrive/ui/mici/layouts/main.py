@@ -9,7 +9,7 @@ from openpilot.selfdrive.ui.mici.layouts.onboarding import OnboardingWindow
 from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
-from openpilot.selfdrive.ui.layouts.settings.common import draw_ludicrous_warp, tick_trip, tick_egg_drive
+from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
 from openpilot.system.ui.lib.application import gui_app
 
 
@@ -92,7 +92,6 @@ class MiciMainLayout(Scroller):
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
     tick_trip()
-    tick_egg_drive()
 
   def _render(self, _):
     if not self._setup:
@@ -104,7 +103,6 @@ class MiciMainLayout(Scroller):
 
     # Render
     super()._render(self._rect)
-    draw_ludicrous_warp(self._rect)
 
   def _handle_transitions(self):
     # Don't pop if onboarding

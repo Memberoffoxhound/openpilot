@@ -13,9 +13,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
-  ludicrous_on, set_ludicrous, trigger_ludicrous, buckle_on, set_buckle, request_buckle_play,
   delorean_on, set_delorean, request_delorean_play,
-  ludicrous_files_ok,
 )
 from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.selfdrive.weather_news import mode as wx
@@ -260,85 +258,6 @@ class LaneColorCycle(BigButton):
     self.set_value(LANE_COLOR_LABELS[nxt])
 
 
-class LudicrousCycle(BigButton):
-  """Star Wars warp + line on hard accel. Off by default."""
-
-  def __init__(self):
-    super().__init__("ludicrous", "")
-    self._params = Params()
-    self.refresh()
-
-  def refresh(self):
-    value = "on" if ludicrous_on() else "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    on = not ludicrous_on()
-    if on and not ludicrous_files_ok():
-      gui_app.push_widget(LudicrousFilesPage())
-    set_ludicrous(on)
-    self.set_value("on" if on else "off")
-
-
-class LudicrousPreview(BigButton):
-  def __init__(self):
-    super().__init__("preview", "tap")
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    if not trigger_ludicrous(preview=True):
-      gui_app.push_widget(LudicrousFilesPage())
-
-
-class LudicrousFilesPage(NavScroller):
-  def __init__(self):
-    super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    self._scroller.add_widgets([
-      GreyBigButton("ludicrous files", "personal use", warn),
-      GreyBigButton("", "Bundled clip loads from the install."),
-      GreyBigButton("", "Optional override: /data/ludicrous.wav"),
-    ])
-
-
-class BuckleSoundCycle(BigButton):
-  """Seatbelt latch clip. Once. Rearm after a 20 min drive, else 3 hours."""
-
-  def __init__(self):
-    super().__init__("buckle sound", "")
-    self.refresh()
-
-  def refresh(self):
-    value = "on" if buckle_on() else "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    on = not buckle_on()
-    set_buckle(on)
-    self.set_value("on" if on else "off")
-
-
-class BucklePreview(BigButton):
-  def __init__(self):
-    super().__init__("buckle preview", "tap")
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    request_buckle_play()
-
-
 class DeloreanCycle(BigButton):
   """88mph clip on going onroad. Off by default."""
 
@@ -383,17 +302,11 @@ class ThemeLayoutMici(NavScroller):
     self._grok = GrokVoiceCycle(on_change=self._wx_preview.refresh)
     self._grok_qr = GrokQrButton()
     self._lane_color = LaneColorCycle()
-    self._ludicrous = LudicrousCycle()
-    self._ludi_preview = LudicrousPreview()
-    self._buckle = BuckleSoundCycle()
-    self._buckle_preview = BucklePreview()
     self._delorean = DeloreanCycle()
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
       self._grok, self._grok_qr, self._wx_mode, self._wx_preview,
-      self._ludicrous, self._ludi_preview,
-      self._buckle, self._buckle_preview,
       self._delorean, self._delorean_preview,
     ])
 

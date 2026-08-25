@@ -14,7 +14,6 @@ from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, MouseEvent
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
-from openpilot.selfdrive.ui.layouts.settings.common import maybe_trigger_ludicrous
 from openpilot.common.filter_simple import BounceFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -174,7 +173,6 @@ class AugmentedRoadView(CameraView):
       self._offroad_label.set_text("openpilot can't start\ncheck alerts")
     else:
       self._offroad_label.set_text("start the car to\nuse openpilot")
-    maybe_trigger_ludicrous()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     # Don't trigger click callback if bookmark was triggered

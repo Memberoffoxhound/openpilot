@@ -87,7 +87,7 @@ procs = [
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
-  PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", always_run),  # offroad: theme previews + buckle
+  PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", always_run),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
   NativeProcess("_pandad", "openpilot/selfdrive/pandad", ["./pandad"], always_run, enabled=False),
   PythonProcess("calibrationd", "openpilot.selfdrive.locationd.calibrationd", only_onroad),

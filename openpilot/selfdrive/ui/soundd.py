@@ -23,17 +23,6 @@ MAX_VOLUME = 1.0
 THEME_RMS = 0.24
 THEME_PEAK = 0.85
 THEME_KNEE = 0.72
-LUDI_PLAY = "/data/ludicrous_play"
-BUCKLE_PLAY = "/data/buckle_play"
-BUCKLE_MODE = "/data/buckle_sound"
-LUDI_WAVS = (
-  "/data/ludicrous.wav",
-  BASEDIR + "/openpilot/selfdrive/assets/sounds/ludicrous.wav",
-)
-BUCKLE_WAVS = (
-  "/data/buckle.wav",
-  BASEDIR + "/openpilot/selfdrive/assets/sounds/buckle.wav",
-)
 SHOT_PLAY = "/data/screenshot_play"
 SHOT_WAVS = (
   "/data/shutter.wav",
@@ -47,11 +36,9 @@ DELOREAN_MODE = "/data/delorean_sound"
 DELOREAN_PLAY = "/data/delorean_play"
 WXNEWS_PLAY = "/data/wxnews_play"
 WXNEWS_WAVS = ("/data/wxnews.wav",)
-BUCKLE_GATE = "/data/buckle_gate.json"
-BUCKLE_DRIVE_S = 20 * 60
-BUCKLE_WAIT_S = 3 * 3600
-DELOREAN_HOLD_S = 1.5          # wait for ignition to settle
-DELOREAN_OFFROAD_RESET_S = 10.0  # blips shorter than this are the same drive
+DELOREAN_GATE = "/data/delorean_gate.json"
+DELOREAN_HOLD_S = 1.5
+DELOREAN_OFFROAD_RESET_S = 10.0
 
 
 def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
@@ -209,9 +196,8 @@ class Soundd:
     self.oneshots: list[list] = []  # [np.ndarray, index, tag]
     self._queue: list[list] = []
     self._lock = threading.Lock()
-    self.prev_unlatched: bool | None = None
     self._play_eighty = False
-    self._buckle_armed, self._buckle_t, self._onroad_t0, self._eighty_played = self._load_gate()
+    self._onroad_t0, self._eighty_played = self._load_gate()
     self._started_since = 0.0
     self._offroad_since = 0.0
 
@@ -227,19 +213,17 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
-  def _load_gate(self) -> tuple[bool, float, float, bool]:
+  def _load_gate(self) -> tuple[float, bool]:
     try:
-      j = json.loads(open(BUCKLE_GATE, encoding="utf-8").read())
-      return bool(j.get("armed", True)), float(j.get("t") or 0), float(j.get("onroad_t0") or 0), bool(j.get("eighty_played", False))
+      j = json.loads(open(DELOREAN_GATE, encoding="utf-8").read())
+      return float(j.get("onroad_t0") or 0), bool(j.get("eighty_played", False))
     except Exception:
-      return True, 0.0, 0.0, False
+      return 0.0, False
 
   def _save_gate(self) -> None:
     try:
-      with open(BUCKLE_GATE, "w", encoding="utf-8") as f:
+      with open(DELOREAN_GATE, "w", encoding="utf-8") as f:
         json.dump({
-          "armed": self._buckle_armed,
-          "t": self._buckle_t,
           "onroad_t0": self._onroad_t0,
           "eighty_played": self._eighty_played,
         }, f)
@@ -259,17 +243,11 @@ class Soundd:
       return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
 
   def _drain_flags(self) -> None:
-    if _flag(LUDI_PLAY):
-      self._push("ludi", LUDI_WAVS)
-      _clear(LUDI_PLAY)
-    if _flag(BUCKLE_PLAY):
-      self._push("buckle", BUCKLE_WAVS)
-      _clear(BUCKLE_PLAY)
     if _flag(SHOT_PLAY):
       self._push("shot", SHOT_WAVS)
       _clear(SHOT_PLAY)
     if self._play_eighty or _flag(DELOREAN_PLAY):
-      if not self._tag_busy("buckle") and not self._tag_busy("eighty"):
+      if not self._tag_busy("eighty"):
         self._push("eighty", EIGHTY_WAVS)
         self._play_eighty = False
         _clear(DELOREAN_PLAY)
@@ -397,7 +375,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'carState', 'deviceState'])
+    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'deviceState'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
@@ -417,10 +395,6 @@ class Soundd:
         now = time.time()
         started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
 
-        if (not self._buckle_armed) and self._buckle_t and (now - self._buckle_t) >= BUCKLE_WAIT_S:
-          self._buckle_armed = True
-          self._save_gate()
-
         if started:
           self._offroad_since = 0.0
           if not self._started_since:
@@ -438,27 +412,11 @@ class Soundd:
             if not self._offroad_since:
               self._offroad_since = now
             if (now - self._offroad_since) >= DELOREAN_OFFROAD_RESET_S:
-              if (now - self._onroad_t0) >= BUCKLE_DRIVE_S:
-                self._buckle_armed = True
               self._onroad_t0 = 0.0
               self._eighty_played = False
               self._play_eighty = False
               self._offroad_since = 0.0
               self._save_gate()
-
-        if sm.updated['carState'] and _flag(BUCKLE_MODE):
-          unlatched = bool(sm['carState'].seatbeltUnlatched)
-          latched_edge = self.prev_unlatched is True and not unlatched
-          latched_start = self.prev_unlatched is None and not unlatched
-          if (latched_edge or latched_start) and self._buckle_armed:
-            self._buckle_armed = False
-            self._buckle_t = now
-            self._save_gate()
-            try:
-              open(BUCKLE_PLAY, "w").write("1")
-            except OSError:
-              pass
-          self.prev_unlatched = unlatched
 
         if self.current_alert != AudibleAlert.warningImmediate:
           self._drain_flags()

@@ -39,7 +39,7 @@ Home stats: **Today** / **Week** miles and distance-engaged %.
 ### Theme
 
 <!-- docs/screenshots/theme.png -->
-Theme extras, **off by default**: ludicrous overlay, buckle sound (once; rearm after a 20 min drive, else 3 hours), Delorean 88mph clip (on going onroad, after ignition settles).
+Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ignition settles).
 
 <!-- docs/screenshots/weather-preview.png -->
 **Grok voice** — Theme → grok voice On, then scan the QR (or open `http://<c4-ip>:8088/grok`) and paste an [xAI API key](https://console.x.ai). Ara speaks. A 50px Grok mark sits after the Wi-Fi/LTE icon on home while it is on. Tap the mark for a full on-demand briefing (test hook; does not consume the day).
