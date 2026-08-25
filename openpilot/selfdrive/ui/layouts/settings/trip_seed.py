@@ -1,8 +1,7 @@
-"""Rebuild Today/Week meters from onboard qlogs. /data survives overlay; this refills after install."""
+"""Rebuild Today/Week from onboard qlogs. Survives reboot, overlay, reinstall."""
 from __future__ import annotations
 
 import os
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,13 +9,26 @@ from zoneinfo import ZoneInfo
 from openpilot.common.swaglog import cloudlog
 
 DATA_DIR = Path("/data/media/0/realdata")
-SEG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})--")
 TZ = ZoneInfo("America/Chicago")
-SKIP = {"clips", "screenshots"}
+SKIP = {"boot", "clips", "screenshots"}
 
 
-def _bounds():
-  now = datetime.now(TZ)
+def chicago_now() -> datetime:
+  return datetime.now(TZ)
+
+
+def day_id(dt: datetime | None = None) -> str:
+  return (dt or chicago_now()).date().isoformat()
+
+
+def sunday_id(dt: datetime | None = None) -> str:
+  now = dt or chicago_now()
+  sun = now - timedelta(days=(now.weekday() + 1) % 7)
+  return sun.date().isoformat()
+
+
+def _bounds() -> tuple[datetime, datetime, datetime]:
+  now = chicago_now()
   day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
   sun = now - timedelta(days=(now.weekday() + 1) % 7)
   week0 = sun.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -32,7 +44,6 @@ def _qlog(seg: Path) -> Path | None:
 
 
 def seed_week_today() -> dict | None:
-  """Distance / engaged-distance for Chicago today and this week (Sunday start)."""
   try:
     from openpilot.tools.lib.logreader import LogReader
   except Exception:
@@ -40,7 +51,7 @@ def seed_week_today() -> dict | None:
     return None
 
   now, day0, week0 = _bounds()
-  week_cut = week0.timestamp() - 12 * 3600  # UTC folder names can be a day early
+  week0_ts, day0_ts, now_ts = week0.timestamp(), day0.timestamp(), now.timestamp()
   week_m = week_e = today_m = today_e = 0.0
   n_seg = 0
   try:
@@ -51,14 +62,10 @@ def seed_week_today() -> dict | None:
   for ent in entries:
     if not ent.is_dir(follow_symlinks=False) or ent.name in SKIP:
       continue
-    m = SEG_RE.match(ent.name)
-    if not m:
-      continue
     try:
-      folder_day = datetime.strptime(m.group(1), "%Y-%m-%d").timestamp()
-    except ValueError:
-      continue
-    if folder_day < week_cut:
+      if ent.stat().st_mtime < week0_ts - 2 * 86400:
+        continue
+    except OSError:
       continue
     q = _qlog(Path(ent.path))
     if q is None:
@@ -67,46 +74,65 @@ def seed_week_today() -> dict | None:
       lr = LogReader(str(q))
     except Exception:
       continue
-    n_seg += 1
-    last_t = 0.0
+    origin_wall = origin_mono = None
+    last_mono = None
     v = 0.0
     en = False
+    used = False
     for msg in lr:
-      try:
-        wt = float(msg.wallTimeNanos) / 1e9
-      except Exception:
-        continue
-      if wt < week0.timestamp() or wt > now.timestamp() + 60:
-        continue
-      dt = min(1.0, max(0.0, wt - last_t)) if last_t else 0.0
-      last_t = wt
       which = msg.which()
+      mono = msg.logMonoTime / 1e9
+      if origin_wall is None:
+        wt = 0.0
+        if which == "initData":
+          try:
+            wt = float(msg.initData.wallTimeNanos) / 1e9
+          except Exception:
+            wt = 0.0
+        elif which == "clocks":
+          try:
+            wt = float(msg.clocks.wallTimeNanos) / 1e9
+          except Exception:
+            wt = 0.0
+        if wt > 1e9:
+          origin_wall, origin_mono = wt, mono
+        continue
+      wall = origin_wall + (mono - origin_mono)
+      if wall < week0_ts:
+        last_mono = mono
+        continue
+      if wall > now_ts + 120:
+        break
       if which == "carState":
         v = max(0.0, float(msg.carState.vEgo))
       elif which == "selfdriveState":
         en = bool(msg.selfdriveState.enabled)
       else:
+        last_mono = mono if last_mono is None else last_mono
         continue
+      dt = 0.0 if last_mono is None else min(1.0, max(0.0, mono - last_mono))
+      last_mono = mono
       if dt <= 0 or v <= 0.15:
         continue
       d = v * dt
       week_m += d
       if en:
         week_e += d
-      if wt >= day0.timestamp():
+      if wall >= day0_ts:
         today_m += d
         if en:
           today_e += d
+      used = True
+    if used:
+      n_seg += 1
 
-  if n_seg == 0 and week_m <= 0:
-    return None
   cloudlog.info(f"trip_seed segs={n_seg} week_m={week_m:.1f} today_m={today_m:.1f}")
   return {
     "week_m": week_m,
     "week_eng_m": week_e,
     "today_m": today_m,
     "today_eng_m": today_e,
-    "week_id": f"{week0.year:04d}-{week0.month:02d}-{week0.day:02d}",
-    "day_id": f"{day0.year:04d}-{day0.month:02d}-{day0.day:02d}",
+    "week_id": sunday_id(now),
+    "day_id": day_id(now),
     "seed": "qlog",
   }
