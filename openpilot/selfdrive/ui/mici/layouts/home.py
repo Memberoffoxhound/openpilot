@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import time
 
 from openpilot.cereal import log
@@ -185,6 +186,55 @@ class LongModeBadge(Widget):
       cy += sz.y + gap
 
 
+_GROK_STATUS = {
+  "queued": "Thinking",
+  "fetching weather": "Thinking",
+  "getting news": "Thinking",
+  "asking grok": "Thinking",
+  "speaking": "Speaking",
+  "failed": "Couldn't reach Grok",
+  "enable grok": "Turn Grok on",
+  "scan QR": "Add an API key",
+}
+
+
+class GrokOverlay(Widget):
+  """Tesla-style full-screen Grok wait. Shown while Ara is generating."""
+
+  def __init__(self):
+    super().__init__()
+    self._mark = gui_app.texture("icons_mici/grok_lg.png", 160, 160)
+    self._font = gui_app.font(FontWeight.DISPLAY)
+    self._small = gui_app.font(FontWeight.ROMAN)
+    self._t0 = time.monotonic()
+    self._caption = "Thinking"
+    self.set_enabled(True)
+
+  def set_caption(self, text: str) -> None:
+    self._caption = text
+
+  def _render(self, _rect: rl.Rectangle) -> None:
+    rect = self.rect
+    t = time.monotonic() - self._t0
+    rl.draw_rectangle_rec(rect, rl.Color(0, 0, 0, 230))
+    cx = rect.x + rect.width * 0.5
+    cy = rect.y + rect.height * 0.42
+    pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(t * 2.2))
+    sz = 160.0 * pulse
+    src = rl.Rectangle(0, 0, float(self._mark.width), float(self._mark.height))
+    dst = rl.Rectangle(cx, cy, sz, sz)
+    rl.draw_texture_pro(self._mark, src, dst, rl.Vector2(sz * 0.5, sz * 0.5), t * 18.0, rl.WHITE)
+    ring_r = 108.0
+    start = (t * 140.0) % 360.0
+    rl.draw_ring(rl.Vector2(cx, cy), ring_r - 2.5, ring_r, start, start + 78.0, 40, rl.Color(255, 255, 255, 180))
+    name = "Grok"
+    nw = measure_text_cached(self._font, name, 36)
+    rl.draw_text_ex(self._font, name, rl.Vector2(cx - nw.x * 0.5, cy + 128), 36, 0, rl.WHITE)
+    cap = self._caption
+    cw = measure_text_cached(self._small, cap, 22)
+    rl.draw_text_ex(self._small, cap, rl.Vector2(cx - cw.x * 0.5, cy + 172), 22, 0, rl.Color(160, 160, 168, 255))
+
+
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -209,6 +259,10 @@ class MiciHomeLayout(Widget):
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
     self._grok_icon = IconWidget("icons_mici/grok.png", (50, 50), opacity=0.9)
     self._grok_icon.set_click_callback(self._grok_ondemand)
+    self._grok_overlay = GrokOverlay()
+    self._grok_busy = False
+    self._grok_saw = False
+    self._grok_t0 = 0.0
 
     self._alerts_pill = AlertsPill()
 
@@ -270,15 +324,58 @@ class MiciHomeLayout(Widget):
     ui_state.experimental_mode = on
     ui_state.params.put_bool("ExperimentalMode", on)
 
+  def _grok_status(self) -> str:
+    try:
+      v = ui_state.params.get("WeatherNewsStatus")
+      if isinstance(v, bytes):
+        v = v.decode(errors="replace")
+      return (v or "").strip()
+    except Exception:
+      return ""
+
   def _grok_ondemand(self):
+    if self._grok_busy:
+      return
+    self._grok_busy = True
+    self._grok_saw = False
+    self._grok_t0 = time.monotonic()
+    self._grok_overlay = GrokOverlay()
+    try:
+      ui_state.params.put("WeatherNewsStatus", "queued")
+    except Exception:
+      pass
     grok_cfg.request_ondemand()
 
+  def _sync_grok_overlay(self) -> None:
+    if not self._grok_busy:
+      return
+    st = self._grok_status()
+    if st:
+      self._grok_saw = True
+    cap = _GROK_STATUS.get(st, "Thinking")
+    if st == "playing":
+      self._grok_busy = False
+      return
+    if st == "failed":
+      self._grok_overlay.set_caption(cap)
+      if time.monotonic() - self._grok_t0 > 2.5:
+        self._grok_busy = False
+      return
+    if not st and self._grok_saw:
+      self._grok_busy = False
+      return
+    self._grok_overlay.set_caption(cap)
+
   def _handle_mouse_release(self, mouse_pos: MousePos):
+    on_grok = (self._grok_icon.is_visible and
+               rl.check_collision_point_rec(mouse_pos, self._grok_icon.rect))
+    if self._grok_busy and not on_grok:
+      self._grok_busy = False
+      return
     if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
         rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
       return
-    if (self._grok_icon.is_visible and self._grok_icon.enabled and
-        rl.check_collision_point_rec(mouse_pos, self._grok_icon.rect)):
+    if on_grok:
       return
     relative_x = mouse_pos.x - self.rect.x
     has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
@@ -374,3 +471,8 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_position(self.rect.x + self.rect.width - self._alerts_pill.rect.width - HOME_PADDING,
                                    self.rect.y + self.rect.height - self._alerts_pill.rect.height)
     self._alerts_pill.render()
+
+    self._sync_grok_overlay()
+    if self._grok_busy:
+      self._grok_overlay.set_rect(self.rect)
+      self._grok_overlay.render()
