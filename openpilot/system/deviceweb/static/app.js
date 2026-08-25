@@ -1,629 +1,668 @@
+/* S3XYPilot LAN console — mobile-first, 4 pages */
+const PAGES = ["home", "settings", "live", "grok"];
+const CAMS = [
+  { id: "wideRoad", label: "E CAM" },
+  { id: "road", label: "F CAM" },
+  { id: "driver", label: "D CAM" },
+];
+const PIP_CORNERS = ["br", "bl", "tl", "tr"];
 const GROUPS = [
-  {id:"toggles", title:"Toggles", items:[
-    {key:"OpenpilotEnabledToggle", label:"Enable openpilot", type:"bool", desc:"Master switch. Restart required.", restart:true},
-    {key:"ExperimentalMode", label:"Experimental mode", type:"bool", desc:"End-to-end longitudinal.", confirm:"Experimental mode uses the model for gas and brake. Stay ready to take over."},
-    {key:"AutoLaneChangeEnabled", label:"Auto lane change", type:"bool", desc:"Nudgeless after Tesla stock BSM is clear.", confirm:"Auto Lane Change uses Tesla’s stock blind spot monitoring to check the adjacent lane. You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary."},
-    {key:"IsLdwEnabled", label:"Lane departure warnings", type:"bool", desc:"Alert when you drift over a line without a signal."},
-    {key:"AlwaysOnDM", label:"Always-on driver monitor", type:"bool", desc:"Keep DM running when not engaged."},
-    {key:"IsMetric", label:"Use metric units", type:"bool", desc:"Show km/h instead of mph."},
-    {key:"DisengageOnAccelerator", label:"Disengage on accelerator", type:"bool", desc:"Cancel openpilot when you press the pedal."},
-    {key:"LongitudinalPersonality", label:"Driving personality", type:"select", desc:"How hard it follows the lead.", options:[["0","Aggressive"],["1","Standard"],["2","Relaxed"]]},
-    {key:"RecordFront", label:"Record cabin camera", type:"bool", desc:"Upload dcam to help DM.", restart:true},
-    {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
+  { id: "drive", title: "Driving", items: [
+    { key: "OpenpilotEnabledToggle", label: "Enable S3XYPilot", type: "bool", desc: "Master switch. Restart required.", restart: true },
+    { key: "ExperimentalMode", label: "Experimental mode", type: "bool", desc: "End-to-end longitudinal.", confirm: "Experimental mode uses the model for gas and brake. Stay ready to take over." },
+    { key: "AutoLaneChangeEnabled", label: "Auto lane change", type: "bool", desc: "Nudgeless after Tesla stock BSM is clear.", confirm: "Auto lane change uses Tesla stock BSM. You still own the merge." },
+    { key: "LongitudinalPersonality", label: "Driving personality", type: "select", desc: "How hard it follows the lead.", options: [["0", "Aggressive"], ["1", "Standard"], ["2", "Relaxed"]] },
+    { key: "IsLdwEnabled", label: "Lane departure warnings", type: "bool", desc: "Alert when you drift without a signal." },
+    { key: "AlwaysOnDM", label: "Always-on driver monitor", type: "bool", desc: "Keep DM running when not engaged." },
+    { key: "IsMetric", label: "Use metric units", type: "bool", desc: "Show km/h instead of mph." },
+    { key: "DisengageOnAccelerator", label: "Disengage on accelerator", type: "bool", desc: "Cancel when you press the pedal." },
+    { key: "RecordFront", label: "Record cabin camera", type: "bool", desc: "Upload dcam. Restart required.", restart: true },
+    { key: "RecordAudio", label: "Record microphone", type: "bool", desc: "Store mic audio. Restart required.", restart: true },
   ]},
-  {id:"weather", title:"Weather & News", items:[
-    {key:"GrokVoiceEnabled", label:"Grok voice", type:"bool", desc:"Ara speaks the daily briefing. Nice and Unhinged share Ara. Paste your xAI API key on the Grok tab."},
-    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites, spoken by Grok Ara. Unhinged is NSFW.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]], confirmValue:"2", confirm:"NSFW. Explicit language through the speaker. Tesla Grok Unhinged energy. Not for kids. Not for passengers who didn't ask."},
+  { id: "theme", title: "Theme", items: [
+    { key: "CustomOnroadUi", label: "Onroad UI", type: "select", desc: "Stock HUD or custom compass / lanes.", options: [["0", "Stock"], ["1", "Custom"]] },
+    { key: "LaneColor", label: "Lane color", type: "select", desc: "Engaged lane lines.", options: [["1", "Tesla blue"], ["0", "comma green"]] },
+    { key: "CompassSize", label: "Compass size", type: "select", desc: "Custom onroad compass.", options: [["0", "Small"], ["1", "Large"]] },
+    { key: "Delorean", label: "Delorean", type: "bool", desc: "88 mph clip on going onroad." },
   ]},
-  {id:"theme", title:"Theme", items:[
-    {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
-    {key:"CompassSize", label:"Compass size", type:"select", desc:"Custom onroad compass.", options:[["0","Small"],["1","Large"]]},
+  { id: "device", title: "Device", items: [
+    { key: "SshEnabled", label: "Enable SSH", type: "bool", desc: "Allow SSH from your GitHub keys." },
+    { key: "AdbEnabled", label: "Enable ADB", type: "bool", desc: "Android debug bridge on the C4." },
+    { key: "DisablePowerDown", label: "Disable power down", type: "bool", desc: "Keep awake after the car is off." },
+    { key: "DisableUpdates", label: "Disable updates", type: "bool", desc: "Stop the stock updater from fetching." },
   ]},
-  {id:"livestream", title:"Livestream", items:[
-    {key:"LivestreamEnabled", label:"On-Air", type:"bool", desc:"Local Wi-Fi viewer. Not on comma Prime LTE."},
+  { id: "network", title: "Network", items: [
+    { key: "GsmRoaming", label: "Cellular roaming", type: "bool", desc: "Allow the SIM to roam.", deviceOnly: true },
+    { key: "GsmMetered", label: "Metered cellular", type: "bool", desc: "Treat the SIM as metered.", deviceOnly: true },
+    { key: "NetworkMetered", label: "Metered network", type: "bool", desc: "Limit background uploads.", deviceOnly: true },
   ]},
-  {id:"device", title:"Device", items:[
-    {key:"SshEnabled", label:"Enable SSH", type:"bool", desc:"Allow SSH from your GitHub keys."},
-    {key:"AdbEnabled", label:"Enable ADB", type:"bool", desc:"Android debug bridge on the C4."},
-    {key:"DisablePowerDown", label:"Disable power down", type:"bool", desc:"Keep the device awake after the car is off."},
-    {key:"DisableUpdates", label:"Disable updates", type:"bool", desc:"Stop the stock updater from fetching."},
-  ]},
-  {id:"network", title:"Network", items:[
-    {key:"GsmRoaming", label:"Cellular roaming", type:"bool", desc:"Allow the SIM to roam.", deviceOnly:true},
-    {key:"GsmMetered", label:"Metered cellular", type:"bool", desc:"Treat the SIM as a metered connection.", deviceOnly:true},
-    {key:"NetworkMetered", label:"Metered network", type:"bool", desc:"Limit background uploads.", deviceOnly:true},
-  ]},
-  {id:"developer", title:"Developer", items:[
-    {key:"ShowDebugInfo", label:"Show debug info", type:"bool", desc:"FPS and touch dots."},
-    {key:"JoystickDebugMode", label:"Joystick debug", type:"bool", desc:"Replace controls with joystick."},
+  { id: "developer", title: "Developer", items: [
+    { key: "ShowDebugInfo", label: "Show debug info", type: "bool", desc: "FPS and touch dots." },
+    { key: "JoystickDebugMode", label: "Joystick debug", type: "bool", desc: "Replace controls with joystick." },
   ]},
 ];
-const TABS = [["status","Status"],["settings","Settings"],["grok","Grok"],["files","Files"],["shots","Shots"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
-let tab = (location.pathname.replace(/\/+$/,"") === "/grok" || location.hash === "#grok") ? "grok" : "status";
-let info = {}, params = {}, grok = {voice_on:false, configured:false, masked:"", url:"", topics:"npr"}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
-let grokKeyDraft = "";
-let routes = [], clipJob = {state:"idle"}, clipTimer = null;
-let updateJob = {state:"idle", percent:0, status:"", eta:null}, updateTimer = null;
-let statsMonth = new Date();
-let shots = [];
-let statsFrom = null, statsTo = null, statsJob = {state:"idle"}, statsTimer = null, statsMap = null, statsQcam = true;
-function pad2(n){ return String(n).padStart(2,"0"); }
-function isoDay(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
-if (!statsFrom) {
-  const t = new Date();
-  statsFrom = t.getFullYear()+"-"+pad2(t.getMonth()+1)+"-01";
-  statsTo = isoDay(t);
-}
 
+const S = {
+  page: (location.hash.replace("#", "") || "home"),
+  home: null,
+  params: {},
+  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, provider: "xai", howto: {} },
+  routes: [],
+  topicDraft: "",
+  toast: "",
+  confirm: null,
+  map: null,
+  mapLine: null,
+  player: null,
+  route: null,
+  seg: 0,
+  pc: null,
+  liveOn: false,
+  webrtc: false,
+  layout: "triple",
+  pipCorner: "br",
+  singleCam: "road",
+};
+
+if (!PAGES.includes(S.page)) S.page = "home";
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
   const t = await r.text();
   try { return JSON.parse(t); } catch { throw new Error(t || r.statusText); }
 }
+function $(id) { return document.getElementById(id); }
 function bytes(n) {
-  if (n < 1024) return n + " B";
-  if (n < 1048576) return (n/1024).toFixed(0) + " KB";
-  if (n < 1073741824) return (n/1048576).toFixed(1) + " MB";
-  return (n/1073741824).toFixed(1) + " GB";
+  if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
+  return (n / 1073741824).toFixed(1) + " GB";
 }
-function say(m) { toast = m; render(); setTimeout(() => { toast = null; render(); }, 3200); }
-async function load() {
-  render();
-  try {
-    info = await api("/api/info");
-    params = await api("/api/params");
-    try { grok = await api("/api/grok"); } catch (e) {}
-  } catch (e) { toast = (e && e.message) || "device unreachable"; }
-  render();
+function say(m) {
+  S.toast = m;
+  const el = $("toast");
+  el.hidden = false;
+  el.textContent = m;
+  clearTimeout(say._t);
+  say._t = setTimeout(() => { S.toast = ""; el.hidden = true; }, 2800);
 }
-async function save(k, v) {
-  params[k] = v;
-  render();
-  await api("/api/params", { method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({[k]: v}) });
-  info = await api("/api/info");
-  render();
+function on(v) { return v === true || v === 1 || v === "1"; }
+
+function tickClock() {
+  const d = new Date();
+  const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const mons = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  let h = d.getHours(), ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  $("clock").textContent = `${days[d.getDay()]} ${mons[d.getMonth()]} ${d.getDate()}  ·  ${h}:${mm} ${ap}`;
 }
-async function previewWeather(mode) {
-  params.WeatherNewsStatus = "queued";
-  render();
-  try {
-    const j = await api("/api/weather/preview", {
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body: JSON.stringify({mode})
-    });
-    if (!j.ok) { params.WeatherNewsStatus = ""; say(j.error || "preview failed"); }
-  } catch (e) { params.WeatherNewsStatus = ""; say((e && e.message) || "preview failed"); }
+
+function paintHeader() {
+  const h = S.home;
+  const unit = (h && h.unit) || "mi";
+  $("hdrStats").innerHTML = h ? `
+    <span><em>TODAY</em>${h.today.toFixed(1)} ${unit}</span>
+    <span><em>WEEK</em>${h.week.toFixed(1)} ${unit}</span>` :
+    `<span><em>TODAY</em>—</span><span><em>WEEK</em>—</span>`;
+  const info = h && h.info;
+  $("drawerFoot").textContent = info ? `${info.branch || "Highland"}  ${info.version || ""}` : "";
 }
-function wxMode() {
-  const raw = params.WeatherNewsMode;
-  if (raw === undefined || raw === null || raw === "") return 1;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 1;
-}
-function wxLive() { return wxMode() === 1 || wxMode() === 2; }
-function wxStatus() { return String(params.WeatherNewsStatus || "").trim(); }
-function grokOn() { return params.GrokVoiceEnabled === "1" || grok.voice_on; }
-function grokView() {
-  const keyed = grok.configured;
-  const topics = grok.topics || "npr";
-  return `<div class="wrap">
-    <div class="warn">Paste an xAI API key from console.x.ai. It stays on this device and is never logged. This page is LAN-only, no password.</div>
-    <div class="card">
-      <div class="set">
-        <div class="meta"><b>Grok voice</b><p>Ara. Nice and Unhinged are personalities, not different TTS engines.</p></div>
-        <button class="tog ${grokOn()?"on":""}" data-k="GrokVoiceEnabled" data-n="${grokOn()?"0":"1"}"><i></i></button>
-      </div>
-      <div class="set">
-        <div class="meta"><b>Weather & news</b><p>First drive of the local day. Unhinged is NSFW. Weather is always included.</p></div>
-        <select data-k="WeatherNewsMode">${[["0","Off"],["1","Nice"],["2","Unhinged"]].map(([v,l]) => `<option value="${v}" ${String(wxMode())===v?"selected":""}>${l}</option>`).join("")}</select>
-      </div>
-      <div class="field">
-        <label>xAI API key</label>
-        <input id="grokKey" type="password" autocomplete="off" placeholder="${keyed ? (grok.masked || "saved") : "xai-…"}" value="${esc(grokKeyDraft)}"/>
-      </div>
-      <div class="field">
-        <label>Daily topics</label>
-        <textarea id="grokTopics" rows="6" placeholder="npr">${esc(topics)}</textarea>
-        <p class="tiny">One per line. Default is NPR world news. Aliases: npr, cnn, comma, reddit, reddit:commaai, x, x:ApteraMotors. Anything else is a Google News search (e.g. Aptera Motors).</p>
-      </div>
-    </div>
-    <div class="btns">
-      <button class="btn primary" id="grokSave">Save key</button>
-      <button class="btn" id="grokTopicsSave">Save topics</button>
-      <button class="btn" id="grokTest">Test</button>
-      <button class="btn" id="grokClear">Clear key</button>
-      <button class="btn ${wxLive() && grokOn()?"primary":""}" id="wxPreview" ${wxLive() && grokOn()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
-    </div>
-    <p class="tiny">${keyed ? "Key on device: "+esc(grok.masked) : "No key yet. Theme → grok voice → scan QR lands here."} Tap the home Grok mark for a full on-demand briefing (test hook).</p>
-  </div>`;
-}
-async function loadFiles() {
-  const j = await api("/api/files?path=" + encodeURIComponent(path));
-  files = j.items || [];
+
+function setPage(p) {
+  if (!PAGES.includes(p)) p = "home";
+  if (S.page === "live" && p !== "live") hangup();
+  if (S.page === "home" && p !== "home") teardownHome();
+  S.page = p;
+  location.hash = p;
+  document.querySelectorAll("#drawer nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
+  closeMenu();
   render();
 }
+
+function openMenu() { $("drawer").classList.add("open"); $("scrim").hidden = false; }
+function closeMenu() { $("drawer").classList.remove("open"); $("scrim").hidden = true; }
+
 function render() {
-  const app = document.getElementById("app");
-  const title = {status:"Device", settings:"Settings", grok:"Grok", files:"Files", shots:"Shots", clips:"Clips", stats:"Stats", updates:"Updates"}[tab];
-  app.innerHTML = `
-    <aside>
-      <div class="brand"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN console · no lock</p></div>
-      <nav>${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
-      <div class="ver">${info.version || "0.1.10.24"} · ${info.branch || "Highland"}</div>
-    </aside>
-    <div class="col">
-      <header class="top">
-        <div class="lg-hide"><div class="brand" style="padding:0"><b>S<span class="m3" aria-label="3"></span>XYPilot</b><p>LAN · no lock</p></div></div>
-        <div class="lg-show" style="display:none"></div>
-        <h1 class="lg-title">${title}</h1>
-        <div style="margin-left:auto;display:flex;gap:8px">
-          <span class="pill ${info.offroad===false?"ok":""}">${info.offroad===false?"onroad":"offroad"}</span>
-          ${info.onAir ? `<span class="pill live">on air</span>` : ""}
-        </div>
-      </header>
-      <main>${view()}</main>
-    </div>
-    <nav class="dock">${TABS.map(([id,l]) => `<button class="${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</nav>
-    ${toast ? `<div class="toast">${esc(toast)}</div>` : ""}
-    ${confirmItem ? modal() : ""}
-  `;
-  app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
-    tab = b.dataset.tab;
-    if (tab==="files") loadFiles();
-    else if (tab==="shots") loadShots();
-    else if (tab==="clips") loadClips();
-    else if (tab==="stats") loadStats(false);
-    else if (tab==="updates") pollUpdate();
-    else render();
-  });
-  bind();
+  const root = $("page");
+  if (S.page === "home") root.innerHTML = homeHTML();
+  else if (S.page === "settings") root.innerHTML = settingsHTML();
+  else if (S.page === "live") root.innerHTML = liveHTML();
+  else root.innerHTML = grokHTML();
+  bindPage();
+  if (S.page === "home") setupHome();
+  if (S.page === "live") bindVideos();
 }
-function esc(s){ s = String(s == null ? "" : s); return s.replace(/&/g,"&#38;").replace(/</g,"&#60;").replace(/>/g,"&#62;").replace(/"/g,"&#34;"); }
-function view() {
-  if (tab==="status") return statusView();
-  if (tab==="settings") return settingsView();
-  if (tab==="grok") return grokView();
-  if (tab==="files") return filesView();
-  if (tab==="shots") return shotsView();
-  if (tab==="clips") return clipsView();
-  if (tab==="stats") return statsView();
-  return updatesView();
-}
-function statusView() {
-  const bars = "▂▄▆█".slice(0, Math.max(1, info.wifiBars|0)) + "·".repeat(4-Math.max(1, info.wifiBars|0));
-  const pers = ["Aggressive","Standard","Relaxed"][Number(params.LongitudinalPersonality)||1];
-  const wx = ["off","nice","unhinged"][wxMode()] || "nice";
-  return `<div class="wrap">
-    <div class="warn">This console has no password. Anyone on this Wi-Fi can read files and change settings. Keep it on your LAN.</div>
+
+function homeHTML() {
+  const h = S.home;
+  const u = (h && h.unit) || "mi";
+  const net = h && h.info && h.info.network;
+  return `<div class="stack">
+    <div class="h-row"><p class="h-label">Engagement</p>
+      <span class="badge">${h && h.engaged ? "ENGAGED" : (h && h.offroad ? "OFFROAD" : "ONROAD")} · ${net || ""}</span></div>
     <div class="grid">
-      ${stat("Temp", info.tempC!=null?info.tempC+"°":"—")}
-      ${stat("Memory", info.memPct!=null?info.memPct+"%":"—")}
-      ${stat("Disk", info.diskFreeGb!=null?info.diskFreeGb+" GB":"—")}
-      ${stat("Network", (info.network||"net").toUpperCase(), bars)}
+      <div class="stat"><div class="k">Today</div><div class="v">${h ? h.today.toFixed(1) : "—"} <span class="tiny">${u}</span></div></div>
+      <div class="stat"><div class="k">Today engaged</div><div class="v">${h ? h.todayEng.toFixed(1) : "—"} <span class="tiny">${u}</span></div></div>
+      <div class="stat"><div class="k">Week</div><div class="v">${h ? h.week.toFixed(1) : "—"} <span class="tiny">${u}</span></div></div>
+      <div class="stat"><div class="k">Engaged</div><div class="v">${h ? h.engPct : "—"}<span class="tiny">%</span></div></div>
     </div>
-    <div class="card">
-      ${row("Device", info.name||"S3XYPilot")}
-      ${row("Version", info.version||"—")}
-      ${row("Branch", info.branch||"—")}
-      ${row("Commit", (info.commit||"").slice(0,12), true)}
-      ${row("Dongle", info.dongle||"—", true)}
-      ${row("Serial", info.serial||"—", true)}
-      ${row("Personality", pers)}
-      ${row("Lane color", params.LaneColor==="0"?"comma green":"Tesla blue")}
-      ${row("Compass", params.CompassSize==="1"?"large":"small")}
-      ${row("Grok voice", grok.voice_on ? (grok.configured ? "Ara · "+(grok.masked||"keyed") : "on · scan QR") : "off")}
-      ${row("Weather & news", wx)}
-      ${row("Last weather run", params.WeatherNewsLastRunDate || "never")}
-    </div>
-    <div class="card pad">
-      <p class="ghead">Weather preview</p>
-      <p class="muted" style="margin:8px 0 12px">Grok Ara. Nice or Unhinged. Speaks through the C4 speaker, parked or not.</p>
-      <div class="btns">
-        <button class="btn ${wxLive()?"primary":""}" id="wxPreview" ${wxLive()?"":"disabled"}>Preview</button>
+    <div class="card mapwrap"><div id="map"></div></div>
+    <div class="h-row"><p class="h-label">Route player</p><span class="tiny">qcamera.ts on device</span></div>
+    <div class="player" id="playerBox" hidden>
+      <video id="qcam" playsinline controls></video>
+      <div class="bar">
+        <button class="btn" id="prevSeg">◀</button>
+        <span class="tiny" id="segLabel"></span>
+        <button class="btn" id="nextSeg">▶</button>
       </div>
     </div>
-    <div class="btns">
-      <button class="btn" id="openLive">Open livestream</button>
+    <div class="card list" id="routeList">${routeListHTML()}</div>
+  </div>`;
+}
+
+function routeListHTML() {
+  if (!S.routes.length) return `<div class="set"><div class="meta"><b>No routes yet</b><p>Drives land in /data/media/0/realdata.</p></div></div>`;
+  return S.routes.map(r => {
+    const when = r.mtime ? new Date(r.mtime * 1000).toLocaleString() : r.name;
+    const on = S.route && S.route.name === r.name ? " on" : "";
+    return `<button class="file${on}" data-route="${r.name}">
+      <b>${r.name}</b>
+      <em>${r.segments} seg · ${bytes(r.bytes)} · ${when}</em>
+    </button>`;
+  }).join("");
+}
+
+function settingsHTML() {
+  return `<div class="stack">${GROUPS.map(g => `
+    <p class="h-label">${g.title}</p>
+    <div class="card">${g.items.map(itemHTML).join("")}</div>`).join("")}
+    <div class="seg">
+      <button class="btn" id="reboot">Reboot</button>
+      <button class="btn" id="shutdown">Shutdown</button>
     </div>
-  </div>`;
+  </div>` + (S.confirm ? confirmHTML() : "");
 }
-function stat(k,v,h=""){ return `<div class="stat"><div class="k"><span>${k}</span></div><div class="v">${esc(v)}</div>${h?`<div class="tiny" style="margin-top:4px;font-family:var(--mono)">${esc(h)}</div>`:""}</div>`; }
-function row(k,v,mono){ return `<div class="row"><span>${k}</span><span class="${mono?"mono":""}">${esc(v)}</span></div>`; }
-function settingsView() {
-  const query = q.trim().toLowerCase();
-  const groups = GROUPS.map(g => ({...g, items:g.items.filter(it => !query || it.label.toLowerCase().includes(query) || it.key.toLowerCase().includes(query))})).filter(g => g.items.length);
-  return `<div class="wrap">
-    <label class="search"><input id="q" placeholder="Search settings" value="${esc(q)}"/></label>
-    ${groups.map(g => {
-      let extra = "";
-      if (g.id === "weather") {
-        extra = `<div class="card pad" style="margin-top:12px">
-          <p class="muted" style="margin-bottom:12px">Ara speaks after Grok voice is on and an xAI key is saved on the Grok tab.</p>
-          <div class="btns">
-            <button class="btn ${wxLive() && grokOn() && !wxStatus()?"primary":""}" id="wxPreview" ${wxLive() && grokOn() && !wxStatus()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
-          </div>
-        </div>`;
-      }
-      return `<section><p class="ghead">${g.title}</p><div class="card">${g.items.map(it => setRow(it)).join("")}</div>${extra}</section>`;
-    }).join("")}
-  </div>`;
-}
-function setRow(it) {
-  let fallback = "0";
+
+function itemHTML(it) {
+  const locked = it.deviceOnly;
+  const val = S.params[it.key];
   if (it.type === "select") {
-    fallback = it.key === "WeatherNewsMode" ? "1" : it.options[0][0];
+    const opts = (it.options || []).map(([k, l]) => `<option value="${k}" ${String(val) === String(k) ? "selected" : ""}>${l}</option>`).join("");
+    return `<div class="set${locked ? " locked" : ""}"><div class="meta"><b>${it.label}</b><p>${it.desc}</p></div>
+      <select data-key="${it.key}" ${locked ? "disabled" : ""}>${opts}</select></div>`;
   }
-  const val = params[it.key] ?? fallback;
-  const locked = !!it.deviceOnly;
-  const ctl = it.type==="bool"
-    ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}" ${locked?"disabled":""}><i></i></button>`
-    : `<select data-k="${it.key}" ${locked?"disabled":""}>${it.options.map(([v,l]) => `<option value="${v}" ${v===val?"selected":""}>${l}</option>`).join("")}</select>`;
-  const extra = locked ? `<p class="lock">Can only be changed on device.</p>` : "";
-  return `<div class="set ${locked?"locked":""}"><div class="meta"><b>${esc(it.label)}</b><p>${esc(it.desc)}</p>${extra}</div>${ctl}</div>`;
+  return `<div class="set${locked ? " locked" : ""}"><div class="meta"><b>${it.label}</b><p>${it.desc}${it.restart ? " Restart to apply." : ""}</p></div>
+    <button class="tog${on(val) ? " on" : ""}" data-key="${it.key}" ${locked ? "disabled" : ""} aria-pressed="${on(val)}"><i></i></button></div>`;
 }
-function filesView() {
-  const parts = path.split("/").filter(Boolean);
-  let acc = "";
-  const crumbs = [`<button data-p="">data</button>`].concat(parts.map((p,i) => {
-    acc += "/" + p;
-    return `<span>›</span><button data-p="${esc(acc)}">${esc(p)}</button>`;
-  }));
-  return `<div class="wrap">
-    <div class="crumb">${crumbs.join("")}</div>
-    <div class="card">${files.length? files.map(n => `<button class="file" data-open="${esc(n.path)}" data-dir="${n.dir?1:0}"><b>${esc(n.name)}</b><em>${n.dir?"folder":bytes(n.size)}</em></button>`).join("") : `<p class="muted" style="padding:40px;text-align:center">Empty folder.</p>`}</div>
-    <p class="tiny">Real disk under /data. Tokens and SSH keys are hidden.</p>
-  </div>`;
-}
-async function loadShots() {
-  try { shots = (await api("/api/screenshots")).items || []; } catch (e) { shots = []; toast = (e && e.message) || "shots failed"; }
-  render();
-}
-function shotsView() {
-  return `<div class="wrap">
-    <p class="tiny">Hold the display 3s. PNGs live at <code>/data/media/0/screenshots</code> — same path over SSH/SFTP.</p>
-    <div class="card" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px">
-      ${shots.length ? shots.map(s => `
-        <a href="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" style="display:block;border:1px solid #fff;background:#111">
-          <img src="/api/screenshots/raw?name=${encodeURIComponent(s.name)}" alt="${esc(s.name)}" style="width:100%;display:block"/>
-          <p class="tiny" style="padding:8px">${esc(s.name)} · ${bytes(s.size)}</p>
-        </a>`).join("") : `<p class="muted" style="padding:40px;text-align:center;grid-column:1/-1">No screenshots yet.</p>`}
+
+function confirmHTML() {
+  const c = S.confirm;
+  return `<div class="modal"><div class="sheet">
+    <p>${c.msg}</p>
+    <div class="seg" style="margin-top:12px">
+      <button class="btn primary" id="confirmYes">Confirm</button>
+      <button class="btn" id="confirmNo">Cancel</button>
     </div>
+  </div></div>`;
+}
+
+function liveHTML() {
+  const air = S.liveOn;
+  return `<div class="stack">
+    <div class="h-row">
+      <p class="h-label">WebRTC · 720p VBR up to 6 Mb/s</p>
+      <span class="badge"><span class="dot${air ? " live" : ""}"></span> ${air ? "ON AIR" : "STANDBY"}</span>
+    </div>
+    <div class="live-tools">
+      <button class="btn${air ? " live" : " primary"}" id="airBtn">${air ? "End" : "Go live"}</button>
+      <button class="btn" data-layout="triple">3-up</button>
+      <button class="btn" data-layout="one" data-cam="road">F</button>
+      <button class="btn" data-layout="one" data-cam="wideRoad">E</button>
+      <button class="btn" data-layout="one" data-cam="driver">D</button>
+      <button class="btn" data-layout="pip" data-cam="road">F + D</button>
+      <button class="btn" data-layout="pip" data-cam="wideRoad">E + D</button>
+      <button class="btn" id="fsBtn">Fullscreen</button>
+    </div>
+    <div id="stage" class="stage ${stageClass()}">
+      ${CAMS.map(c => `<div class="tile" data-cam="${c.id}"><video playsinline autoplay muted></video><label>${c.label}</label></div>`).join("")}
+    </div>
+    <p class="tiny">Three cameras at once (BTTF2). PIP d-cam tap cycles corners. Fullscreen is 16:9 black for Discord / Twitch capture.</p>
   </div>`;
 }
-function clipsView() {
-  const sel = clipJob.route || (routes[0] && routes[0].name) || "";
-  const r = routes.find(x => x.name === sel) || routes[0];
-  const maxS = r ? r.seconds : 60;
-  const start = clipJob.start || 0;
-  const end = clipJob.end || Math.min(15, maxS);
-  const running = clipJob.state === "running";
-  return `<div class="wrap">
-    <div class="warn">Clipper HUD on-device. Nelson’s GPU clipper won’t run on a C4 — this is openpilot’s clip tool: same overlay, local routes only, max 30s, offroad only. Turn Off-Air off first.</div>
+
+function stageClass() {
+  if (S.layout === "triple") return "triple";
+  if (S.layout === "pip") return `pip pip-${S.pipCorner}`;
+  return "one";
+}
+
+function grokHTML() {
+  const g = S.grok;
+  const topics = (g.topics || "npr").split(/\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+  const mode = String(S.params.WeatherNewsMode || "1");
+  const howto = g.howto || {};
+  const providers = [
+    { id: "xai", name: "xAI Grok", masked: g.masked, field: "api_key", ph: "xai-…" },
+    { id: "openai", name: "OpenAI", masked: g.openai_masked, field: "openai_key", ph: "sk-…" },
+    { id: "groq", name: "Groq", masked: g.groq_masked, field: "groq_key", ph: "gsk_…" },
+  ];
+  const sug = filterSuggest(S.topicDraft, topics);
+  return `<div class="stack">
+    <p class="h-label">Weather + news</p>
     <div class="card">
-      <div class="field"><label>Route</label>
-        <select id="cRoute">${routes.map(x => `<option value="${esc(x.name)}" ${x.name===sel?"selected":""}>${esc(x.name)} · ${x.seconds}s</option>`).join("") || "<option>No routes on disk</option>"}</select>
+      <div class="set"><div class="meta"><b>Grok voice</b><p>Ara speaks the briefing. Weather is always included.</p></div>
+        <button class="tog${g.voice_on ? " on" : ""}" id="voiceOn"><i></i></button></div>
+      <div class="set"><div class="meta"><b>Mode</b><p>Unhinged is NSFW through the speaker.</p></div>
+        <div class="seg">
+          <button class="btn${mode === "1" ? " on" : ""}" data-mode="1">Nice</button>
+          <button class="btn${mode === "2" ? " on" : ""}" data-mode="2">Unhinged</button>
+          <button class="btn${mode === "0" ? " on" : ""}" data-mode="0">Off</button>
+        </div></div>
+      <div class="set"><div class="meta"><b>Duration</b><p>Spoken length the device uses.</p></div>
+        <div class="seg">${[60, 90, 120].map(s => `<button class="btn${g.duration === s ? " on" : ""}" data-dur="${s}">${s}s</button>`).join("")}</div></div>
+      <div class="set"><div class="meta"><b>Wi-Fi only</b><p>Skip LTE for fetch + TTS.</p></div>
+        <button class="tog${g.wifi_only ? " on" : ""}" id="wifiOnly"><i></i></button></div>
+    </div>
+    <p class="h-label">Topics · ${topics.length}/6</p>
+    <div class="card" style="padding:12px 14px">
+      <div class="chips" id="chips">
+        <span class="chip locked">weather</span>
+        ${topics.map((t, i) => `<span class="chip">${t}<button data-rm="${i}" aria-label="remove">×</button></span>`).join("")}
       </div>
-      <div class="field"><label>Start (s)</label><input id="cStart" type="number" min="0" value="${start}"/></div>
-      <div class="field"><label>End (s)</label><input id="cEnd" type="number" min="3" max="30" value="${end}"/></div>
-      <div class="field"><label>Title</label><input id="cTitle" type="text" maxlength="40" value="${esc(clipJob.title || "S3XYPilot")}"/></div>
-      <div class="set"><div class="meta"><b>Use qcamera</b><p>Smaller file, faster. Uncheck for full fcamera.</p></div>
-        <button class="tog ${clipJob.qcam!==false?"on":""}" id="cQcam"><i></i></button></div>
+      <input id="topicIn" placeholder="add topic" value="${esc(S.topicDraft)}" ${topics.length >= 6 ? "disabled" : ""}
+        autocomplete="off" style="width:100%;margin-top:10px;height:40px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);padding:0 10px"/>
+      ${sug.length ? `<div class="suggest">${sug.map(s => `<button type="button" data-add="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
     </div>
-    ${running ? `<div class="card pad"><p class="muted">Rendering HUD… keep the car offroad.</p><div class="bar" style="margin-top:12px"><i></i></div></div>` : ""}
-    ${clipJob.state==="done" ? `<div class="card pad"><p class="muted">Ready${clipJob.size? " · "+Math.round(clipJob.size/1e6)+" MB":""}</p></div>` : ""}
-    ${clipJob.state==="error" ? `<div class="warn">${esc(clipJob.error||"failed")}</div>` : ""}
-    <div class="btns">
-      <button class="btn primary" id="cGo" ${running||!routes.length?"disabled":""}>Render clip</button>
-      ${running ? `<button class="btn" id="cStop">Cancel</button>` : ""}
-      ${clipJob.state==="done" ? `<a class="btn" href="/api/clip/file">Download</a>` : ""}
+    <p class="h-label">AI API · plug and play</p>
+    ${providers.map(p => `<div class="card">
+      <div class="set"><div class="meta"><b>${p.name}</b><p>${howto[p.id] || ""}</p>
+        <p class="tiny">${p.masked ? "saved " + p.masked : "no key"}</p></div>
+        <button class="btn${g.provider === p.id ? " primary" : ""}" data-prov="${p.id}">${g.provider === p.id ? "Active" : "Use"}</button></div>
+      <div class="field"><label>${p.name} key</label>
+        <input data-keyfield="${p.field}" placeholder="${p.ph}" autocomplete="off"/>
+        <div class="seg" style="margin-top:8px">
+          <button class="btn primary" data-savekey="${p.id}">Save</button>
+          <button class="btn" data-test="${p.id}">Test</button>
+        </div>
+      </div>
+    </div>`).join("")}
+    <div class="seg">
+      <button class="btn" id="previewNice">Preview Nice</button>
+      <button class="btn" id="previewUnh">Preview Unhinged</button>
     </div>
-    <p class="tiny">Uses tools/clip (pyray HUD + RECORD). Does not talk to comma Connect.</p>
-  </div>`;
+  </div>` + (S.confirm ? confirmHTML() : "");
 }
 
-function statsView() {
-  const d = new Date(statsMonth.getFullYear(), statsMonth.getMonth(), 1);
-  const startW = (d.getDay() + 6) % 7;
-  const daysIn = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
-  const label = d.toLocaleString("en-US", {month:"long", year:"numeric"});
-  let cells = "";
-  for (let i=0;i<startW;i++) cells += `<div class="cell empty"></div>`;
-  for (let day=1; day<=daysIn; day++) {
-    const iso = d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(day);
-    let cls = "cell";
-    if (statsFrom && statsTo && iso >= statsFrom && iso <= statsTo) cls += " in";
-    if (iso === statsFrom || iso === statsTo) cls += " end";
-    cells += `<button class="${cls}" data-day="${iso}">${day}</button>`;
+function esc(s) { return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function filterSuggest(q, taken) {
+  const all = S.grok.suggestions || [];
+  const have = new Set(taken.map(t => t.toLowerCase()));
+  const qq = (q || "").toLowerCase();
+  return all.filter(s => !have.has(s.toLowerCase()) && (!qq || s.toLowerCase().includes(qq))).slice(0, 6);
+}
+
+function bindPage() {
+  if (S.page === "home") {
+    $("page").querySelectorAll("[data-route]").forEach(b => b.onclick = () => pickRoute(b.dataset.route));
+    const prev = $("prevSeg"), next = $("nextSeg");
+    if (prev) prev.onclick = () => stepSeg(-1);
+    if (next) next.onclick = () => stepSeg(1);
   }
-  const r = (statsJob && statsJob.result) || null;
-  const running = statsJob.state === "running";
-  const metric = params.IsMetric === "1";
-  const dist = r ? (metric ? r.km+" km" : r.miles+" mi") : "—";
-  return `<div class="wrap">
-    <div class="card pad">
-      <div class="calhead">
-        <button class="btn" id="calPrev">Prev</button>
-        <b>${label}</b>
-        <button class="btn" id="calNext">Next</button>
-      </div>
-      <div class="caldows"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
-      <div class="cal">${cells}</div>
-      <p class="muted" style="margin-top:12px">${esc(statsFrom||"—")} → ${esc(statsTo||"—")}</p>
-      <div class="btns" style="margin-top:12px">
-        <button class="btn primary" id="statsGo" ${running?"disabled":""}>${running?"Generating…":"Generate report"}</button>
-      </div>
-    </div>
-    ${running ? `<div class="card pad"><p class="muted">Reading qlogs… stay offroad.</p><div class="bar" style="margin-top:12px"><i></i></div></div>` : ""}
-    ${statsJob.state==="error" ? `<div class="warn">${esc(statsJob.error||"failed")}</div>` : ""}
-    ${r ? `<div class="grid">
-      ${stat("Distance", dist)}
-      ${stat("Engaged", (r.engagedPct??0)+"%")}
-      ${stat("Hours", r.hours ?? "—")}
-      ${stat("Routes", r.routes ?? "—")}
-    </div>
-    <div class="card">
-      ${row("Engaged hours", r.engagedHours)}
-      ${row("Disengages", r.disengages)}
-      ${row("Points", (r.points||[]).length)}
-    </div>
-    <div class="card mapwrap"><div id="statsMap"></div>
-      <p class="tiny" style="padding:10px 14px">Trace from onboard GPS. Tiles are OSM, not comma. Scaled to this range.</p>
-    </div>` : `<p class="tiny">Pick a start and end day, then generate. Uses local qlogs only.</p>`}
-  </div>`;
-}
-function updatesView() {
-  const job = updateJob || {};
-  const running = ["checking","downloading","finalizing","ready","rebooting"].includes(job.state);
-  const pct = Math.max(0, Math.min(100, job.percent|0));
-  return `<div class="wrap">
-    <div class="card pad">
-      <p class="ghead">Installed</p>
-      <h2>${esc(info.version||"0.1.10.24")}</h2>
-      <p class="muted" style="margin-top:8px;font-family:var(--mono)">${esc(info.branch||"Highland")} · ${esc((info.commit||"").slice(0,12))}</p>
-      <p class="muted" style="margin-top:16px">${esc(job.status || info.updaterNotes || "Check starts the download. Installs after 10s when ready.")}</p>
-      ${running || pct ? `<div class="bar green" style="margin-top:16px"><i style="width:${pct}%"></i></div>
-      <p class="tiny" style="margin-top:8px">${pct}%${job.eta!=null ? " · reboot in "+job.eta+"s" : ""}</p>` : ""}
-      ${job.error ? `<div class="warn" style="margin-top:12px">${esc(job.error)}</div>` : ""}
-      <div class="btns" style="margin-top:20px">
-        <button class="btn primary" id="chk" ${running?"disabled":""}>${running?"Updating…":"Check for updates"}</button>
-        ${running ? `<button class="btn" id="updCancel">Cancel</button>` : ""}
-      </div>
-    </div>
-    <div class="card pad">
-      <h2 style="font-size:20px">Power</h2>
-      <p class="muted">Offroad only on the real device.</p>
-      <div class="btns" style="margin-top:16px">
-        <button class="btn" id="reb">Reboot</button>
-        <button class="btn" id="shut">Shutdown</button>
-      </div>
-    </div>
-  </div>`;
-}
-function modal() {
-  return `<div class="modal"><div class="sheet"><b style="font-family:var(--display);font-size:20px">${esc(confirmItem.label)}</b><p class="muted" style="margin-top:12px">${esc(confirmItem.confirm)}</p><div class="btns" style="margin-top:20px;justify-content:flex-end"><button class="btn" id="no">Cancel</button><button class="btn primary" id="yes">Enable</button></div></div></div>`;
-}
-function bind() {
-  const qi = document.getElementById("q");
-  if (qi) qi.oninput = (e) => { q = e.target.value; render(); qi.focus(); qi.setSelectionRange(q.length,q.length); };
-  document.querySelectorAll(".tog").forEach(b => b.onclick = () => {
-    const k = b.dataset.k, n = b.dataset.n;
-    const item = GROUPS.flatMap(g => g.items).find(x => x.key===k);
-    if (item && item.confirm && n==="1") { confirmItem = item; render(); return; }
-    save(k, n); if (item && item.restart) say("Saved. Restart the C4 for this to apply.");
-  });
-  document.querySelectorAll("select[data-k]").forEach(s => s.onchange = () => {
-    const item = GROUPS.flatMap(g => g.items).find(x => x.key===s.dataset.k);
-    if (item && item.confirmValue && s.value === item.confirmValue && String(params[item.key] ?? "") !== item.confirmValue) {
-      confirmItem = Object.assign({}, item, {_saveValue: s.value});
-      s.value = params[item.key] ?? (item.key==="WeatherNewsMode" ? "1" : item.options[0][0]);
-      render();
-      return;
+  if (S.page === "settings") {
+    $("page").querySelectorAll(".tog[data-key]").forEach(b => b.onclick = () => toggleParam(b.dataset.key, !b.classList.contains("on")));
+    $("page").querySelectorAll("select[data-key]").forEach(s => s.onchange = () => saveParam(s.dataset.key, s.value));
+    $("reboot").onclick = () => act("reboot");
+    $("shutdown").onclick = () => act("shutdown");
+    bindConfirm();
+  }
+  if (S.page === "live") {
+    $("airBtn").onclick = () => S.liveOn ? hangup() : goLive();
+    $("fsBtn").onclick = () => toggleFs();
+    $("page").querySelectorAll("[data-layout]").forEach(b => b.onclick = () => {
+      S.layout = b.dataset.layout;
+      if (b.dataset.cam) S.singleCam = b.dataset.cam;
+      applyLayout();
+    });
+  }
+  if (S.page === "grok") {
+    $("voiceOn").onclick = () => saveGrok({ voice_on: !S.grok.voice_on });
+    $("wifiOnly").onclick = () => saveGrok({ wifi_only: !S.grok.wifi_only });
+    $("page").querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+    $("page").querySelectorAll("[data-dur]").forEach(b => b.onclick = () => saveGrok({ duration: Number(b.dataset.dur) }));
+    $("page").querySelectorAll("[data-prov]").forEach(b => b.onclick = () => saveGrok({ provider: b.dataset.prov }));
+    $("page").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => rmTopic(Number(b.dataset.rm)));
+    $("page").querySelectorAll("[data-add]").forEach(b => b.onclick = () => addTopic(b.dataset.add));
+    $("page").querySelectorAll("[data-savekey]").forEach(b => b.onclick = (e) => saveProviderKey(b.dataset.savekey, e));
+    $("page").querySelectorAll("[data-test]").forEach(b => b.onclick = (e) => testProvider(b.dataset.test, e));
+    const tin = $("topicIn");
+    if (tin) {
+      tin.oninput = () => {
+        S.topicDraft = tin.value;
+        const box = tin.parentElement;
+        let sug = box.querySelector(".suggest");
+        const items = filterSuggest(S.topicDraft, topicsArr());
+        if (!items.length) { if (sug) sug.remove(); return; }
+        if (!sug) { sug = document.createElement("div"); sug.className = "suggest"; box.appendChild(sug); }
+        sug.innerHTML = items.map(s => `<button type="button" data-add="${esc(s)}">${esc(s)}</button>`).join("");
+        sug.querySelectorAll("[data-add]").forEach(b => b.onclick = () => addTopic(b.dataset.add));
+      };
+      tin.onkeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addTopic(tin.value); }
+      };
     }
-    save(s.dataset.k, s.value);
-  });
-  document.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { path = b.dataset.p; loadFiles(); });
-  document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => {
-    if (b.dataset.dir==="1") { path = b.dataset.open; loadFiles(); }
-    else { location.href = "/api/files/raw?path=" + encodeURIComponent(b.dataset.open); }
-  });
-  const live = document.getElementById("openLive");
-  if (live) live.onclick = () => window.open(`http://${location.hostname}:5001`, "_blank");
-  const wxP = document.getElementById("wxPreview");
-  if (wxP) wxP.onclick = () => previewWeather(wxMode() === 2 ? "aggressive" : "nice");
-  const grokKey = document.getElementById("grokKey");
-  if (grokKey) grokKey.oninput = (e) => { grokKeyDraft = e.target.value; };
-  const grokSave = document.getElementById("grokSave");
-  if (grokSave) grokSave.onclick = async () => {
-    const key = (document.getElementById("grokKey") || {}).value || grokKeyDraft;
-    if (!key) { say("paste a key first"); return; }
-    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: key, voice_on: true})});
-    grokKeyDraft = "";
-    params.GrokVoiceEnabled = "1";
-    say(grok.configured ? "Key saved." : "Save failed");
-    render();
-  };
-  const grokTopicsSave = document.getElementById("grokTopicsSave");
-  if (grokTopicsSave) grokTopicsSave.onclick = async () => {
-    const topics = (document.getElementById("grokTopics") || {}).value || "npr";
-    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({topics})});
-    say("Topics saved");
-    render();
-  };
-  const grokTest = document.getElementById("grokTest");
-  if (grokTest) grokTest.onclick = async () => {
-    const key = (document.getElementById("grokKey") || {}).value || grokKeyDraft || "";
-    const j = await api("/api/grok/test", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: key})});
-    grok = j;
-    say(j.ok ? "Grok is reachable." : ("Nope: " + (j.status || "failed")));
-    render();
-  };
-  const grokClear = document.getElementById("grokClear");
-  if (grokClear) grokClear.onclick = async () => {
-    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({api_key: ""})});
-    grokKeyDraft = "";
-    say("Key cleared");
-    render();
-  };
-  const chk = document.getElementById("chk");
-  if (chk) chk.onclick = () => startUpdate();
-  const updCancel = document.getElementById("updCancel");
-  if (updCancel) updCancel.onclick = async () => {
-    updateJob = await api("/api/updates/cancel", {method:"POST"});
-    say("Cancelled"); render();
-  };
-  const reb = document.getElementById("reb");
-  if (reb) reb.onclick = async () => { await api("/api/action/reboot", {method:"POST"}); say("Reboot requested."); };
-  const shut = document.getElementById("shut");
-  if (shut) shut.onclick = async () => { await api("/api/action/shutdown", {method:"POST"}); say("Shutdown requested."); };
-  const no = document.getElementById("no");
-  if (no) no.onclick = () => { confirmItem = null; render(); };
-  const yes = document.getElementById("yes");
-  if (yes) yes.onclick = () => { const k = confirmItem.key, v = confirmItem._saveValue || "1"; confirmItem = null; save(k, v); };
-  const cGo = document.getElementById("cGo");
-  if (cGo) cGo.onclick = startClip;
-  const cStop = document.getElementById("cStop");
-  if (cStop) cStop.onclick = async () => { clipJob = await api("/api/clip/cancel", {method:"POST"}); say("Cancelled"); render(); };
-  const cQ = document.getElementById("cQcam");
-  if (cQ) cQ.onclick = () => { clipJob.qcam = clipJob.qcam===false; render(); };
-
-  const calPrev = document.getElementById("calPrev");
-  if (calPrev) calPrev.onclick = () => { statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth()-1, 1); render(); };
-  const calNext = document.getElementById("calNext");
-  if (calNext) calNext.onclick = () => { statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth()+1, 1); render(); };
-  document.querySelectorAll("[data-day]").forEach(b => b.onclick = () => pickDay(b.dataset.day));
-  const statsGo = document.getElementById("statsGo");
-  if (statsGo) statsGo.onclick = () => loadStats(true);
-  if (tab==="stats") mountStatsMap();
-
-}
-async function loadClips() {
-  try {
-    const j = await api("/api/routes");
-    routes = j.routes || [];
-    clipJob = await api("/api/clip");
-  } catch (e) { say(e.message); }
-  render();
-  if (clipJob.state === "running" && !clipTimer) {
-    clipTimer = setInterval(async () => {
-      try { clipJob = await api("/api/clip"); } catch {}
-      if (clipJob.state !== "running") { clearInterval(clipTimer); clipTimer = null; }
-      if (tab==="clips") render();
-    }, 2000);
+    $("previewNice").onclick = () => preview("nice");
+    $("previewUnh").onclick = () => preview("unhinged");
+    bindConfirm();
   }
 }
-async function startClip() {
-  const route = document.getElementById("cRoute").value;
-  const start = Number(document.getElementById("cStart").value);
-  const end = Number(document.getElementById("cEnd").value);
-  const title = document.getElementById("cTitle").value;
-  const qcam = clipJob.qcam !== false;
-  const j = await api("/api/clip", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({route, start, end, title, qcam})});
-  if (!j.ok) { say(j.error || "could not start"); return; }
-  clipJob = j.job || j;
-  say("Rendering…");
-  loadClips();
+
+function bindConfirm() {
+  const y = $("confirmYes"), n = $("confirmNo");
+  if (y) y.onclick = () => { const c = S.confirm; S.confirm = null; c.go(); };
+  if (n) n.onclick = () => { S.confirm = null; render(); };
 }
-if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
-load();
-setInterval(async () => {
-  if (tab !== "settings") return;
+
+async function saveParam(k, v) {
   try {
-    const p = await api("/api/params");
-    if (p.WeatherNewsStatus !== params.WeatherNewsStatus) {
-      params.WeatherNewsStatus = p.WeatherNewsStatus;
-      if (p.WeatherNewsLastRunDate) params.WeatherNewsLastRunDate = p.WeatherNewsLastRunDate;
-      render();
+    S.params = await api("/api/params", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [k]: v }) });
+    if (k === "IsMetric") refreshHome();
+    render();
+  } catch (e) { say(e.message); }
+}
+
+function toggleParam(k, next) {
+  const it = GROUPS.flatMap(g => g.items).find(x => x.key === k);
+  if (it && it.confirm && next) {
+    S.confirm = { msg: it.confirm, go: () => { S.confirm = null; saveParam(k, "1"); } };
+    render();
+    return;
+  }
+  saveParam(k, next ? "1" : "0");
+}
+
+async function act(kind) {
+  if (!confirm(kind + " device?")) return;
+  try { await api("/api/action/" + kind, { method: "POST" }); say(kind + " sent"); }
+  catch (e) { say(e.message); }
+}
+
+async function saveGrok(body) {
+  try {
+    S.grok = await api("/api/grok", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    render();
+  } catch (e) { say(e.message); }
+}
+
+function topicsArr() {
+  return (S.grok.topics || "").split(/\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+}
+function addTopic(t) {
+  t = (t || "").trim();
+  if (!t) return;
+  const cur = topicsArr();
+  if (cur.length >= 6) { say("max 6 topics"); return; }
+  if (cur.some(x => x.toLowerCase() === t.toLowerCase())) return;
+  S.topicDraft = "";
+  saveGrok({ topics: cur.concat(t).join("\n") });
+}
+function rmTopic(i) {
+  const cur = topicsArr();
+  cur.splice(i, 1);
+  saveGrok({ topics: cur.join("\n") });
+}
+
+function setMode(m) {
+  if (m === "2") {
+    S.confirm = { msg: "NSFW. Explicit language through the speaker. Not for kids.", go: () => { S.confirm = null; saveParam("WeatherNewsMode", "2"); } };
+    render();
+    return;
+  }
+  saveParam("WeatherNewsMode", m);
+}
+
+async function saveProviderKey(id, e) {
+  const card = e.target.closest(".card");
+  const inp = card.querySelector("[data-keyfield]");
+  const field = inp.dataset.keyfield;
+  const val = inp.value.trim();
+  const body = { provider: id };
+  body[field] = val;
+  await saveGrok(body);
+  say(val ? "key saved" : "key cleared");
+}
+
+async function testProvider(id, e) {
+  const card = e.target.closest(".card");
+  const inp = card.querySelector("[data-keyfield]");
+  try {
+    const r = await api("/api/grok/test", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: id, api_key: inp.value.trim() }),
+    });
+    say(r.ok ? id + " ok" : (r.status || "failed"));
+    S.grok = r;
+  } catch (e) { say(e.message); }
+}
+
+async function preview(mode) {
+  try {
+    await api("/api/weather/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+    say("preview queued");
+  } catch (e) { say(e.message); }
+}
+
+function teardownHome() {
+  if (S.player) { try { S.player.destroy(); } catch (e) {} S.player = null; }
+  if (S.map) { S.map.remove(); S.map = null; S.mapLine = null; }
+}
+
+function setupHome() {
+  const el = $("map");
+  if (!el || S.map || typeof L === "undefined") return;
+  const gps = S.home && S.home.gps;
+  const lat = (gps && gps.lat) || 38.94, lon = (gps && gps.lon) || -90.15;
+  S.map = L.map(el, { zoomControl: false }).setView([lat, lon], gps && gps.lat ? 12 : 4);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OSM &copy; CARTO", maxZoom: 19,
+  }).addTo(S.map);
+  if (gps && gps.lat) L.circleMarker([gps.lat, gps.lon], { radius: 6, color: "#fff", weight: 2, fillOpacity: 1 }).addTo(S.map);
+  setTimeout(() => S.map && S.map.invalidateSize(), 80);
+}
+
+async function pickRoute(name) {
+  S.route = S.routes.find(r => r.name === name) || null;
+  S.seg = (S.route && S.route.segs && S.route.segs[0]) || 0;
+  const box = $("playerBox");
+  if (box) box.hidden = !S.route;
+  document.querySelectorAll("[data-route]").forEach(b => b.classList.toggle("on", b.dataset.route === name));
+  playSeg();
+  try {
+    const g = await api("/api/route/gps?route=" + encodeURIComponent(name));
+    drawTrack(g.points || []);
+  } catch (e) { /* map still shows last GPS */ }
+}
+
+function drawTrack(pts) {
+  if (!S.map || typeof L === "undefined") return;
+  if (S.mapLine) { S.map.removeLayer(S.mapLine); S.mapLine = null; }
+  if (pts.length < 2) return;
+  S.mapLine = L.polyline(pts, { color: "#7ec8ff", weight: 3, opacity: 0.9 }).addTo(S.map);
+  S.map.fitBounds(S.mapLine.getBounds(), { padding: [24, 24] });
+}
+
+function playSeg() {
+  if (!S.route) return;
+  const video = $("qcam");
+  const label = $("segLabel");
+  if (label) label.textContent = `${S.route.name}  ·  ${S.seg + 1}/${S.route.segments}`;
+  if (!video) return;
+  if (S.player) { try { S.player.destroy(); } catch (e) {} S.player = null; }
+  const url = `/api/qcam?route=${encodeURIComponent(S.route.name)}&seg=${S.seg}`;
+  video.onended = () => stepSeg(1);
+  if (typeof mpegts !== "undefined" && mpegts.isSupported()) {
+    S.player = mpegts.createPlayer({ type: "mpegts", isLive: false, url }, { enableWorker: true, lazyLoad: false });
+    S.player.attachMediaElement(video);
+    S.player.load();
+    S.player.play().catch(() => {});
+  } else {
+    video.src = url;
+    video.play().catch(() => {});
+  }
+}
+
+function stepSeg(d) {
+  if (!S.route) return;
+  const segs = S.route.segs && S.route.segs.length ? S.route.segs : [...Array(S.route.segments).keys()];
+  const i = Math.max(0, segs.indexOf(S.seg));
+  const n = i + d;
+  if (n < 0 || n >= segs.length) return;
+  S.seg = segs[n];
+  playSeg();
+}
+
+function applyLayout() {
+  const stage = $("stage");
+  if (!stage) return;
+  stage.className = "stage " + stageClass() + (stage.classList.contains("fs") ? " fs" : "");
+  stage.querySelectorAll(".tile").forEach(t => {
+    const id = t.dataset.cam;
+    t.classList.remove("show", "main", "pipcam");
+    if (S.layout === "triple") return;
+    if (S.layout === "one" && id === S.singleCam) t.classList.add("show");
+    if (S.layout === "pip") {
+      if (id === S.singleCam) t.classList.add("main");
+      if (id === "driver") t.classList.add("pipcam");
     }
-  } catch (e) {}
-}, 800);
-
-window.onerror = function (msg) {
-  var el = document.getElementById("app");
-  if (el) el.insertAdjacentHTML("afterbegin", "<div class=\"warn\">"+String(msg)+"</div>");
-};
-
-function pickDay(iso) {
-  if (!statsFrom || (statsFrom && statsTo && statsFrom !== statsTo)) {
-    statsFrom = iso; statsTo = iso;
-  } else if (iso < statsFrom) {
-    statsTo = statsFrom; statsFrom = iso;
-  } else {
-    statsTo = iso;
-  }
-  render();
+  });
+  const pip = stage.querySelector(".pipcam");
+  if (pip) pip.onclick = () => {
+    S.pipCorner = PIP_CORNERS[(PIP_CORNERS.indexOf(S.pipCorner) + 1) % PIP_CORNERS.length];
+    applyLayout();
+  };
 }
-async function loadStats(generate) {
-  if (generate) {
-    const j = await api("/api/stats", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({from: statsFrom, to: statsTo})});
-    if (!j.ok) { say(j.error || "could not generate"); return; }
-    statsJob = j.job || j;
-  } else {
-    try { statsJob = await api("/api/stats"); } catch (e) { say(e.message); }
-  }
-  render();
-  if (statsJob.state === "running" && !statsTimer) {
-    statsTimer = setInterval(async () => {
-      try { statsJob = await api("/api/stats"); } catch {}
-      if (statsJob.state !== "running") { clearInterval(statsTimer); statsTimer = null; }
-      if (tab==="stats") render();
-    }, 1500);
-  }
+
+function bindVideos() {
+  applyLayout();
 }
-function loadLeaflet() {
-  if (window.L) return Promise.resolve();
-  return new Promise((res, rej) => {
-    const c = document.createElement("link");
-    c.rel = "stylesheet";
-    c.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(c);
-    const s = document.createElement("script");
-    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    s.onload = res; s.onerror = rej;
-    document.body.appendChild(s);
+
+function iceDone(pc) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise(res => {
+    const t = setTimeout(res, 2200);
+    pc.addEventListener("icegatheringstatechange", () => {
+      if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); }
+    });
   });
 }
-async function mountStatsMap() {
-  const el = document.getElementById("statsMap");
-  const pts = (statsJob.result && statsJob.result.points) || [];
-  if (!el || pts.length < 2) return;
-  try { await loadLeaflet(); } catch { el.innerHTML = "<p class=muted style=padding:16px>Map tiles need internet.</p>"; return; }
-  if (statsMap) { try { statsMap.remove(); } catch(e) {} statsMap = null; }
-  const map = window.L.map(el, { zoomControl: true, attributionControl: true });
-  window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OSM &copy; CARTO", maxZoom: 19
-  }).addTo(map);
-  const line = window.L.polyline(pts, { color: "#3ea7ff", weight: 3, opacity: 0.9 }).addTo(map);
-  map.fitBounds(line.getBounds(), { padding: [24, 24] });
-  statsMap = map;
-  setTimeout(() => map.invalidateSize(), 80);
+
+async function goLive() {
+  try {
+    await api("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) });
+    S.liveOn = true;
+    render();
+    say("warming cameras…");
+    let ready = false;
+    for (let i = 0; i < 12; i++) {
+      const st = await api("/api/live");
+      if (st.webrtc) { ready = true; break; }
+      await new Promise(r => setTimeout(r, 700));
+    }
+    if (!ready) { say("webrtcd not up yet — retry Go live"); return; }
+    hangup(false);
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    S.pc = pc;
+    pc.createDataChannel("data");
+    CAMS.forEach(() => pc.addTransceiver("video", { direction: "recvonly" }));
+    const videos = [...document.querySelectorAll("#stage video")];
+    let i = 0;
+    pc.ontrack = (ev) => {
+      const v = videos[i++] || videos[0];
+      if (v) v.srcObject = new MediaStream([ev.track]);
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await iceDone(pc);
+    const ans = await api("/api/webrtc/stream", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: pc.localDescription.sdp,
+        cameras: CAMS.map(c => c.id),
+        enabled: true,
+        bridge_services_in: [],
+        bridge_services_out: [],
+      }),
+    });
+    if (ans.error) throw new Error(ans.error + (ans.hint ? " — " + ans.hint : ""));
+    await pc.setRemoteDescription({ type: ans.type || "answer", sdp: ans.sdp });
+    say("live");
+  } catch (e) { say(e.message || String(e)); }
 }
 
-async function startUpdate() {
-  const j = await api("/api/updates/check", {method:"POST"});
-  if (!j.ok) { say(j.error || "could not start"); return; }
-  updateJob = j.job || j;
-  say("Checking…");
-  pollUpdate();
-}
-async function pollUpdate() {
-  try {
-    const j = await api("/api/updates");
-    if (j.job) updateJob = j.job;
-    if (j.version) info = Object.assign(info, j);
-  } catch (e) { say(e.message); }
-  if (tab==="updates") render();
-  const running = updateJob && ["checking","downloading","finalizing","ready","rebooting"].includes(updateJob.state);
-  if (running && !updateTimer) {
-    updateTimer = setInterval(async () => {
-      try {
-        const j = await api("/api/updates");
-        if (j.job) updateJob = j.job;
-      } catch {}
-      const still = updateJob && ["checking","downloading","finalizing","ready","rebooting"].includes(updateJob.state);
-      if (!still) { clearInterval(updateTimer); updateTimer = null; }
-      if (tab==="updates") render();
-    }, 700);
+function hangup(update = true) {
+  if (S.pc) { try { S.pc.close(); } catch (e) {} S.pc = null; }
+  document.querySelectorAll("#stage video").forEach(v => { v.srcObject = null; });
+  if (update) {
+    S.liveOn = false;
+    api("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: false }) }).catch(() => {});
+    if (S.page === "live") render();
   }
 }
+
+function toggleFs() {
+  const stage = $("stage");
+  if (!stage) return;
+  const go = () => { stage.classList.add("fs"); applyLayout(); };
+  const leave = () => { stage.classList.remove("fs"); applyLayout(); };
+  if (!document.fullscreenElement) {
+    (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage).then(go).catch(go);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document).then(leave).catch(leave);
+  }
+  document.onfullscreenchange = () => { if (!document.fullscreenElement) leave(); };
+}
+
+async function refreshHome() {
+  try {
+    S.home = await api("/api/home");
+    paintHeader();
+    if (S.page === "home" && !S.player) {
+      const el = document.querySelector(".grid");
+      if (el && S.home) {
+        const u = S.home.unit;
+        const vals = [S.home.today, S.home.todayEng, S.home.week];
+        el.querySelectorAll(".stat .v").forEach((n, i) => {
+          if (i < 3) n.innerHTML = `${vals[i].toFixed(1)} <span class="tiny">${u}</span>`;
+          if (i === 3) n.innerHTML = `${S.home.engPct}<span class="tiny">%</span>`;
+        });
+      }
+    }
+  } catch (e) { /* keep last */ }
+}
+
+async function boot() {
+  tickClock();
+  setInterval(tickClock, 10000);
+  $("menuBtn").onclick = openMenu;
+  $("drawerClose").onclick = closeMenu;
+  $("scrim").onclick = closeMenu;
+  document.querySelectorAll("#drawer nav button").forEach(b => b.onclick = () => setPage(b.dataset.page));
+  window.addEventListener("hashchange", () => {
+    const p = location.hash.replace("#", "");
+    if (PAGES.includes(p) && p !== S.page) setPage(p);
+  });
+  render();
+  try {
+    const [home, params, grok, routes, live] = await Promise.all([
+      api("/api/home"), api("/api/params"), api("/api/grok").catch(() => S.grok),
+      api("/api/routes").catch(() => ({ routes: [] })), api("/api/live").catch(() => ({})),
+    ]);
+    S.home = home; S.params = params; S.grok = grok; S.routes = routes.routes || [];
+    S.liveOn = !!live.live; S.webrtc = !!live.webrtc;
+    paintHeader();
+    render();
+  } catch (e) { say("device unreachable"); }
+  setInterval(refreshHome, 8000);
+}
+
+boot();

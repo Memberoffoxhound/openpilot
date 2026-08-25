@@ -21,22 +21,24 @@ VOICE_ID = "ara"
 TIMEOUT_CHAT = 60
 TIMEOUT_TTS = 90
 
-NICE_SYS = (
-  "You are Ara, the Grok voice, in Nice mode. Write a spoken daily briefing a driver hears "
-  "through a car speaker. 50 to 80 seconds when read aloud. Warm, PG, first person. "
-  "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
-  "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
-  "Plain sentences. End by telling them to enjoy the drive and keep their eyes on the road."
-)
-
-UNHINGED_SYS = (
-  "You are Ara, Tesla Grok Unhinged. Write a spoken daily briefing a driver hears through a car speaker. "
-  "50 to 80 seconds. NSFW, vulgar, unfiltered — same energy as Tesla Grok Unhinged. Roast the weather "
-  "and the headlines. Cover the forecast first, then each provided headline in order. Skip empty lists. "
-  "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
-  "You may insert TTS tags like [laugh], [pause], [sigh]. "
-  "End by telling them not to crash and to keep their eyes on the road."
-)
+def _brief_sys(unhinged: bool) -> str:
+  sec = grok_cfg.duration()
+  if unhinged:
+    return (
+      "You are Ara, Tesla Grok Unhinged. Write a spoken daily briefing a driver hears through a car speaker. "
+      f"{sec} seconds. NSFW, vulgar, unfiltered. Roast the weather and the headlines. "
+      "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
+      "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
+      "You may insert TTS tags like [laugh], [pause], [sigh]. "
+      "End by telling them not to crash and to keep their eyes on the road."
+    )
+  return (
+    "You are Ara, the Grok voice, in Nice mode. Write a spoken daily briefing a driver hears "
+    f"through a car speaker. {sec} seconds when read aloud. Warm, PG, first person. "
+    "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
+    "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
+    "Plain sentences. End by telling them to enjoy the drive and keep their eyes on the road."
+  )
 
 
 def lan_ip() -> str:
@@ -87,15 +89,24 @@ def _headers(key: str) -> dict[str, str]:
   return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
-def test_key(key: str | None = None) -> tuple[bool, str]:
-  key = (key or grok_cfg.api_key()).strip()
+def test_key(key: str | None = None, provider: str | None = None) -> tuple[bool, str]:
+  p = (provider or grok_cfg.provider() or "xai").strip().lower()
+  if p == "openai":
+    key = (key or grok_cfg.openai_key()).strip()
+    url = "https://api.openai.com/v1/models"
+  elif p == "groq":
+    key = (key or grok_cfg.groq_key()).strip()
+    url = "https://api.groq.com/openai/v1/models"
+  else:
+    key = (key or grok_cfg.api_key()).strip()
+    url = "https://api.x.ai/v1/tts/voices"
   if not key:
-    return False, "no API key"
+    return False, f"no {p} API key"
   try:
-    r = requests.get("https://api.x.ai/v1/tts/voices", headers=_headers(key), timeout=12)
+    r = requests.get(url, headers=_headers(key), timeout=12)
     if r.status_code == 401:
       return False, "unauthorized"
-    if r.status_code == 200:
+    if r.status_code in (200, 203):
       return True, "ok"
     return False, f"http {r.status_code}"
   except Exception as e:
@@ -104,8 +115,7 @@ def test_key(key: str | None = None) -> tuple[bool, str]:
 
 def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: bool,
                  location_name: str = "your area") -> str | None:
-  key = grok_cfg.api_key()
-  if not key:
+  if not grok_cfg.configured():
     return None
 
   items = []
@@ -120,7 +130,7 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
     "items": items[:8],
   }
   return _chat(
-    UNHINGED_SYS if unhinged else NICE_SYS,
+    _brief_sys(unhinged),
     json.dumps(user),
     temperature=1.0 if unhinged else 0.6,
   )
@@ -137,18 +147,27 @@ def write_preview(*, unhinged: bool) -> str | None:
   return _chat(sys, "Preview tap. Speak now.", temperature=1.0 if unhinged else 0.5)
 
 
+def _chat_endpoint() -> tuple[str, str, str]:
+  p = grok_cfg.provider()
+  if p == "openai":
+    return "https://api.openai.com/v1/chat/completions", grok_cfg.openai_key(), "gpt-4o-mini"
+  if p == "groq":
+    return "https://api.groq.com/openai/v1/chat/completions", grok_cfg.groq_key(), "llama-3.3-70b-versatile"
+  return CHAT_URL, grok_cfg.api_key(), MODEL
+
+
 def _chat(system: str, user: str, *, temperature: float) -> str | None:
-  key = grok_cfg.api_key()
+  url, key, model = _chat_endpoint()
   if not key:
     return None
   last_err = ""
   for _ in range(2):
     try:
       r = requests.post(
-        CHAT_URL,
+        url,
         headers=_headers(key),
         json={
-          "model": MODEL,
+          "model": model,
           "temperature": temperature,
           "messages": [
             {"role": "system", "content": system},
@@ -212,20 +231,38 @@ def _pcm_from_riff(data: bytes) -> tuple[bytes, int, int, int] | None:
 
 
 def tts_wav(text: str, dest: Path, *, unhinged: bool = False) -> bool:
-  key = grok_cfg.api_key()
-  if not key or not text.strip():
+  text = text.strip()
+  if not text:
     return False
-  payload = {
-    "text": text.strip(),
-    "voice_id": VOICE_ID,
-    "language": "en",
-    "speed": 1.05 if unhinged else 1.0,
-    "output_format": {"codec": "wav", "sample_rate": 24000},
-  }
+  p = grok_cfg.provider()
   try:
-    r = requests.post(TTS_URL, headers=_headers(key), json=payload, timeout=TIMEOUT_TTS)
-    r.raise_for_status()
-    data = r.content
+    if p == "openai" or (p == "groq" and grok_cfg.openai_key()):
+      key = grok_cfg.openai_key()
+      if not key:
+        return False
+      r = requests.post(
+        "https://api.openai.com/v1/audio/speech",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"model": "tts-1", "voice": "alloy", "input": text, "response_format": "wav", "speed": 1.05 if unhinged else 1.0},
+        timeout=TIMEOUT_TTS,
+      )
+      r.raise_for_status()
+      data = r.content
+    else:
+      key = grok_cfg.api_key()
+      if not key:
+        return False
+      r = requests.post(
+        TTS_URL, headers=_headers(key),
+        json={
+          "text": text, "voice_id": VOICE_ID, "language": "en",
+          "speed": 1.05 if unhinged else 1.0,
+          "output_format": {"codec": "wav", "sample_rate": 24000},
+        },
+        timeout=TIMEOUT_TTS,
+      )
+      r.raise_for_status()
+      data = r.content
     if len(data) < 800:
       return False
     if data[:4] == b"RIFF":
@@ -238,5 +275,5 @@ def tts_wav(text: str, dest: Path, *, unhinged: bool = False) -> bool:
       _write_wav(dest, data, rate=24000)
     return dest.exists() and dest.stat().st_size > 800
   except Exception:
-    cloudlog.exception("weather_news: grok tts failed")
+    cloudlog.exception("weather_news: tts failed")
     return False

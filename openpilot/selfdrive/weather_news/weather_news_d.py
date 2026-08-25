@@ -50,6 +50,13 @@ def onroad(sm: messaging.SubMaster) -> bool:
     return False
 
 
+def on_wifi(sm: messaging.SubMaster) -> bool:
+  try:
+    return int(sm["deviceState"].networkType) == 1
+  except Exception:
+    return True
+
+
 def peek_preview(params: Params) -> str:
   return _str(params, "WeatherNewsPreview").strip().lower()
 
@@ -114,7 +121,8 @@ def fetch_weather(lat: float, lon: float) -> dict[str, Any] | None:
     return None
 
 
-def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
+def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, str] | None,
+                    sm: messaging.SubMaster | None = None) -> bool:
   if not grok_cfg.voice_enabled():
     _put(params, "WeatherNewsStatus", "enable grok")
     time.sleep(1.2)
@@ -122,6 +130,11 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
     return False
   if not grok_cfg.configured():
     _put(params, "WeatherNewsStatus", "scan QR")
+    time.sleep(1.5)
+    _put(params, "WeatherNewsStatus", "")
+    return False
+  if grok_cfg.wifi_only() and sm is not None and not on_wifi(sm):
+    _put(params, "WeatherNewsStatus", "wifi only")
     time.sleep(1.5)
     _put(params, "WeatherNewsStatus", "")
     return False
@@ -169,6 +182,11 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
     time.sleep(1.5)
     _put(params, "WeatherNewsStatus", "")
     return True
+  if grok_cfg.wifi_only() and not on_wifi(sm):
+    _put(params, "WeatherNewsStatus", "wifi only")
+    time.sleep(1.5)
+    _put(params, "WeatherNewsStatus", "")
+    return True
   _put(params, "WeatherNewsStatus", "asking grok")
   line = grok_api.write_preview(unhinged=aggressive)
   if not line:
@@ -199,7 +217,7 @@ def handle_ondemand(params: Params, sm: messaging.SubMaster) -> bool:
     _put(params, "WeatherNewsStatus", "")
     return True
   m = wx.get(params)
-  ok = build_and_speak(params, m == wx.AGGRESSIVE, location(sm, params))
+  ok = build_and_speak(params, m == wx.AGGRESSIVE, location(sm, params), sm)
   cloudlog.info(f"weather_news: ondemand queued={ok}")
   return True
 
@@ -258,7 +276,7 @@ def main() -> None:
         stable_t = None
         continue
 
-      ok = build_and_speak(params, m == wx.AGGRESSIVE, loc)
+      ok = build_and_speak(params, m == wx.AGGRESSIVE, loc, sm)
       if ok:
         _put(params, "WeatherNewsLastRunDate", today)
         cloudlog.info("weather_news: daily queued")

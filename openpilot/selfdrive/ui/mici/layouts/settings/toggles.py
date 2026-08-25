@@ -290,6 +290,44 @@ class DeloreanPreview(BigButton):
     request_delorean_play()
 
 
+class BriefDurationCycle(BigButton):
+  def __init__(self):
+    super().__init__("briefing length", "")
+    self.refresh()
+
+  def refresh(self):
+    self.set_value(f"{grok_cfg.duration()}s")
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    opts = grok_cfg.DURATIONS
+    cur = grok_cfg.duration()
+    grok_cfg.set_duration(opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else 60)
+    self.refresh()
+
+
+class WifiOnlyCycle(BigButton):
+  def __init__(self):
+    super().__init__("briefing on wifi only", "")
+    self.refresh()
+
+  def refresh(self):
+    self.set_value("on" if grok_cfg.wifi_only() else "off")
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    grok_cfg.set_wifi_only(not grok_cfg.wifi_only())
+    self.refresh()
+
+
 class ThemeLayoutMici(NavScroller):
   """Settings → theme. Subsections live here."""
 
@@ -302,11 +340,13 @@ class ThemeLayoutMici(NavScroller):
     self._grok = GrokVoiceCycle(on_change=self._wx_preview.refresh)
     self._grok_qr = GrokQrButton()
     self._lane_color = LaneColorCycle()
+    self._wx_dur = BriefDurationCycle()
+    self._wx_wifi = WifiOnlyCycle()
     self._delorean = DeloreanCycle()
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
-      self._grok, self._grok_qr, self._wx_mode, self._wx_preview,
+      self._grok, self._grok_qr, self._wx_mode, self._wx_preview, self._wx_dur, self._wx_wifi,
       self._delorean, self._delorean_preview,
     ])
 

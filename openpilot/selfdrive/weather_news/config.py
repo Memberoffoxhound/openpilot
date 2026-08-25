@@ -11,7 +11,17 @@ VOICE_KEY = "GrokVoiceEnabled"
 API_KEY = "XaiApiKey"
 TOPICS_KEY = "WeatherNewsTopics"
 ONDEMAND_KEY = "WeatherNewsOnDemand"
+DURATION_KEY = "WeatherNewsDuration"
+WIFI_KEY = "WeatherNewsWifiOnly"
+PROVIDER_KEY = "GrokProvider"
+OPENAI_KEY = "OpenaiApiKey"
+GROQ_KEY = "GroqApiKey"
 DEFAULT_TOPICS = "npr"
+TOPIC_SUGGESTIONS = (
+  "npr", "cnn", "comma", "reddit", "reddit:commaai", "reddit:openpilot",
+  "x", "Aptera Motors", "Tesla", "SpaceX", "xAI", "openpilot", "Neuralink",
+)
+DURATIONS = (60, 90, 120)
 
 
 def _params() -> Params:
@@ -72,7 +82,72 @@ def set_api_key(key: str) -> None:
       path.unlink()
 
 
+def _key_file(name: str) -> str:
+  try:
+    v = _params().get(name)
+    s = _as_str(v) if v else ""
+    if s:
+      return s
+  except Exception:
+    pass
+  f = PARAM_DIR / name
+  return f.read_text().strip() if f.exists() else ""
+
+
+def _set_key(name: str, key: str) -> None:
+  key = (key or "").strip()
+  PARAM_DIR.mkdir(parents=True, exist_ok=True)
+  try:
+    if key:
+      _params().put(name, key, block=True)
+    else:
+      _params().remove(name)
+  except Exception:
+    path = PARAM_DIR / name
+    if key:
+      path.write_text(key)
+    elif path.exists():
+      path.unlink()
+
+
+def openai_key() -> str:
+  return _key_file(OPENAI_KEY)
+
+
+def set_openai_key(key: str) -> None:
+  _set_key(OPENAI_KEY, key)
+
+
+def groq_key() -> str:
+  return _key_file(GROQ_KEY)
+
+
+def set_groq_key(key: str) -> None:
+  _set_key(GROQ_KEY, key)
+
+
+def provider() -> str:
+  p = _key_file(PROVIDER_KEY).lower() or "xai"
+  return p if p in ("xai", "openai", "groq") else "xai"
+
+
+def set_provider(name: str) -> None:
+  p = (name or "xai").strip().lower()
+  if p not in ("xai", "openai", "groq"):
+    p = "xai"
+  try:
+    _params().put(PROVIDER_KEY, p, block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / PROVIDER_KEY).write_text(p)
+
+
 def configured() -> bool:
+  p = provider()
+  if p == "openai":
+    return bool(openai_key())
+  if p == "groq":
+    return bool(groq_key())
   return bool(api_key())
 
 
@@ -80,8 +155,17 @@ def ready() -> bool:
   return voice_enabled() and configured()
 
 
+def active_key() -> str:
+  p = provider()
+  if p == "openai":
+    return openai_key()
+  if p == "groq":
+    return groq_key()
+  return api_key()
+
+
 def masked_key() -> str:
-  k = api_key()
+  k = active_key()
   if len(k) < 8:
     return ""
   return k[:4] + "…" + k[-4:]
@@ -114,8 +198,45 @@ def topics() -> list[str]:
   return parse_topics(topics_text())
 
 
+def duration() -> int:
+  try:
+    v = int(_as_str(_params().get(DURATION_KEY) or "60") or 60)
+  except Exception:
+    f = PARAM_DIR / DURATION_KEY
+    try:
+      v = int(f.read_text().strip()) if f.exists() else 60
+    except Exception:
+      v = 60
+  return v if v in DURATIONS else 60
+
+
+def set_duration(sec: int) -> None:
+  v = int(sec) if int(sec) in DURATIONS else 60
+  try:
+    _params().put(DURATION_KEY, str(v), block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / DURATION_KEY).write_text(str(v))
+
+
+def wifi_only() -> bool:
+  try:
+    return bool(_params().get_bool(WIFI_KEY))
+  except Exception:
+    f = PARAM_DIR / WIFI_KEY
+    return f.exists() and f.read_text().strip().lower() in ("1", "true", "on", "yes")
+
+
+def set_wifi_only(on: bool) -> None:
+  try:
+    _params().put_bool(WIFI_KEY, bool(on), block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / WIFI_KEY).write_text("1" if on else "0")
+
+
 def set_topics(text: str) -> None:
-  lines = parse_topics(text)
+  lines = parse_topics(text)[:6]
   value = "\n".join(lines)
   PARAM_DIR.mkdir(parents=True, exist_ok=True)
   try:

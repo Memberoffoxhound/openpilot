@@ -13,6 +13,8 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -43,7 +45,7 @@ FILE_ROOTS = (
 )
 SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
-  "XaiApiKey",
+  "XaiApiKey", "OpenaiApiKey", "GroqApiKey",
 }
 WRITE_BOOL = {
   "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
@@ -51,8 +53,10 @@ WRITE_BOOL = {
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode", "GrokVoiceEnabled",
+  "WeatherNewsWifiOnly", "IsLiveStreaming",
 }
-WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode"}
+WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode",
+             "WeatherNewsDuration", "CustomOnroadUi"}
 WRITE_STR = {"WeatherNewsPreview"}  # preview: nice|aggressive
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
@@ -61,6 +65,8 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
   "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled", "WeatherNewsTopics",
+  "WeatherNewsDuration", "WeatherNewsWifiOnly", "GrokProvider", "IsLiveStreaming",
+  "LastGPSPosition", "CustomOnroadUi",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
@@ -70,6 +76,19 @@ MAX_CLIP_SEC = 30
 SEG_RE = re.compile(
   r"^(?:(?P<dongle>[0-9a-fA-F]{16})[|_])?(?P<time>\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2})(?:--(?P<seg>\d+))?$"
 )
+ROUTE_RE = re.compile(r"^(?P<rid>\d{8}--[0-9a-fA-F]+)(?:--(?P<seg>\d+))?$")
+REALDATA = Path("/data/media/0/realdata")
+FONT_PATH = OPENPILOT_DIR / "openpilot/selfdrive/assets/fonts/TESLA.ttf"
+WEBRTC_URL = "http://127.0.0.1:5001/stream"
+WEBRTC_SCHEMA = "http://127.0.0.1:5001/schema?services=deviceState"
+TRIP_PATH = Path("/data/trip_meter.json")
+GPS_CACHE = DATA_DIR / "stats"
+DELOREAN_PATH = Path("/data/delorean_sound")
+GROK_HOWTO = {
+  "xai": "console.x.ai → API keys. Paste an xAI key. Chat is grok-4-fast; spoken voice is Ara TTS.",
+  "openai": "platform.openai.com → API keys. Chat is gpt-4o-mini; spoken voice is OpenAI tts-1 (alloy).",
+  "groq": "console.groq.com → API keys. Chat is Llama 3.3 70B. Groq has no TTS — add an OpenAI key too if you want Ara-style spoken audio.",
+}
 
 _clip_lock = threading.Lock()
 _clip_proc: subprocess.Popen | None = None
@@ -226,6 +245,10 @@ def _read_params() -> dict[str, str]:
           out[k] = str(v)
     except Exception:
       out[k] = ""
+  try:
+    out["Delorean"] = "1" if DELOREAN_PATH.read_text().strip().lower() in ("1", "true") else "0"
+  except Exception:
+    out["Delorean"] = "0"
   return out
 
 
@@ -262,6 +285,13 @@ def _write_params(body: dict) -> None:
         (param_dir / k).write_text(s)
     if k == "GrokVoiceEnabled":
       grok_cfg.set_voice_enabled(str(v) in ("1", "true", "True", "yes"))
+    elif k == "Delorean":
+      DELOREAN_PATH.write_text("1" if str(v) in ("1", "true", "True", "yes") else "0")
+
+
+def _mask(k: str) -> str:
+  k = k or ""
+  return (k[:4] + "…" + k[-4:]) if len(k) >= 8 else ""
 
 
 def _grok_status() -> dict:
@@ -269,18 +299,35 @@ def _grok_status() -> dict:
     "voice_on": grok_cfg.voice_enabled(),
     "configured": grok_cfg.configured(),
     "masked": grok_cfg.masked_key(),
+    "openai_masked": _mask(grok_cfg.openai_key()),
+    "groq_masked": _mask(grok_cfg.groq_key()),
     "url": grok_api.console_url("/grok"),
     "topics": grok_cfg.topics_text(),
+    "suggestions": list(grok_cfg.TOPIC_SUGGESTIONS),
+    "duration": grok_cfg.duration(),
+    "wifi_only": grok_cfg.wifi_only(),
+    "provider": grok_cfg.provider(),
+    "howto": GROK_HOWTO,
   }
 
 
 def _write_grok(body: dict) -> dict:
   if "api_key" in body:
     grok_cfg.set_api_key(str(body.get("api_key") or ""))
+  if "openai_key" in body:
+    grok_cfg.set_openai_key(str(body.get("openai_key") or ""))
+  if "groq_key" in body:
+    grok_cfg.set_groq_key(str(body.get("groq_key") or ""))
+  if "provider" in body:
+    grok_cfg.set_provider(str(body.get("provider") or "xai"))
   if "voice_on" in body:
     grok_cfg.set_voice_enabled(str(body.get("voice_on")) in ("1", "true", "True", "yes", "on"))
   if "topics" in body:
     grok_cfg.set_topics(str(body.get("topics") or ""))
+  if "duration" in body:
+    grok_cfg.set_duration(int(body.get("duration") or 60))
+  if "wifi_only" in body:
+    grok_cfg.set_wifi_only(str(body.get("wifi_only")) in ("1", "true", "True", "yes", "on"))
   return _grok_status()
 
 
@@ -456,27 +503,51 @@ def _clip_gate() -> str | None:
   return None
 
 
+def _route_id(name: str) -> str | None:
+  m = ROUTE_RE.match(name) or SEG_RE.match(name)
+  if not m:
+    return None
+  gd = m.groupdict()
+  return gd.get("rid") or gd.get("time")
+
+
+def _scan_roots() -> list[Path]:
+  roots = []
+  if REALDATA.is_dir():
+    roots.append(REALDATA)
+  if DATA_DIR.is_dir():
+    roots.append(DATA_DIR)
+  return roots
+
+
 def _list_routes() -> list[dict]:
-  if not DATA_DIR.is_dir():
-    return []
   grouped: dict[str, dict] = {}
-  try:
-    entries = list(os.scandir(DATA_DIR))
-  except OSError:
-    return []
-  for ent in entries:
-    if ent.name in ("clips", "screenshots"):
-      continue
-    m = SEG_RE.match(ent.name)
-    if not m:
-      continue
-    rid = m.group("time")
-    g = grouped.setdefault(rid, {
-      "name": rid, "segments": 0, "bytes": 0, "has_qcam": False, "has_fcam": False, "dongle": m.group("dongle") or "",
-    })
-    g["segments"] += 1
+  for root in _scan_roots():
     try:
-      if ent.is_dir(follow_symlinks=False):
+      entries = os.scandir(root)
+    except OSError:
+      continue
+    for ent in entries:
+      if ent.name in ("clips", "screenshots", "realdata", "stats"):
+        continue
+      rid = _route_id(ent.name)
+      if not rid or not ent.is_dir(follow_symlinks=False):
+        continue
+      m = ROUTE_RE.match(ent.name) or SEG_RE.match(ent.name)
+      try:
+        seg = int(m.group("seg")) if m and m.group("seg") is not None else 0
+      except (TypeError, ValueError):
+        seg = 0
+      g = grouped.setdefault(rid, {
+        "name": rid, "segments": 0, "bytes": 0, "has_qcam": False, "has_fcam": False,
+        "dongle": (m.group("dongle") if m and m.groupdict().get("dongle") else "") or "",
+        "mtime": 0, "root": str(root), "segs": [],
+      })
+      g["segments"] += 1
+      g["segs"].append(seg)
+      try:
+        st = ent.stat(follow_symlinks=False)
+        g["mtime"] = max(g["mtime"], int(st.st_mtime))
         for f in os.scandir(ent.path):
           try:
             g["bytes"] += f.stat(follow_symlinks=False).st_size
@@ -486,13 +557,197 @@ def _list_routes() -> list[dict]:
             g["has_qcam"] = True
           if f.name.startswith("fcamera"):
             g["has_fcam"] = True
-    except OSError:
-      pass
+      except OSError:
+        pass
   out = list(grouped.values())
   for g in out:
+    g["segs"] = sorted(set(g["segs"]))
+    g["segments"] = len(g["segs"])
     g["seconds"] = max(60, g["segments"] * 60)
-  out.sort(key=lambda x: x["name"], reverse=True)
-  return out[:80]
+  out.sort(key=lambda x: (x["mtime"], x["name"]), reverse=True)
+  return out[:120]
+
+
+def _dist(meters: float, metric: bool) -> float:
+  m = float(meters or 0)
+  return round(m / 1000.0, 1) if metric else round(m / 1609.344, 1)
+
+
+def _home() -> dict:
+  trip: dict = {}
+  try:
+    trip = json.loads(TRIP_PATH.read_text())
+  except Exception:
+    pass
+  p = _params()
+  metric = bool(p.get_bool("IsMetric"))
+  gps_raw = (p.get("LastGPSPosition") or "").strip()
+  lat = lon = None
+  if "," in gps_raw:
+    try:
+      lat, lon = (float(x) for x in gps_raw.split(",", 1))
+    except Exception:
+      lat = lon = None
+  today_m = float(trip.get("today_m") or 0)
+  today_eng = float(trip.get("today_eng_m") or 0)
+  week_m = float(trip.get("week_m") or 0)
+  week_eng = float(trip.get("week_eng_m") or 0)
+  return {
+    "info": _info(),
+    "metric": metric,
+    "unit": "km" if metric else "mi",
+    "gps": {"lat": lat, "lon": lon},
+    "today": _dist(today_m, metric),
+    "todayEng": _dist(today_eng, metric),
+    "week": _dist(week_m, metric),
+    "weekEng": _dist(week_eng, metric),
+    "trip": _dist(float(trip.get("trip_m") or 0), metric),
+    "last": _dist(float(trip.get("last_m") or 0), metric),
+    "engPct": round(100.0 * week_eng / week_m, 0) if week_m > 50 else 0,
+    "route": trip.get("route") or "",
+    "dayId": trip.get("day_id") or "",
+    "weekId": trip.get("week_id") or "",
+    "engaged": bool(p.get_bool("IsEngaged")),
+    "offroad": bool(p.get_bool("IsOffroad")),
+    "live": bool(p.get_bool("IsLiveStreaming")),
+  }
+
+
+def _seg_dir(rid: str, seg: int) -> Path | None:
+  if _route_id(rid) != rid:
+    return None
+  for root in _scan_roots():
+    p = root / f"{rid}--{seg}"
+    if p.is_dir():
+      return p
+    if seg == 0:
+      p = root / rid
+      if p.is_dir():
+        return p
+  return None
+
+
+def _qcam_path(rid: str, seg: int) -> Path | None:
+  d = _seg_dir(rid, seg)
+  if d is None:
+    return None
+  for name in ("qcamera.ts", "qcamera"):
+    p = d / name
+    if p.is_file():
+      return p
+  return None
+
+
+def _haversine_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+  import math
+  r = 6371000.0
+  p1, p2 = math.radians(a[0]), math.radians(b[0])
+  dphi = math.radians(b[0] - a[0])
+  dl = math.radians(b[1] - a[1])
+  h = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+  return 2 * r * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _route_gps(rid: str) -> dict:
+  if _route_id(rid) != rid:
+    return {"name": rid, "points": [], "error": "bad route"}
+  GPS_CACHE.mkdir(parents=True, exist_ok=True)
+  cache = GPS_CACHE / f"gps_{rid.replace('/', '_')}.json"
+  if cache.is_file():
+    try:
+      return json.loads(cache.read_text())
+    except Exception:
+      pass
+  segs = []
+  for root in _scan_roots():
+    try:
+      for ent in os.scandir(root):
+        m = ROUTE_RE.match(ent.name) or SEG_RE.match(ent.name)
+        if not m:
+          continue
+        ident = m.groupdict().get("rid") or m.groupdict().get("time")
+        if ident != rid:
+          continue
+        try:
+          segs.append(int(m.group("seg") or 0))
+        except (TypeError, ValueError):
+          segs.append(0)
+    except OSError:
+      continue
+  segs = sorted(set(segs))[:12]
+  points: list[list[float]] = []
+  last: tuple[float, float] | None = None
+  t0 = time.monotonic()
+  try:
+    from openpilot.tools.lib.logreader import LogReader
+  except Exception as e:
+    return {"name": rid, "points": [], "error": str(e)[:80]}
+  for seg in segs:
+    if time.monotonic() - t0 > 8:
+      break
+    d = _seg_dir(rid, seg)
+    if d is None:
+      continue
+    qlog = None
+    try:
+      for f in os.scandir(d):
+        if f.name.startswith("qlog"):
+          qlog = Path(f.path)
+          break
+    except OSError:
+      continue
+    if qlog is None:
+      continue
+    try:
+      for msg in LogReader(str(qlog)):
+        if time.monotonic() - t0 > 8:
+          break
+        which = msg.which()
+        if which not in ("gpsLocation", "gpsLocationExternal"):
+          continue
+        g = getattr(msg, which)
+        lat, lon = float(g.latitude), float(g.longitude)
+        if abs(lat) < 1 and abs(lon) < 1:
+          continue
+        pt = (lat, lon)
+        if last is None or _haversine_m(last, pt) >= 22:
+          points.append([round(lat, 6), round(lon, 6)])
+          last = pt
+    except Exception:
+      continue
+  report = {"name": rid, "points": points[:1800]}
+  try:
+    cache.write_text(json.dumps(report))
+  except Exception:
+    pass
+  return report
+
+
+def _webrtc_ready() -> bool:
+  try:
+    with urllib.request.urlopen(WEBRTC_SCHEMA, timeout=1) as r:
+      return r.status == 200
+  except Exception:
+    return False
+
+
+def _webrtc_stream(body: dict) -> tuple[int, dict]:
+  raw = json.dumps(body).encode()
+  req = urllib.request.Request(
+    WEBRTC_URL, data=raw, method="POST",
+    headers={"Content-Type": "application/json", "Content-Length": str(len(raw))},
+  )
+  try:
+    with urllib.request.urlopen(req, timeout=35) as r:
+      return r.status, json.loads(r.read().decode() or "{}")
+  except urllib.error.HTTPError as e:
+    try:
+      payload = json.loads(e.read().decode() or "{}")
+    except Exception:
+      payload = {"error": str(e)}
+    return e.code, payload
+  except Exception as e:
+    return 503, {"error": str(e), "hint": "Turn On-Air on and wait for webrtcd."}
 
 
 def _clip_status() -> dict:
@@ -710,6 +965,42 @@ class Handler(BaseHTTPRequestHandler):
         return
       if path in ("/api/stats", "/api/device/stats"):
         return self._json(200, drive_stats.status())
+      if path in ("/api/home", "/api/device/home"):
+        return self._json(200, _home())
+      if path in ("/api/live", "/api/device/live"):
+        return self._json(200, {
+          "live": bool(_params().get_bool("IsLiveStreaming")),
+          "webrtc": _webrtc_ready(),
+        })
+      if path in ("/api/qcam", "/api/device/qcam"):
+        rid = _route_id((qs.get("route") or [""])[0])
+        if not rid:
+          return self._json(400, {"error": "bad route"})
+        try:
+          seg = int((qs.get("seg") or ["0"])[0])
+        except (TypeError, ValueError):
+          seg = 0
+        target = _qcam_path(rid, seg)
+        if target is None:
+          return self._json(404, {"error": "no qcamera"})
+        return self._send_file(target, "video/mp2t")
+      if path in ("/api/route/gps", "/api/device/route/gps"):
+        rid = _route_id((qs.get("route") or [""])[0])
+        if not rid:
+          return self._json(400, {"error": "bad route"})
+        return self._json(200, _route_gps(rid))
+      if path in ("/font/TESLA.ttf", "/api/font"):
+        if not FONT_PATH.is_file():
+          return self._json(404, {"error": "font missing"})
+        data = FONT_PATH.read_bytes()
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "font/ttf")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
+        return
       if path in ("/api/clip/file", "/api/device/clip/file"):
         st = _clip_status()
         target = _safe_file(st.get("output") or "")
@@ -774,10 +1065,19 @@ class Handler(BaseHTTPRequestHandler):
         if not start or not end:
           start, end = drive_stats.default_range()
         return self._json(200, drive_stats.start(start, end, p.get_bool("IsOffroad")))
+      if path in ("/api/live", "/api/device/live"):
+        body = self._read_json()
+        on = str(body.get("on", True)).lower() in ("1", "true", "yes", "on")
+        p.put_bool("IsLiveStreaming", on, block=True)
+        return self._json(200, {"ok": True, "live": on, "webrtc": _webrtc_ready()})
+      if path in ("/api/webrtc/stream", "/api/device/webrtc/stream"):
+        code, payload = _webrtc_stream(self._read_json())
+        return self._json(code, payload)
       if path in ("/api/grok/test", "/api/device/grok/test"):
         body = self._read_json()
         key = str(body.get("api_key") or "").strip() or None
-        ok, msg = grok_api.test_key(key)
+        provider = str(body.get("provider") or "").strip() or None
+        ok, msg = grok_api.test_key(key, provider)
         return self._json(200, {"ok": ok, "status": msg, **_grok_status()})
       if path in ("/api/weather/preview", "/api/device/weather/preview"):
         body = self._read_json()
@@ -820,10 +1120,49 @@ class Handler(BaseHTTPRequestHandler):
     self._cors()
     self.send_header("Content-Type", ctype)
     self.send_header("Content-Length", str(len(data)))
-    if candidate.name in ("index.html", "app.js"):
+    if candidate.name in ("index.html", "app.js", "app.css"):
       self.send_header("Cache-Control", "no-store")
     self.end_headers()
     self.wfile.write(data)
+
+  def _send_file(self, target: Path, ctype: str) -> None:
+    size = target.stat().st_size
+    start, end, code = 0, size - 1, 200
+    rng = self.headers.get("Range") or ""
+    if rng.startswith("bytes=") and size > 0:
+      spec = rng[6:].split("-", 1)
+      try:
+        if spec[0]:
+          start = max(0, int(spec[0]))
+        if len(spec) > 1 and spec[1]:
+          end = min(size - 1, int(spec[1]))
+        code = 206
+      except ValueError:
+        start, end, code = 0, size - 1, 200
+    if start > end or start >= size:
+      self.send_response(416)
+      self._cors()
+      self.send_header("Content-Range", f"bytes */{size}")
+      self.end_headers()
+      return
+    length = end - start + 1
+    self.send_response(code)
+    self._cors()
+    self.send_header("Content-Type", ctype)
+    self.send_header("Accept-Ranges", "bytes")
+    self.send_header("Content-Length", str(length))
+    if code == 206:
+      self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+    self.end_headers()
+    with target.open("rb") as f:
+      f.seek(start)
+      left = length
+      while left > 0:
+        chunk = f.read(min(65536, left))
+        if not chunk:
+          break
+        self.wfile.write(chunk)
+        left -= len(chunk)
 
 
 def main() -> None:
