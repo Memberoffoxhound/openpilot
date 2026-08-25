@@ -53,6 +53,7 @@ const S = {
   confirm: null,
   map: null,
   mapLine: null,
+  mapMark: null,
   player: null,
   route: null,
   seg: 0,
@@ -102,15 +103,17 @@ function tickClock() {
   $("clock").textContent = `${days[d.getDay()]} ${mons[d.getMonth()]} ${d.getDate()}  ·  ${h}:${mm} ${ap}`;
 }
 
+function hdrVal(v, s) { return (v == null || v === "") ? "—" : v + s; }
 function paintHeader() {
   const h = S.home;
   const unit = (h && h.unit) || "mi";
-  $("hdrStats").innerHTML = h ? `
-    <span><em>TODAY</em>${h.today.toFixed(1)} ${unit}</span>
-    <span><em>WEEK</em>${h.week.toFixed(1)} ${unit}</span>` :
-    `<span><em>TODAY</em>—</span><span><em>WEEK</em>—</span>`;
-  const info = h && h.info;
-  $("drawerFoot").textContent = info ? `${info.branch || "Highland"}  ${info.version || ""}` : "";
+  const i = (h && h.info) || {};
+  $("hdrStats").innerHTML = `
+    <span><em>TODAY</em>${h ? h.today.toFixed(1) : "—"} ${unit}</span>
+    <span><em>WEEK</em>${h ? h.week.toFixed(1) : "—"} ${unit}</span>
+    <span><em>CPU</em>${hdrVal(i.tempC, "°")} · ${hdrVal(i.cpuPct, "%")}</span>
+    <span><em>MEM</em>${hdrVal(i.memPct, "%")}</span>`;
+  $("drawerFoot").textContent = i.branch ? `${i.branch}  ${i.version || ""}` : "";
 }
 
 function setPage(p) {
@@ -154,7 +157,15 @@ function homeHTML() {
       <div class="stat"><div class="k">Week</div><div class="v">${h ? h.week.toFixed(1) : "—"} <span class="tiny">${u}</span></div></div>
       <div class="stat"><div class="k">Engaged</div><div class="v">${h ? h.engPct : "—"}<span class="tiny">%</span></div></div>
     </div>
-    <div class="card mapwrap"><div id="map"></div></div>
+    <div class="card mapwrap">
+      <div id="map"></div>
+      <button type="button" id="mapGps" class="map-gps" aria-label="Center on GPS" title="Center on GPS">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/>
+        </svg>
+      </button>
+    </div>
     <div class="h-row"><p class="h-label">Route player</p><span class="tiny">qcamera.ts on device</span></div>
     <div class="player" id="playerBox" hidden>
       <video id="qcam" playsinline controls></video>
@@ -384,9 +395,10 @@ function filterSuggest(q, taken) {
 function bindPage() {
   if (S.page === "home") {
     $("page").querySelectorAll("[data-route]").forEach(b => b.onclick = () => pickRoute(b.dataset.route));
-    const prev = $("prevSeg"), next = $("nextSeg");
+    const prev = $("prevSeg"), next = $("nextSeg"), gpsBtn = $("mapGps");
     if (prev) prev.onclick = () => stepSeg(-1);
     if (next) next.onclick = () => stepSeg(1);
+    if (gpsBtn) gpsBtn.onclick = () => centerGps();
   }
   if (S.page === "settings") {
     $("page").querySelectorAll(".tog[data-key]").forEach(b => b.onclick = () => toggleParam(b.dataset.key, !b.classList.contains("on")));
@@ -629,19 +641,33 @@ async function preview(mode) {
 
 function teardownHome() {
   if (S.player) { try { S.player.destroy(); } catch (e) {} S.player = null; }
-  if (S.map) { S.map.remove(); S.map = null; S.mapLine = null; }
+  if (S.map) { S.map.remove(); S.map = null; S.mapLine = null; S.mapMark = null; }
+}
+
+function gpsLatLon() {
+  const g = S.home && S.home.gps;
+  if (!g || g.lat == null || g.lon == null) return null;
+  return [g.lat, g.lon];
+}
+
+function centerGps() {
+  const ll = gpsLatLon();
+  if (!S.map || !ll) { say("no GPS"); return; }
+  if (S.mapMark) S.mapMark.setLatLng(ll);
+  else S.mapMark = L.circleMarker(ll, { radius: 6, color: "#fff", weight: 2, fillOpacity: 1 }).addTo(S.map);
+  S.map.setView(ll, Math.max(S.map.getZoom(), 13));
 }
 
 function setupHome() {
   const el = $("map");
   if (!el || S.map || typeof L === "undefined") return;
-  const gps = S.home && S.home.gps;
-  const lat = (gps && gps.lat) || 38.94, lon = (gps && gps.lon) || -90.15;
-  S.map = L.map(el, { zoomControl: false }).setView([lat, lon], gps && gps.lat ? 12 : 4);
+  const ll = gpsLatLon();
+  const lat = ll ? ll[0] : 38.94, lon = ll ? ll[1] : -90.15;
+  S.map = L.map(el, { zoomControl: false, attributionControl: true }).setView([lat, lon], ll ? 12 : 4);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "&copy; OSM &copy; CARTO", maxZoom: 19,
   }).addTo(S.map);
-  if (gps && gps.lat) L.circleMarker([gps.lat, gps.lon], { radius: 6, color: "#fff", weight: 2, fillOpacity: 1 }).addTo(S.map);
+  if (ll) S.mapMark = L.circleMarker(ll, { radius: 6, color: "#fff", weight: 2, fillOpacity: 1 }).addTo(S.map);
   setTimeout(() => S.map && S.map.invalidateSize(), 80);
 }
 
@@ -838,7 +864,7 @@ async function boot() {
     render();
     if (S.page === "shots") loadShots();
   } catch (e) { say("device unreachable"); }
-  setInterval(refreshHome, 8000);
+  setInterval(refreshHome, 3000);
 }
 
 boot();

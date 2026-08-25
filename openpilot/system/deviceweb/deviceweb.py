@@ -136,6 +136,66 @@ def _git(*args: str) -> str:
   return subprocess.check_output(["git", "-C", str(OPENPILOT_DIR), *args], text=True, timeout=45).strip()
 
 
+_cpu_last: tuple[int, int] | None = None
+
+
+def _cpu_pct() -> int | None:
+  global _cpu_last
+  try:
+    with open("/proc/stat") as f:
+      nums = [int(x) for x in f.readline().split()[1:8]]
+    idle, total = nums[3] + nums[4], sum(nums)
+    prev = _cpu_last
+    _cpu_last = (idle, total)
+    if prev is None:
+      time.sleep(0.05)
+      return _cpu_pct()
+    didle, dtot = idle - prev[0], total - prev[1]
+    if dtot <= 0:
+      return 0
+    return max(0, min(100, round(100.0 * (1.0 - didle / dtot))))
+  except Exception:
+    return None
+
+
+def _mem_pct() -> int | None:
+  try:
+    vals: dict[str, int] = {}
+    with open("/proc/meminfo") as f:
+      for line in f:
+        k, rest = line.split(":", 1)
+        vals[k] = int(rest.strip().split()[0])
+        if "MemAvailable" in vals and "MemTotal" in vals:
+          break
+    total, avail = vals.get("MemTotal") or 0, vals.get("MemAvailable") or 0
+    if total <= 0:
+      return None
+    return max(0, min(100, round(100.0 * (1.0 - avail / total))))
+  except Exception:
+    return None
+
+
+def _cpu_temp_c() -> int | None:
+  temps: list[float] = []
+  try:
+    for name in os.listdir("/sys/class/thermal"):
+      if not name.startswith("thermal_zone"):
+        continue
+      base = Path("/sys/class/thermal") / name
+      try:
+        kind = (base / "type").read_text().strip().lower()
+        if "cpu" not in kind:
+          continue
+        temps.append(int((base / "temp").read_text().strip()) / 1000.0)
+      except Exception:
+        continue
+  except Exception:
+    return None
+  if not temps:
+    return None
+  return round(sum(temps) / len(temps))
+
+
 def _info() -> dict:
   p = _params()
   info = {
@@ -148,8 +208,9 @@ def _info() -> dict:
     "serial": p.get("HardwareSerial") or "",
     "offroad": p.get_bool("IsOffroad"),
     "engaged": p.get_bool("IsEngaged"),
-    "tempC": None,
-    "memPct": None,
+    "tempC": _cpu_temp_c(),
+    "cpuPct": _cpu_pct(),
+    "memPct": _mem_pct(),
     "diskFreeGb": None,
     "diskTotalGb": None,
     "network": "unknown",
@@ -159,15 +220,21 @@ def _info() -> dict:
     "updaterNotes": p.get("UpdaterCurrentDescription") or p.get("UpdaterNewDescription") or "",
   }
   try:
-    from openpilot.cereal import messaging, log
+    from openpilot.cereal import messaging
     sm = messaging.SubMaster(["deviceState"])
-    sm.update(0)
+    sm.update(80)
     if sm.updated["deviceState"] or sm.valid["deviceState"]:
       ds = sm["deviceState"]
       temps = list(ds.cpuTempC) if ds.cpuTempC else []
       if temps:
         info["tempC"] = round(sum(temps) / len(temps))
-      info["memPct"] = int(ds.memoryUsagePercent)
+      try:
+        info["memPct"] = int(ds.memoryUsagePercent)
+      except Exception:
+        pass
+      cores = list(ds.cpuUsagePercent) if ds.cpuUsagePercent else []
+      if cores:
+        info["cpuPct"] = max(0, min(100, round(sum(cores) / len(cores))))
       nt = int(ds.networkType)
       names = {0: "none", 1: "wifi", 2: "cell2g", 3: "cell3g", 4: "cell4g", 5: "cell5g"}
       info["network"] = names.get(nt, "net")
