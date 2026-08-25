@@ -12,8 +12,9 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 from openpilot.selfdrive.weather_news import mode as wx
+from openpilot.selfdrive.weather_news import voices as wv
 from openpilot.selfdrive.weather_news.news_bites import get_news_cycle
-from openpilot.selfdrive.weather_news.voice import speak_lines
+from openpilot.selfdrive.weather_news.voice import speak_lines, ready as voice_ready, ensure as voice_ensure
 from openpilot.selfdrive.weather_news.weather_lady import generate_forecast_script, generate_overnight_note, enjoy_your_drive, pay_attention
 
 ONROAD_DELAY_S = 10.0
@@ -60,6 +61,8 @@ def poll(params: Params, sm: messaging.SubMaster, seconds: float, *, need_onroad
   while time.time() < deadline:
     sm.update(0)
     if peek_preview(params):
+      return False
+    if not voice_ready(wv.get(params)):
       return False
     if need_onroad and not onroad(sm):
       return False
@@ -138,7 +141,10 @@ def build_lines(params: Params, aggressive: bool, loc: tuple[float, float, str] 
 
 def run_cycle(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
   lines = build_lines(params, aggressive, loc)
-  ok = speak_lines(lines, aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
+  ok = speak_lines(
+    lines, aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
+    voice=wv.get(params),
+  )
   _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
   time.sleep(1.5 if ok else 2.5)
   _put(params, "WeatherNewsStatus", "")
@@ -160,6 +166,21 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
   return True
 
 
+def handle_voice_setup(params: Params) -> bool:
+  vid = wv.get(params)
+  if voice_ready(vid):
+    return False
+  _put(params, "WeatherNewsStatus", "queued")
+  ok = voice_ensure(vid, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
+  _put(params, "WeatherNewsStatus", "ready" if ok else "failed")
+  time.sleep(1.2 if ok else 2.5)
+  if not ok:
+    cloudlog.warning(f"weather_news: voice {vid} install failed, reverting to {wv.DEFAULT}")
+    wv.set(wv.DEFAULT, params)
+  _put(params, "WeatherNewsStatus", "")
+  return True
+
+
 def main() -> None:
   cloudlog.info("weather_news: start")
   params = Params()
@@ -169,6 +190,8 @@ def main() -> None:
   while True:
     try:
       sm.update(0)
+      if handle_voice_setup(params):
+        continue
       if handle_preview(params, sm):
         continue
 

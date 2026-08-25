@@ -50,7 +50,7 @@ WRITE_BOOL = {
   "ShowDebugInfo", "JoystickDebugMode",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode"}
-WRITE_STR = {"WeatherNewsPreview"}  # nice | aggressive | ""
+WRITE_STR = {"WeatherNewsPreview", "WeatherNewsVoice"}  # preview: nice|aggressive; voice: gps|high|human
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
 READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
@@ -252,6 +252,8 @@ def _write_params(body: dict) -> None:
     elif k in WRITE_STR:
       s = str(v).strip().lower()
       if k == "WeatherNewsPreview" and s not in ("", "nice", "aggressive"):
+        continue
+      if k == "WeatherNewsVoice" and s not in ("gps", "high", "human"):
         continue
       try:
         p.put(k, s, block=True)

@@ -5,6 +5,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   compass_size_label, next_compass_size,
 )
 from openpilot.selfdrive.weather_news import mode as wx
+from openpilot.selfdrive.weather_news import voices as wv
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -44,6 +45,9 @@ DESCRIPTIONS = {
   ),
   "WeatherNewsMode": tr_noop(
     "First drive of the day: local forecast plus two news bites. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
+  ),
+  "WeatherNewsVoice": tr_noop(
+    "How human the speaker sounds. gps 3/10, high 5/10, human 8/10. Tapping an uninstalled voice downloads it."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -161,6 +165,15 @@ class TogglesLayout(Widget):
       icon="speed_limit.png",
     )
 
+    self._weather_voice_setting = multiple_button_item(
+      lambda: tr("Theme: Voice"),
+      lambda: tr(wv.BLURB[wv.get(self._params)]),
+      buttons=[lambda: tr("gps · 3/10"), lambda: tr("high · 5/10"), lambda: tr("human · 8/10")],
+      button_width=200,
+      callback=self._set_weather_voice,
+      selected_index=wv.IDS.index(wv.get(self._params)),
+    )
+
     self._weather_preview_setting = button_item(
       lambda: tr("Theme: Weather Preview"),
       lambda: tr("Preview"),
@@ -205,6 +218,7 @@ class TogglesLayout(Widget):
         self._toggles["LaneColor"] = self._lane_color_setting
         self._toggles["CompassSize"] = self._compass_size_setting
         self._toggles["WeatherNewsMode"] = self._weather_mode_setting
+        self._toggles["WeatherNewsVoice"] = self._weather_voice_setting
         self._toggles["WeatherNewsPreview"] = self._weather_preview_setting
 
     self._update_experimental_mode_icon()
@@ -225,6 +239,12 @@ class TogglesLayout(Widget):
       self._weather_preview_setting.action_item.set_enabled(
         lambda: wx.get(self._params) != wx.OFF and not wx.status_text(self._params)
       )
+    vid = wv.get(self._params)
+    if getattr(self, "_wx_voice", None) != (vid, st):
+      self._wx_voice = (vid, st)
+      self._weather_voice_setting.action_item.set_selected_button(wv.IDS.index(vid))
+      desc = st if st else wv.BLURB[vid]
+      self._weather_voice_setting.set_description(lambda d=desc: tr(d))
 
   def show_event(self):
     super().show_event()
@@ -288,6 +308,7 @@ class TogglesLayout(Widget):
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
     self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
+    self._weather_voice_setting.action_item.set_selected_button(wv.IDS.index(wv.get(self._params)))
     st = wx.status_text(self._params)
     self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
     self._weather_preview_setting.action_item.set_enabled(
@@ -365,6 +386,9 @@ class TogglesLayout(Widget):
     nxt = next_compass_size(self._params)
     self._params.put("CompassSize", nxt, block=True)
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
+
+  def _set_weather_voice(self, button_index: int):
+    wv.set(wv.IDS[max(0, min(button_index, len(wv.IDS) - 1))], self._params)
 
   def _set_weather_news_mode(self, button_index: int):
     if button_index == wx.AGGRESSIVE and wx.get(self._params) != wx.AGGRESSIVE:

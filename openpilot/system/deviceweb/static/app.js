@@ -13,6 +13,7 @@ const GROUPS = [
   ]},
   {id:"weather", title:"Weather & News", items:[
     {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites. Unhinged is NSFW.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]], confirmValue:"2", confirm:"NSFW. Explicit language through the speaker. Not for kids. Not for passengers who didn't ask."},
+    {key:"WeatherNewsVoice", label:"Voice", type:"select", desc:"How human it sounds. gps 3/10 · high 5/10 · human 8/10. Tapping an uninstalled voice downloads it.", options:[["gps","gps · 3/10 GPS"],["high","high · 5/10 news"],["human","human · 8/10 person"]]},
   ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
@@ -199,7 +200,7 @@ function settingsView() {
       let extra = "";
       if (g.id === "weather") {
         extra = `<div class="card pad" style="margin-top:12px">
-          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off. First tap after an update may download the voice (~110 MB, once).</p>
+          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off. First tap of a new voice downloads it (gps/high ~60–110 MB, human ~150 MB, once).</p>
           <div class="btns">
             <button class="btn ${wxLive() && !wxStatus()?"primary":""}" id="wxPreview" ${wxLive() && !wxStatus()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
           </div>
@@ -210,7 +211,11 @@ function settingsView() {
   </div>`;
 }
 function setRow(it) {
-  const val = params[it.key] ?? (it.type==="select" ? (it.key==="WeatherNewsMode" ? "1" : it.options[0][0]) : "0");
+  let fallback = "0";
+  if (it.type === "select") {
+    fallback = it.key === "WeatherNewsMode" ? "1" : (it.key === "WeatherNewsVoice" ? "high" : it.options[0][0]);
+  }
+  const val = params[it.key] ?? fallback;
   const locked = !!it.deviceOnly;
   const ctl = it.type==="bool"
     ? `<button class="tog ${val==="1"?"on":""}" data-k="${it.key}" data-n="${val==="1"?"0":"1"}" ${locked?"disabled":""}><i></i></button>`

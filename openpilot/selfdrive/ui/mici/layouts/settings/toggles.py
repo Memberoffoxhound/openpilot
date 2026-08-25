@@ -18,6 +18,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   ludicrous_files_ok,
 )
 from openpilot.selfdrive.weather_news import mode as wx
+from openpilot.selfdrive.weather_news import voices as wv
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -136,6 +137,35 @@ class WeatherNewsCycle(BigMultiToggle):
     wx.set(idx, self._params)
     if self._on_change:
       self._on_change()
+
+
+class WeatherNewsVoiceCycle(BigMultiToggle):
+  def __init__(self):
+    super().__init__("voice", list(wv.LABELS), select_callback=self._on_select)
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    st = wx.status_text(self._params)
+    disp = wv.display(params=self._params)
+    if not st and self.value != disp:
+      self.set_value(disp)
+    elif st:
+      if self.value != disp:
+        self.set_value(disp)
+      self._sub_label.set_text(st)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _update_state(self):
+    super()._update_state()
+    self.refresh()
+
+  def _on_select(self, value: str):
+    wv.set(wv.id_from_display(value), self._params)
+    self.refresh()
 
 
 class WeatherNewsPreview(BigButton):
@@ -318,6 +348,7 @@ class ThemeLayoutMici(NavScroller):
     self._compass_size = CompassSizeCycle()
     self._wx_preview = WeatherNewsPreview()
     self._wx_mode = WeatherNewsCycle(on_change=self._wx_preview.refresh)
+    self._wx_voice = WeatherNewsVoiceCycle()
     self._lane_color = LaneColorCycle()
     self._ludicrous = LudicrousCycle()
     self._ludi_preview = LudicrousPreview()
@@ -327,7 +358,7 @@ class ThemeLayoutMici(NavScroller):
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
-      self._wx_mode, self._wx_preview,
+      self._wx_mode, self._wx_voice, self._wx_preview,
       self._ludicrous, self._ludi_preview,
       self._buckle, self._buckle_preview,
       self._delorean, self._delorean_preview,
