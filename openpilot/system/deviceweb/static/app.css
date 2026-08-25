@@ -271,11 +271,11 @@ select, .field input, .field textarea {
 
 .toast {
   position: fixed; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom));
-  z-index: 70; background: #fff; color: #000; border-radius: 10px;
+  z-index: 95; background: #fff; color: #000; border-radius: 10px;
   padding: 12px 14px; font-size: 14px;
 }
 .modal {
-  position: fixed; inset: 0; z-index: 75; background: #000b;
+  position: fixed; inset: 0; z-index: 90; background: #000b;
   display: grid; place-items: end; padding: 16px;
 }
 .sheet {
@@ -297,4 +297,55 @@ select, .field input, .field textarea {
 }
 @media (min-width: 1100px) {
   .top { grid-template-columns: 44px 1fr auto; }
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.shot {
+  position: relative; display: block; width: 100%;
+  border: 1px solid var(--line); border-radius: 8px;
+  overflow: hidden; background: #08080a; text-align: left; padding: 0;
+}
+.shot img {
+  width: 100%; height: 110px; object-fit: cover; display: block; background: #111;
+}
+.shot figcaption {
+  display: flex; justify-content: space-between; gap: 6px;
+  padding: 7px 8px; font-size: 11px; color: var(--dim);
+}
+.shot figcaption b { font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot.sel { outline: 2px solid #fff; outline-offset: -2px; }
+.shot .mark {
+  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px;
+  border-radius: 50%; border: 1px solid #fff; background: #0008;
+}
+.shot.sel .mark { background: #fff; }
+.shot.sel .mark::after {
+  content: ""; position: absolute; left: 6px; top: 3px;
+  width: 6px; height: 11px; border: solid #000; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.lb {
+  position: fixed; inset: 0; z-index: 80; background: #000e;
+  display: flex; flex-direction: column;
+}
+.lb-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: env(safe-area-inset-top) 12px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.lb-bar b { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-stage {
+  flex: 1; display: grid; place-items: center; min-height: 0;
+  padding: 8px 8px calc(12px + env(safe-area-inset-bottom));
+}
+.lb-stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.day-label { margin: 4px 0 2px; }
+
+@media (min-width: 720px) {
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .shot img { height: 140px; }
 }

@@ -6,6 +6,7 @@ import pyray as rl
 
 SHOT_DIR = "/data/media/0/screenshots"
 SHOT_PLAY = "/data/screenshot_play"
+SHOT_REQ = "/data/screenshot_request"
 HOLD_S = 3.0
 MOVE_PX = 28
 
@@ -19,6 +20,18 @@ class ScreenShotter:
     self.flash = 0.0
 
   def held(self, events) -> bool:
+    # LAN console can drop this file to grab the current frame.
+    try:
+      if os.path.isfile(SHOT_REQ):
+        os.remove(SHOT_REQ)
+        self.pending = True
+        try:
+          open(SHOT_PLAY, "w").write("1")
+        except OSError:
+          pass
+        return True
+    except OSError:
+      pass
     for e in events:
       if e.left_pressed:
         self._t = time.monotonic()

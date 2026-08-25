@@ -1,5 +1,5 @@
-/* S3XYPilot LAN console — mobile-first, 4 pages */
-const PAGES = ["home", "settings", "live", "grok"];
+/* S3XYPilot LAN console — mobile-first */
+const PAGES = ["home", "settings", "live", "grok", "shots"];
 const CAMS = [
   { id: "wideRoad", label: "E CAM" },
   { id: "road", label: "F CAM" },
@@ -62,6 +62,10 @@ const S = {
   layout: "triple",
   pipCorner: "br",
   singleCam: "road",
+  shots: [],
+  shotView: null,
+  shotPick: false,
+  shotSel: {},
 };
 
 if (!PAGES.includes(S.page)) S.page = "home";
@@ -73,6 +77,7 @@ async function api(url, opt) {
 }
 function $(id) { return document.getElementById(id); }
 function bytes(n) {
+  if (n < 1024) return n + " B";
   if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
   if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
   return (n / 1073741824).toFixed(1) + " GB";
@@ -112,11 +117,13 @@ function setPage(p) {
   if (!PAGES.includes(p)) p = "home";
   if (S.page === "live" && p !== "live") hangup();
   if (S.page === "home" && p !== "home") teardownHome();
+  if (p !== "shots") { S.shotView = null; S.shotPick = false; document.onkeydown = null; }
   S.page = p;
   location.hash = p;
   document.querySelectorAll("#drawer nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
   closeMenu();
   render();
+  if (p === "shots") loadShots();
 }
 
 function openMenu() { $("drawer").classList.add("open"); $("scrim").hidden = false; }
@@ -127,7 +134,8 @@ function render() {
   if (S.page === "home") root.innerHTML = homeHTML();
   else if (S.page === "settings") root.innerHTML = settingsHTML();
   else if (S.page === "live") root.innerHTML = liveHTML();
-  else root.innerHTML = grokHTML();
+  else if (S.page === "grok") root.innerHTML = grokHTML();
+  else root.innerHTML = shotsHTML();
   bindPage();
   if (S.page === "home") setupHome();
   if (S.page === "live") bindVideos();
@@ -293,6 +301,77 @@ function grokHTML() {
   </div>` + (S.confirm ? confirmHTML() : "");
 }
 
+function shotUrl(name) { return "/api/screenshots/raw?name=" + encodeURIComponent(name); }
+function shotDay(s) {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(s.name || "");
+  if (m) return m[1];
+  return s.mtime ? new Date(s.mtime * 1000).toISOString().slice(0, 10) : "unknown";
+}
+function shotWhen(s) {
+  const m = /^(\d{4}-\d{2}-\d{2})--(\d{2})-(\d{2})-(\d{2})/.exec(s.name || "");
+  if (m) return `${m[2]}:${m[3]}:${m[4]}`;
+  return s.mtime ? new Date(s.mtime * 1000).toLocaleTimeString() : "";
+}
+function shotGroups() {
+  const g = [];
+  const map = {};
+  for (const s of S.shots) {
+    const d = shotDay(s);
+    if (!map[d]) { map[d] = []; g.push([d, map[d]]); }
+    map[d].push(s);
+  }
+  return g;
+}
+function selectedNames() { return Object.keys(S.shotSel).filter(n => S.shotSel[n]); }
+
+function shotsHTML() {
+  const n = S.shots.length;
+  const bytesTotal = S.shots.reduce((a, s) => a + (s.size || 0), 0);
+  const picked = selectedNames();
+  const groups = shotGroups();
+  return `<div class="stack">
+    <div class="h-row"><p class="h-label">Screenshots</p>
+      <span class="badge">${n} · ${bytes(bytesTotal)}</span></div>
+    <div class="live-tools">
+      <button class="btn primary" id="shotCap">Capture</button>
+      <button class="btn" id="shotRefresh">Refresh</button>
+      <button class="btn${S.shotPick ? " on" : ""}" id="shotPick">${S.shotPick ? "Done" : "Select"}</button>
+      ${S.shotPick && picked.length ? `<button class="btn live" id="shotDel">Delete ${picked.length}</button>` : ""}
+    </div>
+    <p class="tiny">Hold the display 3s, or Capture here. PNGs in /data/media/0/screenshots.</p>
+    ${n ? groups.map(([day, items]) => `
+      <p class="h-label day-label">${day}</p>
+      <div class="gallery">${items.map(shotTile).join("")}</div>`).join("") :
+      `<div class="card"><div class="set"><div class="meta"><b>No screenshots yet</b><p>Hold the C4 display for 3 seconds, or tap Capture.</p></div></div></div>`}
+  </div>` + (S.shotView ? lightboxHTML() : "") + (S.confirm ? confirmHTML() : "");
+}
+
+function shotTile(s) {
+  const on = !!S.shotSel[s.name];
+  return `<button class="shot${on ? " sel" : ""}" data-shot="${esc(s.name)}">
+    ${S.shotPick ? `<span class="mark"></span>` : ""}
+    <img src="${shotUrl(s.name)}" alt="" loading="lazy"/>
+    <figcaption><b>${shotWhen(s)}</b><em>${bytes(s.size)}</em></figcaption>
+  </button>`;
+}
+
+function lightboxHTML() {
+  const i = S.shots.findIndex(s => s.name === S.shotView);
+  const s = i >= 0 ? S.shots[i] : null;
+  if (!s) return "";
+  return `<div class="lb" id="lightbox">
+    <div class="lb-bar">
+      <button class="btn" id="lbClose">Close</button>
+      <b>${esc(s.name)}</b>
+      <button class="btn" id="lbPrev" ${i <= 0 ? "disabled" : ""}>◀</button>
+      <button class="btn" id="lbNext" ${i >= S.shots.length - 1 ? "disabled" : ""}>▶</button>
+      <a class="btn" id="lbDl" href="${shotUrl(s.name)}" download="${esc(s.name)}">Save</a>
+      <button class="btn live" id="lbDel">Delete</button>
+    </div>
+    <div class="lb-stage"><img src="${shotUrl(s.name)}" alt="${esc(s.name)}"/></div>
+  </div>`;
+}
+
 function esc(s) { return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 function filterSuggest(q, taken) {
@@ -355,6 +434,102 @@ function bindPage() {
     $("previewUnh").onclick = () => preview("unhinged");
     bindConfirm();
   }
+  if (S.page === "shots") {
+    $("shotCap").onclick = () => captureShot();
+    $("shotRefresh").onclick = () => loadShots();
+    $("shotPick").onclick = () => { S.shotPick = !S.shotPick; if (!S.shotPick) S.shotSel = {}; render(); };
+    const del = $("shotDel");
+    if (del) del.onclick = () => deleteShots(selectedNames());
+    $("page").querySelectorAll("[data-shot]").forEach(b => b.onclick = () => tapShot(b.dataset.shot));
+    bindLightbox();
+    bindConfirm();
+  }
+}
+
+function bindLightbox() {
+  if (!$("lightbox")) return;
+  $("lbClose").onclick = () => { S.shotView = null; render(); };
+  $("lbPrev").onclick = () => stepShot(-1);
+  $("lbNext").onclick = () => stepShot(1);
+  $("lbDel").onclick = () => deleteShots([S.shotView]);
+  const stage = document.querySelector(".lb-stage");
+  let x0 = null;
+  stage.ontouchstart = (e) => { x0 = e.changedTouches[0].clientX; };
+  stage.ontouchend = (e) => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (dx > 50) stepShot(-1);
+    else if (dx < -50) stepShot(1);
+  };
+  document.onkeydown = (e) => {
+    if (S.page !== "shots" || !S.shotView) return;
+    if (e.key === "Escape") { S.shotView = null; render(); }
+    if (e.key === "ArrowLeft") stepShot(-1);
+    if (e.key === "ArrowRight") stepShot(1);
+  };
+}
+
+function tapShot(name) {
+  if (S.shotPick) {
+    S.shotSel[name] = !S.shotSel[name];
+    render();
+    return;
+  }
+  S.shotView = name;
+  render();
+}
+
+function stepShot(d) {
+  const i = S.shots.findIndex(s => s.name === S.shotView);
+  const n = i + d;
+  if (n < 0 || n >= S.shots.length) return;
+  S.shotView = S.shots[n].name;
+  render();
+}
+
+async function loadShots() {
+  try {
+    const r = await api("/api/screenshots");
+    S.shots = r.items || [];
+    if (S.shotView && !S.shots.some(s => s.name === S.shotView)) S.shotView = null;
+  } catch (e) { say(e.message || "shots failed"); S.shots = []; }
+  if (S.page === "shots") render();
+}
+
+async function captureShot() {
+  try {
+    await api("/api/screenshots/capture", { method: "POST" });
+    say("capturing…");
+    const before = new Set(S.shots.map(s => s.name));
+    for (let i = 0; i < 16; i++) {
+      await new Promise(r => setTimeout(r, 400));
+      await loadShots();
+      const neu = S.shots.find(s => !before.has(s.name));
+      if (neu) { say("saved"); S.shotView = neu.name; render(); return; }
+    }
+    say("no new shot — is the UI running?");
+  } catch (e) { say(e.message); }
+}
+
+async function deleteShots(names) {
+  names = (names || []).filter(Boolean);
+  if (!names.length) return;
+  const go = async () => {
+    S.confirm = null;
+    try {
+      await api("/api/screenshots/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ names }),
+      });
+      names.forEach(n => delete S.shotSel[n]);
+      if (names.includes(S.shotView)) S.shotView = null;
+      say("deleted " + names.length);
+      await loadShots();
+    } catch (e) { say(e.message); }
+  };
+  S.confirm = { msg: `Delete ${names.length} screenshot${names.length > 1 ? "s" : ""}?`, go };
+  render();
 }
 
 function bindConfirm() {
@@ -661,6 +836,7 @@ async function boot() {
     S.liveOn = !!live.live; S.webrtc = !!live.webrtc;
     paintHeader();
     render();
+    if (S.page === "shots") loadShots();
   } catch (e) { say("device unreachable"); }
   setInterval(refreshHome, 8000);
 }

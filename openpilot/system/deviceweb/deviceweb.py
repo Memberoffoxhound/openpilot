@@ -876,7 +876,45 @@ def _list_shots() -> list[dict]:
     except OSError:
       continue
     items.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
-  return items[:80]
+  return items[:250]
+
+
+SHOT_REQ = Path("/data/screenshot_request")
+SHOT_PLAY = Path("/data/screenshot_play")
+
+
+def _shot_name(raw: str) -> str | None:
+  name = Path(str(raw or "")).name
+  if not name.endswith(".png"):
+    return None
+  return name
+
+
+def _delete_shots(names: list) -> dict:
+  deleted: list[str] = []
+  for raw in names:
+    name = _shot_name(raw)
+    if not name:
+      continue
+    target = SHOT_DIR / name
+    if not target.is_file():
+      continue
+    try:
+      target.unlink()
+      deleted.append(name)
+    except OSError:
+      pass
+  return {"ok": True, "deleted": deleted}
+
+
+def _request_shot() -> dict:
+  # UI ScreenShotter watches this flag and writes the PNG.
+  SHOT_REQ.write_text("1")
+  try:
+    SHOT_PLAY.write_text("1")
+  except OSError:
+    pass
+  return {"ok": True}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -887,7 +925,7 @@ class Handler(BaseHTTPRequestHandler):
 
   def _cors(self) -> None:
     self.send_header("Access-Control-Allow-Origin", "*")
-    self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+    self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     self.send_header("Access-Control-Allow-Headers", "Content-Type")
     self.send_header("Cache-Control", "no-store")
 
@@ -1036,6 +1074,20 @@ class Handler(BaseHTTPRequestHandler):
       cloudlog.exception("deviceweb PUT")
       self._json(500, {"error": traceback.format_exc().splitlines()[-1]})
 
+  def do_DELETE(self) -> None:
+    parsed = urlparse(self.path)
+    path = unquote(parsed.path)
+    try:
+      if path in ("/api/screenshots", "/api/device/screenshots"):
+        names = self._read_json().get("names") or []
+        if isinstance(names, str):
+          names = [names]
+        return self._json(200, _delete_shots(list(names)))
+      self._json(404, {"error": "not found"})
+    except Exception:
+      cloudlog.exception("deviceweb DELETE")
+      self._json(500, {"error": traceback.format_exc().splitlines()[-1]})
+
   def do_POST(self) -> None:
     parsed = urlparse(self.path)
     path = unquote(parsed.path)
@@ -1094,6 +1146,13 @@ class Handler(BaseHTTPRequestHandler):
           mode = "aggressive" if cur == 2 else "nice"
         _write_params({"WeatherNewsPreview": mode})
         return self._json(200, {"ok": True, "mode": mode})
+      if path in ("/api/screenshots/capture", "/api/device/screenshots/capture"):
+        return self._json(200, _request_shot())
+      if path in ("/api/screenshots/delete", "/api/device/screenshots/delete"):
+        names = self._read_json().get("names") or []
+        if isinstance(names, str):
+          names = [names]
+        return self._json(200, _delete_shots(list(names)))
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb POST")
