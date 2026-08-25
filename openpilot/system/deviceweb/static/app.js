@@ -40,7 +40,7 @@ const GROUPS = [
 ];
 const TABS = [["status","Status"],["settings","Settings"],["grok","Grok"],["files","Files"],["shots","Shots"],["clips","Clips"],["stats","Stats"],["updates","Updates"]];
 let tab = (location.pathname.replace(/\/+$/,"") === "/grok" || location.hash === "#grok") ? "grok" : "status";
-let info = {}, params = {}, grok = {voice_on:false, configured:false, masked:"", url:""}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
+let info = {}, params = {}, grok = {voice_on:false, configured:false, masked:"", url:"", topics:"npr"}, toast = null, path = "", files = [], q = "", confirmItem = null, busy = false;
 let grokKeyDraft = "";
 let routes = [], clipJob = {state:"idle"}, clipTimer = null;
 let updateJob = {state:"idle", percent:0, status:"", eta:null}, updateTimer = null;
@@ -107,6 +107,7 @@ function wxStatus() { return String(params.WeatherNewsStatus || "").trim(); }
 function grokOn() { return params.GrokVoiceEnabled === "1" || grok.voice_on; }
 function grokView() {
   const keyed = grok.configured;
+  const topics = grok.topics || "npr";
   return `<div class="wrap">
     <div class="warn">Paste an xAI API key from console.x.ai. It stays on this device and is never logged. This page is LAN-only, no password.</div>
     <div class="card">
@@ -115,21 +116,27 @@ function grokView() {
         <button class="tog ${grokOn()?"on":""}" data-k="GrokVoiceEnabled" data-n="${grokOn()?"0":"1"}"><i></i></button>
       </div>
       <div class="set">
-        <div class="meta"><b>Weather & news</b><p>First drive of the local day. Unhinged is NSFW.</p></div>
+        <div class="meta"><b>Weather & news</b><p>First drive of the local day. Unhinged is NSFW. Weather is always included.</p></div>
         <select data-k="WeatherNewsMode">${[["0","Off"],["1","Nice"],["2","Unhinged"]].map(([v,l]) => `<option value="${v}" ${String(wxMode())===v?"selected":""}>${l}</option>`).join("")}</select>
       </div>
       <div class="field">
         <label>xAI API key</label>
         <input id="grokKey" type="password" autocomplete="off" placeholder="${keyed ? (grok.masked || "saved") : "xai-…"}" value="${esc(grokKeyDraft)}"/>
       </div>
+      <div class="field">
+        <label>Daily topics</label>
+        <textarea id="grokTopics" rows="6" placeholder="npr">${esc(topics)}</textarea>
+        <p class="tiny">One per line. Default is NPR world news. Aliases: npr, cnn, comma, reddit, reddit:commaai, x, x:ApteraMotors. Anything else is a Google News search (e.g. Aptera Motors).</p>
+      </div>
     </div>
     <div class="btns">
       <button class="btn primary" id="grokSave">Save key</button>
+      <button class="btn" id="grokTopicsSave">Save topics</button>
       <button class="btn" id="grokTest">Test</button>
       <button class="btn" id="grokClear">Clear key</button>
       <button class="btn ${wxLive() && grokOn()?"primary":""}" id="wxPreview" ${wxLive() && grokOn()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
     </div>
-    <p class="tiny">${keyed ? "Key on device: "+esc(grok.masked) : "No key yet. Theme → grok voice → scan QR lands here."}</p>
+    <p class="tiny">${keyed ? "Key on device: "+esc(grok.masked) : "No key yet. Theme → grok voice → scan QR lands here."} Tap the home Grok mark for a full on-demand briefing (test hook).</p>
   </div>`;
 }
 async function loadFiles() {
@@ -435,6 +442,13 @@ function bind() {
     grokKeyDraft = "";
     params.GrokVoiceEnabled = "1";
     say(grok.configured ? "Key saved." : "Save failed");
+    render();
+  };
+  const grokTopicsSave = document.getElementById("grokTopicsSave");
+  if (grokTopicsSave) grokTopicsSave.onclick = async () => {
+    const topics = (document.getElementById("grokTopics") || {}).value || "npr";
+    grok = await api("/api/grok", {method:"PUT", headers:{"content-type":"application/json"}, body: JSON.stringify({topics})});
+    say("Topics saved");
     render();
   };
   const grokTest = document.getElementById("grokTest");

@@ -138,6 +138,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"Version", {PERSISTENT, STRING}},
     {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off 1=nice 2=aggressive
+    {"WeatherNewsTopics", {PERSISTENT, STRING, "npr"}},
+    {"WeatherNewsOnDemand", {CLEAR_ON_MANAGER_START, BOOL, "0"}},
     {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},  // "nice" | "aggressive"
     {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
     {"WeatherNewsStatus", {CLEAR_ON_MANAGER_START, STRING}},  // button text while working

@@ -60,7 +60,7 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
-  "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled",
+  "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled", "WeatherNewsTopics",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
@@ -270,6 +270,7 @@ def _grok_status() -> dict:
     "configured": grok_cfg.configured(),
     "masked": grok_cfg.masked_key(),
     "url": grok_api.console_url("/grok"),
+    "topics": grok_cfg.topics_text(),
   }
 
 
@@ -278,6 +279,8 @@ def _write_grok(body: dict) -> dict:
     grok_cfg.set_api_key(str(body.get("api_key") or ""))
   if "voice_on" in body:
     grok_cfg.set_voice_enabled(str(body.get("voice_on")) in ("1", "true", "True", "yes", "on"))
+  if "topics" in body:
+    grok_cfg.set_topics(str(body.get("topics") or ""))
   return _grok_status()
 
 

@@ -59,7 +59,7 @@ def poll(params: Params, sm: messaging.SubMaster, seconds: float, *, need_onroad
   deadline = time.time() + seconds
   while time.time() < deadline:
     sm.update(0)
-    if peek_preview(params):
+    if peek_preview(params) or grok_cfg.ondemand():
       return False
     if need_onroad and not onroad(sm):
       return False
@@ -147,7 +147,7 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   _put(params, "WeatherNewsStatus", "fetching weather")
   day = fetch_weather(loc[0], loc[1]) if loc else None
   _put(params, "WeatherNewsStatus", "getting news")
-  news = fetch_rss_items(max_items=6)
+  news = fetch_rss_items(grok_cfg.topics())
   name = loc[2] if loc else "your area"
 
   _put(params, "WeatherNewsStatus", "asking grok")
@@ -198,6 +198,26 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
   return True
 
 
+def handle_ondemand(params: Params, sm: messaging.SubMaster) -> bool:
+  if not grok_cfg.ondemand():
+    return False
+  grok_cfg.clear_ondemand()
+  if not grok_cfg.voice_enabled():
+    _put(params, "WeatherNewsStatus", "enable grok")
+    time.sleep(1.0)
+    _put(params, "WeatherNewsStatus", "")
+    return True
+  if not grok_cfg.configured():
+    _put(params, "WeatherNewsStatus", "scan QR")
+    time.sleep(1.2)
+    _put(params, "WeatherNewsStatus", "")
+    return True
+  m = wx.get(params)
+  ok = build_and_speak(params, m == wx.AGGRESSIVE, location(sm, params))
+  cloudlog.info(f"weather_news: ondemand queued={ok}")
+  return True
+
+
 def main() -> None:
   cloudlog.info("weather_news: start")
   params = Params()
@@ -208,6 +228,8 @@ def main() -> None:
     try:
       sm.update(0)
       if handle_preview(params, sm):
+        continue
+      if handle_ondemand(params, sm):
         continue
 
       m = wx.get(params)

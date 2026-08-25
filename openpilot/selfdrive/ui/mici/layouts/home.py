@@ -208,6 +208,7 @@ class MiciHomeLayout(Widget):
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
     self._grok_icon = IconWidget("icons_mici/grok.png", (50, 50), opacity=0.9)
+    self._grok_icon.set_click_callback(self._grok_ondemand)
 
     self._alerts_pill = AlertsPill()
 
@@ -269,9 +270,15 @@ class MiciHomeLayout(Widget):
     ui_state.experimental_mode = on
     ui_state.params.put_bool("ExperimentalMode", on)
 
+  def _grok_ondemand(self):
+    grok_cfg.request_ondemand()
+
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
         rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
+      return
+    if (self._grok_icon.is_visible and self._grok_icon.enabled and
+        rl.check_collision_point_rec(mouse_pos, self._grok_icon.rect)):
       return
     relative_x = mouse_pos.x - self.rect.x
     has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
@@ -356,7 +363,9 @@ class MiciHomeLayout(Widget):
     self._egpu_icon_gray.set_visible(ui_state.sm["deviceState"].chestnutPresent and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)
     self._body_icon.set_visible(bool(ui_state.is_body))
-    self._grok_icon.set_visible(grok_cfg.voice_enabled())
+    grok_on = grok_cfg.voice_enabled()
+    self._grok_icon.set_visible(grok_on)
+    self._grok_icon.set_enabled(grok_on)
 
     footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 48, self.rect.width - HOME_PADDING, 48)
     self._status_bar_layout.render(footer_rect)

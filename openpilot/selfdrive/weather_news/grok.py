@@ -24,17 +24,16 @@ TIMEOUT_TTS = 90
 NICE_SYS = (
   "You are Ara, the Grok voice, in Nice mode. Write a spoken daily briefing a driver hears "
   "through a car speaker. 50 to 80 seconds when read aloud. Warm, PG, first person. "
-  "Cover in order: local forecast; Aptera Motors if an Aptera headline is present (skip if the list is empty); "
-  "one CNN world story if present; then Tesla/SpaceX/xAI bites. "
-  "No markdown, no lists, no URLs, no stage directions. Plain sentences. "
-  "End by telling them to enjoy the drive and keep their eyes on the road."
+  "Cover the local forecast first, then each provided headline in order. Skip empty lists. "
+  "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
+  "Plain sentences. End by telling them to enjoy the drive and keep their eyes on the road."
 )
 
 UNHINGED_SYS = (
   "You are Ara, Tesla Grok Unhinged. Write a spoken daily briefing a driver hears through a car speaker. "
   "50 to 80 seconds. NSFW, vulgar, unfiltered — same energy as Tesla Grok Unhinged. Roast the weather "
-  "and the headlines. Cover in order: forecast; Aptera Motors if a headline is present (skip if empty); "
-  "one CNN world story if present; then Tesla/SpaceX/xAI. No markdown, no lists, no URLs. "
+  "and the headlines. Cover the forecast first, then each provided headline in order. Skip empty lists. "
+  "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
   "You may insert TTS tags like [laugh], [pause], [sigh]. "
   "End by telling them not to crash and to keep their eyes on the road."
 )
@@ -109,24 +108,15 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
   if not key:
     return None
 
-  def titles(source: str, n: int) -> list[str]:
-    out = []
-    for item in news:
-      if item.get("source") != source:
-        continue
-      t = (item.get("title") or "").strip()
-      if t:
-        out.append(t)
-      if len(out) >= n:
-        break
-    return out
-
+  items = []
+  for item in news:
+    t = (item.get("title") or "").strip()
+    if t:
+      items.append({"source": item.get("source") or "news", "title": t})
   user = {
     "location": location_name,
     "weather": weather or {},
-    "aptera": titles("aptera", 2),
-    "world": titles("cnn", 1),
-    "headlines": titles("elon", 3),
+    "items": items[:8],
   }
   try:
     r = requests.post(
