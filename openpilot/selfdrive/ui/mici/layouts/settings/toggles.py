@@ -146,18 +146,32 @@ class WeatherNewsPreview(BigButton):
 
   def refresh(self):
     live = wx.get(self._params) != wx.OFF
-    self.set_enabled(live)
-    self.set_value("tap" if live else "off")
+    st = wx.status_text(self._params)
+    busy = bool(st)
+    self.set_enabled(live and not busy)
+    if not live:
+      self.set_value("off")
+    elif busy:
+      self.set_value(st)
+    else:
+      self.set_value("tap")
 
   def show_event(self):
     super().show_event()
     self.refresh()
 
+  def _update_state(self):
+    super()._update_state()
+    self.refresh()
+
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if wx.get(self._params) == wx.OFF:
       return
+    if wx.status_text(self._params):
+      return
     super()._handle_mouse_release(mouse_pos)
     wx.request_preview(self._params)
+    self.refresh()
 
 
 class LaneColorCycle(BigButton):

@@ -115,8 +115,9 @@ def fetch_weather(lat: float, lon: float) -> dict[str, Any] | None:
     return None
 
 
-def build_lines(aggressive: bool, loc: tuple[float, float, str] | None) -> list[str]:
+def build_lines(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> list[str]:
   lines: list[str] = []
+  _put(params, "WeatherNewsStatus", "fetching weather")
   day = fetch_weather(loc[0], loc[1]) if loc else None
   if day:
     name = loc[2] if loc else "your area"
@@ -128,14 +129,20 @@ def build_lines(aggressive: bool, loc: tuple[float, float, str] | None) -> list[
       if aggressive else
       "Weather data is being shy right now. Skipping the forecast."
     )
+  _put(params, "WeatherNewsStatus", "getting news")
   lines.extend(get_news_cycle(num_bites=2, aggressive=aggressive))
   lines.append(enjoy_your_drive(aggressive=aggressive))
   lines.append(pay_attention(aggressive=aggressive))
   return lines
 
 
-def run_cycle(aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
-  return speak_lines(build_lines(aggressive, loc), aggressive=aggressive)
+def run_cycle(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
+  lines = build_lines(params, aggressive, loc)
+  ok = speak_lines(lines, aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
+  _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
+  time.sleep(1.5 if ok else 2.5)
+  _put(params, "WeatherNewsStatus", "")
+  return ok
 
 
 def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
@@ -147,7 +154,8 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
   else:
     return False
   _put(params, "WeatherNewsPreview", "")
-  ok = run_cycle(aggressive, location(sm, params))
+  _put(params, "WeatherNewsStatus", "queued")
+  ok = run_cycle(params, aggressive, location(sm, params))
   cloudlog.info(f"weather_news: preview queued={ok}")
   return True
 
@@ -204,7 +212,7 @@ def main() -> None:
         stable_t = None
         continue
 
-      ok = run_cycle(m == wx.AGGRESSIVE, loc)
+      ok = run_cycle(params, m == wx.AGGRESSIVE, loc)
       if ok:
         _put(params, "WeatherNewsLastRunDate", today)
         cloudlog.info("weather_news: daily queued")

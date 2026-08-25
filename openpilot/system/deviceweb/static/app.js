@@ -81,15 +81,16 @@ async function save(k, v) {
   render();
 }
 async function previewWeather(mode) {
+  params.WeatherNewsStatus = "queued";
+  render();
   try {
     const j = await api("/api/weather/preview", {
       method:"POST",
       headers:{"content-type":"application/json"},
       body: JSON.stringify({mode})
     });
-    if (j.ok) say(mode === "aggressive" ? "Unhinged preview queued." : "Nice preview queued.");
-    else say(j.error || "preview failed");
-  } catch (e) { say((e && e.message) || "preview failed"); }
+    if (!j.ok) { params.WeatherNewsStatus = ""; say(j.error || "preview failed"); }
+  } catch (e) { params.WeatherNewsStatus = ""; say((e && e.message) || "preview failed"); }
 }
 function wxMode() {
   const raw = params.WeatherNewsMode;
@@ -98,6 +99,7 @@ function wxMode() {
   return Number.isFinite(n) ? n : 1;
 }
 function wxLive() { return wxMode() === 1 || wxMode() === 2; }
+function wxStatus() { return String(params.WeatherNewsStatus || "").trim(); }
 async function loadFiles() {
   const j = await api("/api/files?path=" + encodeURIComponent(path));
   files = j.items || [];
@@ -197,9 +199,9 @@ function settingsView() {
       let extra = "";
       if (g.id === "weather") {
         extra = `<div class="card pad" style="margin-top:12px">
-          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off.</p>
+          <p class="muted" style="margin-bottom:12px">Preview plays the selected voice. Dim while Off. First tap after an update may download the voice (~110 MB, once).</p>
           <div class="btns">
-            <button class="btn ${wxLive()?"primary":""}" id="wxPreview" ${wxLive()?"":"disabled"}>Preview</button>
+            <button class="btn ${wxLive() && !wxStatus()?"primary":""}" id="wxPreview" ${wxLive() && !wxStatus()?"":"disabled"}>${esc(wxStatus() || "Preview")}</button>
           </div>
         </div>`;
       }
@@ -446,6 +448,17 @@ async function startClip() {
 }
 if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
 load();
+setInterval(async () => {
+  if (tab !== "settings") return;
+  try {
+    const p = await api("/api/params");
+    if (p.WeatherNewsStatus !== params.WeatherNewsStatus) {
+      params.WeatherNewsStatus = p.WeatherNewsStatus;
+      if (p.WeatherNewsLastRunDate) params.WeatherNewsLastRunDate = p.WeatherNewsLastRunDate;
+      render();
+    }
+  } catch (e) {}
+}, 800);
 
 window.onerror = function (msg) {
   var el = document.getElementById("app");

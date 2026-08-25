@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render a wav, then hand it to soundd. soundd owns the speaker.
 
-Piper (neural, lessac) is the voice. espeak-ng is a last-ditch fallback.
-Binary + model land in /data/weather_news on first use (~90 MB, once).
+Piper lessac-high is the voice. espeak-ng is a last-ditch fallback.
+Binary + model land in /data/weather_news on first use (~130 MB, once).
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ VOICE_DIR = CACHE / "voices"
 
 # rhasspy 2023.11.14-2 — static aarch64, glibc 2.31. C4 is AGNOS.
 PIPER_TGZ_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz"
-# one female US voice. Unhinged is the language, not a different person.
-VOICE_ID = "en_US-lessac-medium"
-VOICE_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
-VOICE_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+# one female US voice, high quality. Unhinged is the language, not a different person.
+VOICE_ID = "en_US-lessac-high"
+VOICE_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx"
+VOICE_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx.json"
 
 # leftover espeak from the previous drop — used only if piper cannot run
 ESPEAK_ROOT = CACHE / "root"
@@ -49,12 +49,14 @@ def _curl(url: str, dest: Path, min_bytes: int = 1024) -> None:
   part.replace(dest)
 
 
-def _ensure_piper() -> Path | None:
+def _ensure_piper(on_status=None) -> Path | None:
   if PIPER_BIN.is_file() and os.access(PIPER_BIN, os.X_OK):
     return PIPER_BIN
   if os.uname().machine not in ("aarch64", "arm64"):
     which = shutil.which("piper")
     return Path(which) if which else None
+  if on_status:
+    on_status("downloading voice")
   cloudlog.info("weather_news: fetching piper (~25 MB, once)")
   tgz = CACHE / "piper_linux_aarch64.tar.gz"
   if not tgz.exists() or tgz.stat().st_size < 1_000_000:
@@ -71,26 +73,30 @@ def _ensure_piper() -> Path | None:
   return None
 
 
-def _ensure_voice() -> Path | None:
+def _ensure_voice(on_status=None) -> Path | None:
   onnx = VOICE_DIR / f"{VOICE_ID}.onnx"
   js = VOICE_DIR / f"{VOICE_ID}.onnx.json"
   if not onnx.exists() or onnx.stat().st_size < 1_000_000:
-    cloudlog.info("weather_news: fetching lessac voice (~60 MB, once)")
+    if on_status:
+      on_status("downloading voice")
+    cloudlog.info("weather_news: fetching lessac-high (~110 MB, once)")
     _curl(VOICE_ONNX, onnx, min_bytes=1_000_000)
   if not js.exists():
     _curl(VOICE_JSON, js, min_bytes=64)
   return onnx if onnx.exists() and onnx.stat().st_size > 1_000_000 else None
 
 
-def _render_piper(text: str, dest: Path, aggressive: bool) -> bool:
+def _render_piper(text: str, dest: Path, aggressive: bool, on_status=None) -> bool:
   try:
-    binary = _ensure_piper()
-    model = _ensure_voice()
+    binary = _ensure_piper(on_status)
+    model = _ensure_voice(on_status)
   except Exception:
     cloudlog.exception("weather_news: piper bootstrap failed")
     return False
   if not binary or not model:
     return False
+  if on_status:
+    on_status("rendering")
 
   env = os.environ.copy()
   lib = str(binary.parent)
@@ -155,14 +161,16 @@ def _render_espeak(text: str, dest: Path, aggressive: bool) -> bool:
     return False
 
 
-def render_wav(text: str, dest: Path, aggressive: bool) -> bool:
-  if _render_piper(text, dest, aggressive):
+def render_wav(text: str, dest: Path, aggressive: bool, on_status=None) -> bool:
+  if _render_piper(text, dest, aggressive, on_status):
     return True
   cloudlog.warning("weather_news: piper unavailable, espeak fallback")
+  if on_status:
+    on_status("rendering")
   return _render_espeak(text, dest, aggressive)
 
 
-def speak_lines(lines: list[str], aggressive: bool) -> bool:
+def speak_lines(lines: list[str], aggressive: bool, on_status=None) -> bool:
   text = " ".join(ln.strip() for ln in lines if ln and ln.strip())
   if not text:
     return False
@@ -172,8 +180,10 @@ def speak_lines(lines: list[str], aggressive: bool) -> bool:
   tmp = Path(tempfile.mkdtemp(prefix="wxnews_"))
   try:
     wav = tmp / "cycle.wav"
-    if not render_wav(text, wav, aggressive):
+    if not render_wav(text, wav, aggressive, on_status):
       return False
+    if on_status:
+      on_status("playing")
     WXNEWS_WAV.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(wav, WXNEWS_WAV)
     WXNEWS_PLAY.write_text("1")

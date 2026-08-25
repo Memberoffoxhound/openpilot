@@ -218,6 +218,13 @@ class TogglesLayout(Widget):
       if personality != ui_state.personality and ui_state.started:
         self._long_personality_setting.action_item.set_selected_button(personality)
       ui_state.personality = personality
+    st = wx.status_text(self._params)
+    if getattr(self, "_wx_st", None) != st:
+      self._wx_st = st
+      self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
+      self._weather_preview_setting.action_item.set_enabled(
+        lambda: wx.get(self._params) != wx.OFF and not wx.status_text(self._params)
+      )
 
   def show_event(self):
     super().show_event()
@@ -281,7 +288,11 @@ class TogglesLayout(Widget):
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
     self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
-    self._weather_preview_setting.action_item.set_enabled(lambda: wx.get(self._params) != wx.OFF)
+    st = wx.status_text(self._params)
+    self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
+    self._weather_preview_setting.action_item.set_enabled(
+      lambda: wx.get(self._params) != wx.OFF and not wx.status_text(self._params)
+    )
 
   def _render(self, rect):
     self._scroller.render(rect)

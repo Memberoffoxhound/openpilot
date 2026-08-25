@@ -28,4 +28,17 @@ def request_preview(params: Params | None = None) -> bool:
   if mode == OFF:
     return False
   params.put("WeatherNewsPreview", "aggressive" if mode == AGGRESSIVE else "nice", block=True)
+  try:
+    params.put("WeatherNewsStatus", "queued", block=True)
+  except Exception:
+    pass
   return True
+
+
+def status_text(params: Params | None = None) -> str:
+  params = params or Params()
+  try:
+    v = params.get("WeatherNewsStatus")
+    return str(v).strip() if v else ""
+  except Exception:
+    return ""

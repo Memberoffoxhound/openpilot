@@ -57,7 +57,7 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
-  "WeatherNewsLastRunDate",
+  "WeatherNewsLastRunDate", "WeatherNewsStatus",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
