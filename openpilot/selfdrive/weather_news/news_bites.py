@@ -70,15 +70,15 @@ def make_spoken_bite(item: dict, aggressive: bool = False) -> str:
 
   if aggressive:
     intros = [
-      "Hot off the press, you degenerates:",
-      "Listen up, more Elon empire bullshit:",
-      "Your daily dose of rocket-powered chaos:",
-      "Fresh MF'n news from the Tesla-SpaceX-xAI circus:",
+      "News, since you asked:",
+      "Elon circus update:",
+      "Fine. Headlines:",
+      "Here's some shit that happened:",
     ]
     outros = [
-      "Don't say I never told you.",
-      "Now go touch grass or something.",
-      "You're welcome, you news junkies.",
+      "Anyway.",
+      "There. You're informed.",
+      "Next.",
     ]
     body = f"{title}."
     if desc and len(desc) > 40:
@@ -100,6 +100,8 @@ def make_spoken_bite(item: dict, aggressive: bool = False) -> str:
 def get_news_cycle(num_bites: int = 2, aggressive: bool = False) -> list[str]:
   items = fetch_rss_items(max_items=10)
   if not items:
+    if aggressive:
+      return ["News wires are dead. Nobody's doing anything interesting. Shocking."]
     return [random.choice((
       "No fresh headlines came through on the last check. The news wires are quiet for the moment.",
       "Couldn't pull new stories right now. We'll try again next cycle.",

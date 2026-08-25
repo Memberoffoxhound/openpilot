@@ -43,7 +43,7 @@ DESCRIPTIONS = {
     "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
   ),
   "WeatherNewsMode": tr_noop(
-    "First drive of the day: local forecast plus two news bites. Off, Nice, or Unhinged. Preview plays the selected voice through the speaker."
+    "First drive of the day: local forecast plus two news bites. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -356,6 +356,23 @@ class TogglesLayout(Widget):
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
 
   def _set_weather_news_mode(self, button_index: int):
+    if button_index == wx.AGGRESSIVE and wx.get(self._params) != wx.AGGRESSIVE:
+      self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
+
+      def confirm_callback(result: DialogResult):
+        if result == DialogResult.CONFIRM:
+          wx.set(wx.AGGRESSIVE, self._params)
+          self._weather_mode_setting.action_item.set_selected_button(wx.AGGRESSIVE)
+          self._weather_preview_setting.action_item.set_enabled(lambda: True)
+        else:
+          self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
+
+      content = ("<h1>NSFW — Unhinged</h1>"
+                 "<p>Explicit language through the speaker. Not for kids. "
+                 "Not for passengers who didn't ask.</p>")
+      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
+      gui_app.push_widget(dlg)
+      return
     wx.set(button_index, self._params)
     self._weather_preview_setting.action_item.set_enabled(lambda: wx.get(self._params) != wx.OFF)
 

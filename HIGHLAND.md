@@ -24,7 +24,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `LudicrousEnabled` | off | Once per drive, not on a mid-drive reboot. Personal-use Spaceballs clip. |
 | `BuckleSound` | off | Once, offroad or onroad. Rearm after a drive ≥20 min, else after 3 hours. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
-| `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. First drive of the local day (GPS). Theme + LAN preview. |
+| `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. First drive of the local day (GPS). Unhinged is NSFW (confirm on enable). Theme + LAN preview. |
 
 ## Screenshots
 

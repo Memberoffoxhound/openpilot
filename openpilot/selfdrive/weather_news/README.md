@@ -4,7 +4,11 @@ Spoken forecast + two Tesla/SpaceX/xAI news bites on the **first drive of the lo
 
 Theme → weather & news: **Off / Nice / Unhinged**. Preview speaks the selected voice (parked ok) and does not consume the day. The preview button is lit for Nice and Unhinged, dim while Off.
 
-soundd plays `/data/wxnews.wav` when `/data/wxnews_play` is set — same path as buckle / 88mph. espeak-ng: system binary, else a one-shot Debian arm64 extract under `/data/weather_news`.
+**Unhinged is NSFW.** Same voice and speed as Nice — just explicit. Enabling it on Theme or LAN requires a confirmation: not for kids, not for passengers who didn't ask.
+
+soundd plays `/data/wxnews.wav` when `/data/wxnews_play` is set — same path as buckle / 88mph.
+
+Voice is **Piper** (`en_US-lessac-medium`) — neural, on-device, same woman and speed for Nice and Unhinged. Binary + model download once into `/data/weather_news` (~90 MB). Piper is `nice(10)` so it yields to openpilot. espeak-ng is fallback only if Piper cannot run.
 
 | Param | |
 |---|---|

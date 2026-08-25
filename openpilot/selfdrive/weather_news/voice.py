@@ -1,123 +1,149 @@
 #!/usr/bin/env python3
-"""Render a wav with espeak-ng, then hand it to soundd. soundd owns the speaker."""
+"""Render a wav, then hand it to soundd. soundd owns the speaker.
+
+Piper (neural, lessac) is the voice. espeak-ng is a last-ditch fallback.
+Binary + model land in /data/weather_news on first use (~90 MB, once).
+"""
 
 from __future__ import annotations
 
-import io
 import os
 import shutil
 import subprocess
 import tarfile
 import tempfile
-import wave
 from pathlib import Path
 
 from openpilot.common.swaglog import cloudlog
 
 WXNEWS_WAV = Path("/data/wxnews.wav")
 WXNEWS_PLAY = Path("/data/wxnews_play")
-ROOT = Path("/data/weather_news/root")
-DEB_DIR = Path("/data/weather_news/debs")
+CACHE = Path("/data/weather_news")
+PIPER_DIR = CACHE / "piper"
+PIPER_BIN = PIPER_DIR / "piper"
+VOICE_DIR = CACHE / "voices"
 
-# bullseye arm64 / glibc 2.31 — runs on AGNOS. one-shot extract into /data.
-_POOL = "https://deb.debian.org/debian/pool/main"
-_DEBS = (
-  f"{_POOL}/e/espeak-ng/espeak-ng_1.50+dfsg-7+deb11u1_arm64.deb",
-  f"{_POOL}/e/espeak-ng/espeak-ng-data_1.50+dfsg-7+deb11u1_arm64.deb",
-  f"{_POOL}/e/espeak-ng/libespeak-ng1_1.50+dfsg-7+deb11u1_arm64.deb",
-  f"{_POOL}/p/pcaudiolib/libpcaudio0_1.1-6_arm64.deb",
-  f"{_POOL}/s/sonic/libsonic0_0.2.0-10_arm64.deb",
-)
+# rhasspy 2023.11.14-2 — static aarch64, glibc 2.31. C4 is AGNOS.
+PIPER_TGZ_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz"
+# one female US voice. Unhinged is the language, not a different person.
+VOICE_ID = "en_US-lessac-medium"
+VOICE_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+VOICE_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+
+# leftover espeak from the previous drop — used only if piper cannot run
+ESPEAK_ROOT = CACHE / "root"
 
 _espeak: tuple[str, dict[str, str], str | None] | None = None
 
 
-def _extract_deb(deb: Path, dest: Path) -> None:
-  raw = deb.read_bytes()
-  if not raw.startswith(b"!<arch>\n"):
-    raise ValueError(f"not an ar archive: {deb}")
-  off, blob = 8, None
-  while off + 60 <= len(raw):
-    hdr = raw[off:off + 60]
-    name = hdr[0:16].decode("ascii", "replace").strip()
-    try:
-      size = int(hdr[48:58].decode("ascii").strip())
-    except ValueError:
-      break
-    off += 60
-    if name.startswith("data.tar"):
-      blob = raw[off:off + size]
-      break
-    off += size + (size % 2)
-  if blob is None:
-    raise ValueError(f"no data.tar in {deb}")
-  dest.mkdir(parents=True, exist_ok=True)
-  with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as tf:
-    try:
-      tf.extractall(dest, filter="data")
-    except TypeError:
-      tf.extractall(dest)
+def _curl(url: str, dest: Path, min_bytes: int = 1024) -> None:
+  dest.parent.mkdir(parents=True, exist_ok=True)
+  part = dest.with_name(dest.name + ".part")
+  subprocess.run(
+    ["curl", "-fsSL", "--retry", "3", "--max-time", "180", "-o", str(part), url],
+    check=True,
+  )
+  if not part.exists() or part.stat().st_size < min_bytes:
+    part.unlink(missing_ok=True)
+    raise RuntimeError(f"tiny download {url}")
+  part.replace(dest)
 
 
-def _bootstrap() -> None:
+def _ensure_piper() -> Path | None:
+  if PIPER_BIN.is_file() and os.access(PIPER_BIN, os.X_OK):
+    return PIPER_BIN
   if os.uname().machine not in ("aarch64", "arm64"):
-    return
-  if (ROOT / "usr/bin/espeak-ng").exists():
-    return
-  cloudlog.info("weather_news: extracting espeak-ng into /data/weather_news")
-  DEB_DIR.mkdir(parents=True, exist_ok=True)
-  for url in _DEBS:
-    deb = DEB_DIR / url.rsplit("/", 1)[-1]
-    if not deb.exists():
-      subprocess.run(["curl", "-fsSL", "--retry", "3", "--max-time", "60", "-o", str(deb), url], check=True)
-    _extract_deb(deb, ROOT)
-  bin_path = ROOT / "usr/bin/espeak-ng"
-  if bin_path.exists():
-    bin_path.chmod(0o755)
+    which = shutil.which("piper")
+    return Path(which) if which else None
+  cloudlog.info("weather_news: fetching piper (~25 MB, once)")
+  tgz = CACHE / "piper_linux_aarch64.tar.gz"
+  if not tgz.exists() or tgz.stat().st_size < 1_000_000:
+    _curl(PIPER_TGZ_URL, tgz, min_bytes=1_000_000)
+  CACHE.mkdir(parents=True, exist_ok=True)
+  with tarfile.open(tgz, "r:gz") as tf:
+    try:
+      tf.extractall(CACHE, filter="data")
+    except TypeError:
+      tf.extractall(CACHE)
+  if PIPER_BIN.is_file():
+    PIPER_BIN.chmod(0o755)
+    return PIPER_BIN
+  return None
 
 
-def _resolve() -> tuple[str, dict[str, str], str | None] | None:
+def _ensure_voice() -> Path | None:
+  onnx = VOICE_DIR / f"{VOICE_ID}.onnx"
+  js = VOICE_DIR / f"{VOICE_ID}.onnx.json"
+  if not onnx.exists() or onnx.stat().st_size < 1_000_000:
+    cloudlog.info("weather_news: fetching lessac voice (~60 MB, once)")
+    _curl(VOICE_ONNX, onnx, min_bytes=1_000_000)
+  if not js.exists():
+    _curl(VOICE_JSON, js, min_bytes=64)
+  return onnx if onnx.exists() and onnx.stat().st_size > 1_000_000 else None
+
+
+def _render_piper(text: str, dest: Path, aggressive: bool) -> bool:
+  try:
+    binary = _ensure_piper()
+    model = _ensure_voice()
+  except Exception:
+    cloudlog.exception("weather_news: piper bootstrap failed")
+    return False
+  if not binary or not model:
+    return False
+
+  env = os.environ.copy()
+  lib = str(binary.parent)
+  env["LD_LIBRARY_PATH"] = lib + ((":" + env["LD_LIBRARY_PATH"]) if env.get("LD_LIBRARY_PATH") else "")
+
+  # same woman, same speed. Unhinged is the script, not the cadence.
+  cmd = [
+    str(binary), "--model", str(model), "--output_file", str(dest),
+    "--length-scale", "1.0", "--sentence-silence", "0.35",
+  ]
+  try:
+    subprocess.run(
+      cmd, input=text.encode(), check=False, env=env,
+      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180,
+      preexec_fn=lambda: os.nice(10),
+    )
+    return dest.exists() and dest.stat().st_size > 800
+  except Exception:
+    cloudlog.exception("weather_news: piper render failed")
+    return False
+
+
+def _ensure_espeak() -> tuple[str, dict[str, str], str | None] | None:
   global _espeak
   if _espeak:
     return _espeak
-
   env = os.environ.copy()
   system = shutil.which("espeak-ng") or shutil.which("espeak")
   if system:
     _espeak = (system, env, None)
     return _espeak
-
-  try:
-    _bootstrap()
-  except Exception:
-    cloudlog.exception("weather_news: espeak bootstrap failed")
-    return None
-
-  cached = ROOT / "usr/bin/espeak-ng"
-  if not cached.exists():
-    return None
-  libs = [str(p) for p in (ROOT / "usr/lib/aarch64-linux-gnu", ROOT / "lib/aarch64-linux-gnu") if p.is_dir()]
-  if libs:
-    env["LD_LIBRARY_PATH"] = ":".join(libs + [env.get("LD_LIBRARY_PATH", "")]).strip(":")
-  data = None
-  for p in (ROOT / "usr/lib/aarch64-linux-gnu/espeak-ng-data", ROOT / "usr/share/espeak-ng-data"):
-    if p.is_dir():
-      data = str(p)
-      break
-  _espeak = (str(cached), env, data)
-  return _espeak
+  cached = ESPEAK_ROOT / "usr/bin/espeak-ng"
+  if cached.exists():
+    libs = [str(p) for p in (ESPEAK_ROOT / "usr/lib/aarch64-linux-gnu", ESPEAK_ROOT / "lib/aarch64-linux-gnu") if p.is_dir()]
+    if libs:
+      env["LD_LIBRARY_PATH"] = ":".join(libs + [env.get("LD_LIBRARY_PATH", "")]).strip(":")
+    data = None
+    for p in (ESPEAK_ROOT / "usr/lib/aarch64-linux-gnu/espeak-ng-data", ESPEAK_ROOT / "usr/share/espeak-ng-data"):
+      if p.is_dir():
+        data = str(p)
+        break
+    _espeak = (str(cached), env, data)
+    return _espeak
+  return None
 
 
-def render_wav(text: str, dest: Path, aggressive: bool) -> bool:
-  got = _resolve()
+def _render_espeak(text: str, dest: Path, aggressive: bool) -> bool:
+  got = _ensure_espeak()
   if not got:
-    cloudlog.warning("weather_news: no espeak-ng")
     return False
   espeak, env, data = got
-  if aggressive:
-    voice, pitch, speed, amp, gap = "en-us+m3", "26", "178", "200", "3"
-  else:
-    voice, pitch, speed, amp, gap = "en-us+f3", "58", "142", "170", "7"
+  # same female voice and speed as Nice; fallback only
+  voice, pitch, speed, amp, gap = "en-us+f3", "58", "142", "170", "7"
   cmd = [espeak, "-v", voice, "-p", pitch, "-s", speed, "-a", amp, "-g", gap, "-w", str(dest), text]
   if data:
     cmd[1:1] = ["--path", str(Path(data).parent)]
@@ -127,6 +153,13 @@ def render_wav(text: str, dest: Path, aggressive: bool) -> bool:
   except Exception:
     cloudlog.exception("weather_news: espeak failed")
     return False
+
+
+def render_wav(text: str, dest: Path, aggressive: bool) -> bool:
+  if _render_piper(text, dest, aggressive):
+    return True
+  cloudlog.warning("weather_news: piper unavailable, espeak fallback")
+  return _render_espeak(text, dest, aggressive)
 
 
 def speak_lines(lines: list[str], aggressive: bool) -> bool:

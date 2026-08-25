@@ -12,7 +12,7 @@ const GROUPS = [
     {key:"RecordAudio", label:"Record microphone", type:"bool", desc:"Store mic audio in the dashcam.", restart:true},
   ]},
   {id:"weather", title:"Weather & News", items:[
-    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]]},
+    {key:"WeatherNewsMode", label:"Weather & news", type:"select", desc:"First drive of the day: forecast plus two news bites. Unhinged is NSFW.", options:[["0","Off"],["1","Nice"],["2","Unhinged"]], confirmValue:"2", confirm:"NSFW. Explicit language through the speaker. Not for kids. Not for passengers who didn't ask."},
   ]},
   {id:"theme", title:"Theme", items:[
     {key:"LaneColor", label:"Lane color", type:"select", desc:"Engaged lane lines.", options:[["1","Tesla Autopilot blue"],["0","comma green"]]},
@@ -366,7 +366,16 @@ function bind() {
     if (item && item.confirm && n==="1") { confirmItem = item; render(); return; }
     save(k, n); if (item && item.restart) say("Saved. Restart the C4 for this to apply.");
   });
-  document.querySelectorAll("select[data-k]").forEach(s => s.onchange = () => save(s.dataset.k, s.value));
+  document.querySelectorAll("select[data-k]").forEach(s => s.onchange = () => {
+    const item = GROUPS.flatMap(g => g.items).find(x => x.key===s.dataset.k);
+    if (item && item.confirmValue && s.value === item.confirmValue && String(params[item.key] ?? "") !== item.confirmValue) {
+      confirmItem = Object.assign({}, item, {_saveValue: s.value});
+      s.value = params[item.key] ?? (item.key==="WeatherNewsMode" ? "1" : item.options[0][0]);
+      render();
+      return;
+    }
+    save(s.dataset.k, s.value);
+  });
   document.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { path = b.dataset.p; loadFiles(); });
   document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => {
     if (b.dataset.dir==="1") { path = b.dataset.open; loadFiles(); }
@@ -390,7 +399,7 @@ function bind() {
   const no = document.getElementById("no");
   if (no) no.onclick = () => { confirmItem = null; render(); };
   const yes = document.getElementById("yes");
-  if (yes) yes.onclick = () => { const k = confirmItem.key; confirmItem = null; save(k, "1"); };
+  if (yes) yes.onclick = () => { const k = confirmItem.key, v = confirmItem._saveValue || "1"; confirmItem = null; save(k, v); };
   const cGo = document.getElementById("cGo");
   if (cGo) cGo.onclick = startClip;
   const cStop = document.getElementById("cStop");

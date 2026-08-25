@@ -78,62 +78,84 @@ PERSONABLE_COLD = [
 ]
 
 PERSONABLE_CLOSERS = [
-  "That's the outlook. Drive chill and I'll catch you next cycle.",
+  "That's the outlook. I'll catch you next cycle.",
   "Stay safe out there. Weather lady out.",
-  "Enjoy the ride, and keep an eye on the skies.",
+  "Keep an eye on the skies.",
+]
+
+ENJOY_NICE = [
+  "Enjoy your drive.",
+  "Have a good drive.",
+  "Enjoy the ride.",
+  "Have a good one out there.",
+  "Drive safe, and enjoy it.",
+]
+
+ENJOY_UNHINGED = [
+  "Enjoy your drive.",
+  "Enjoy your drive. Or don't.",
+  "Have a good one. Try not to be an idiot.",
+  "Enjoy the ride, you animal.",
+  "Drive. Enjoy it. Don't die.",
+]
+
+PAY_ATTENTION_NICE = [
+  "Pay attention out there.",
+  "Keep your eyes on the road.",
+  "Stay alert.",
+  "Watch the road.",
+  "Pay attention. You're still the driver.",
+]
+
+PAY_ATTENTION_UNHINGED = [
+  "Pay attention. I'm not driving.",
+  "Eyes on the road, dipshit.",
+  "Pay attention or eat shit.",
+  "You're still the driver. Act like it.",
+  "Watch the fucking road.",
 ]
 
 
-# unhinged
+# unhinged — grok-style: normal cadence, foul, not a shock-jock bit
 AGGRESSIVE_OPENERS = [
-  "Alright you beautiful bastards, your foul-mouthed weather bitch is here.",
-  "Listen up you horny road warriors, time for the real fucking forecast.",
-  "Yo, your favorite dirty weather lady checking in. Don't act surprised.",
-  "MF'n weather update incoming. Brace your sensitive asses.",
+  "Alright. Unhinged forecast. If you wanted nice, you picked the wrong fucking mode.",
+  "Weather. I'm not holding your hand.",
+  "Sit down. Here's the sky, you impatient bitch.",
+  "Forecast. Try to keep up.",
 ]
 
 AGGRESSIVE_CLEAR = [
-  "Clear as a porn star's schedule. High of a sweaty {high}\u00b0, overnight a sticky {low}\u00b0. "
-  "Sun drops its pants at {sunset}. Perfect day to get your rocks off on the open highway.",
-  "Blue skies and zero excuses. High {high}, low {low}, sunset {sunset}. "
-  "Go outside and do something that would make your mother blush.",
+  "Blue sky, no excuses. High {high}, overnight {low}. Sun dies at {sunset}. Go outside.",
+  "Clear as hell. High {high}, low {low}, sunset {sunset}. Touch grass.",
 ]
 
 AGGRESSIVE_CLOUDY = [
-  "Cloudy as your browser history. High around {high}\u00b0, overnight {low}\u00b0. "
-  "Sunset at {sunset}. Not pretty, but neither are most of you after a long drive.",
-  "Overcast and mildly depressing. {high} up top, {low} when the sun finally gives up at {sunset}.",
+  "Grey and ugly. High {high}, overnight {low}. Sunset {sunset}. The sky's in a mood. Join it.",
+  "Clouds. High {high}, low {low}. Sunset {sunset}. Don't expect a miracle.",
 ]
 
 AGGRESSIVE_RAIN = [
-  "It's gonna piss down. High {high}\u00b0, overnight {low}\u00b0. "
-  "Rain chance is real, sunset at {sunset}. Your tires better have grip or you're gonna hydroplane like a drunk at a bachelor party.",
-  "Wet as a... well, you get it. High {high}, low {low}, sun clocks out at {sunset}. "
-  "Leave more space or eat shit, your choice.",
+  "It's going to piss down. High {high}, low {low}, sunset {sunset}. Hydroplane and eat shit if you want. That's on you.",
+  "Rain. Actual rain. High {high}, overnight {low}. Leave space or crash. Sunset {sunset}.",
 ]
 
 AGGRESSIVE_SNOW = [
-  "Snow's coming, you poor frozen bastards. High a miserable {high}\u00b0, overnight {low}\u00b0. "
-  "Sunset at {sunset}. Drive like your balls are made of glass.",
+  "Snow, you poor bastard. High a miserable {high}, overnight {low}. Sunset {sunset}. Drive like your life depends on it, because it does.",
 ]
 
 AGGRESSIVE_HOT = [
-  "Hotter than two rats fucking in a wool sock. High {high}\u00b0 of pure ball-sweat weather. "
-  "Overnight still a muggy {low}\u00b0. Sunset at {sunset}. "
-  "If you're not careful your seat is gonna look like a crime scene.",
-  "This heat will melt the chrome off a trailer hitch. {high}\u00b0 high, {low} overnight, sun dips at {sunset}. "
-  "Stay hydrated or your dick will dry up and fall off. Science.",
+  "It's a cunt of a day. High {high}. Overnight still a sticky {low}. Sunset {sunset}. Hydrate or suffer.",
+  "Hot as hell. {high} high, {low} overnight, sun clocks out at {sunset}. Don't leave a dog in the car, you animal.",
 ]
 
 AGGRESSIVE_COLD = [
-  "Colder than a witch's tit in a brass bra. High only {high}\u00b0, overnight a ball-shriveling {low}\u00b0. "
-  "Sunset at {sunset}. Warm up the car before you freeze your nipples off.",
+  "Cold as a witch's tit. High only {high}, overnight {low}. Sunset {sunset}. Warm the car or freeze. Not my problem.",
 ]
 
 AGGRESSIVE_CLOSERS = [
-  "That's the dirty truth. Now go drive like you have a pair. Weather bitch out.",
-  "Don't crash, I still need an audience. Later, degenerates.",
-  "Keep it rubber side down, you magnificent assholes.",
+  "That's the weather. Don't die.",
+  "We're done. Drive.",
+  "Forecast over. Try not to be an idiot.",
 ]
 
 
@@ -203,9 +225,17 @@ def generate_overnight_note(data: dict[str, Any], aggressive: bool = False) -> s
   precip = float(data.get("precipitation_sum", 0) or 0)
   if aggressive:
     if precip > 0.1:
-      return f"Overnight that low of {low}\u00b0 is coming with some wet bullshit. Don't leave the windows down unless you want a swamp in your ride."
-    return f"Overnight bottoms out around a chilly {low}\u00b0. Perfect for bad decisions and regrettable texts."
+      return f"Overnight {low}\u00b0 with more wet bullshit. Roll the windows up, genius."
+    return f"Overnight bottoms out around {low}\u00b0. That's all."
   else:
     if precip > 0.1:
       return f"Overnight low near {low}\u00b0 with a chance of more precipitation. Secure any outdoor gear."
     return f"Overnight low around {low}\u00b0. Should be a quiet night for most of us."
+
+
+def enjoy_your_drive(aggressive: bool = False) -> str:
+  return random.choice(ENJOY_UNHINGED if aggressive else ENJOY_NICE)
+
+
+def pay_attention(aggressive: bool = False) -> str:
+  return random.choice(PAY_ATTENTION_UNHINGED if aggressive else PAY_ATTENTION_NICE)

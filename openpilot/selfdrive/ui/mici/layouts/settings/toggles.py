@@ -40,6 +40,22 @@ class AutoLaneChangeConfirmPage(NavScroller):
     ])
 
 
+class UnhingedConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+    accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                         lambda: self.dismiss(on_confirm))
+    self._scroller.add_widgets([
+      GreyBigButton("enabling\nunhinged", "scroll to continue", warn),
+      GreyBigButton("", "NSFW. Explicit language through the speaker."),
+      GreyBigButton("", "Not for kids. Not for passengers who didn't ask."),
+      GreyBigButton("", "Same voice and speed as Nice. The script swears."),
+      accept,
+    ])
+
+
 class OnroadUiCycle(BigButton):
   """Tap to switch stock onroad HUD vs custom."""
 
@@ -105,7 +121,19 @@ class WeatherNewsCycle(BigMultiToggle):
     self.refresh()
 
   def _on_select(self, value: str):
-    wx.set(wx.LABELS.index(value), self._params)
+    idx = wx.LABELS.index(value)
+    if idx == wx.AGGRESSIVE and wx.get(self._params) != wx.AGGRESSIVE:
+      self.set_value(wx.LABELS[wx.get(self._params)])
+
+      def on_confirm():
+        wx.set(wx.AGGRESSIVE, self._params)
+        self.set_value(wx.LABELS[wx.AGGRESSIVE])
+        if self._on_change:
+          self._on_change()
+
+      gui_app.push_widget(UnhingedConfirmPage(on_confirm))
+      return
+    wx.set(idx, self._params)
     if self._on_change:
       self._on_change()
 

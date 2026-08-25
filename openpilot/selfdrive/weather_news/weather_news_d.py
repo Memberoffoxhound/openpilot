@@ -14,7 +14,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.weather_news import mode as wx
 from openpilot.selfdrive.weather_news.news_bites import get_news_cycle
 from openpilot.selfdrive.weather_news.voice import speak_lines
-from openpilot.selfdrive.weather_news.weather_lady import generate_forecast_script, generate_overnight_note
+from openpilot.selfdrive.weather_news.weather_lady import generate_forecast_script, generate_overnight_note, enjoy_your_drive, pay_attention
 
 ONROAD_DELAY_S = 10.0
 ONROAD_STABLE_S = 2.0
@@ -129,6 +129,8 @@ def build_lines(aggressive: bool, loc: tuple[float, float, str] | None) -> list[
       "Weather data is being shy right now. Skipping the forecast."
     )
   lines.extend(get_news_cycle(num_bites=2, aggressive=aggressive))
+  lines.append(enjoy_your_drive(aggressive=aggressive))
+  lines.append(pay_attention(aggressive=aggressive))
   return lines
 
 

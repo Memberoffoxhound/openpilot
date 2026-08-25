@@ -42,7 +42,7 @@ Home stats: **Today** / **Week** miles and distance-engaged %.
 Theme extras, **off by default**: ludicrous overlay, buckle sound (once; rearm after a 20 min drive, else 3 hours), Delorean 88mph clip (on going onroad, after ignition settles).
 
 <!-- docs/screenshots/weather-preview.png -->
-**Weather & news** — first drive of the local day (GPS). Off / Nice / Unhinged. Preview from Theme (lit when not Off) or the LAN console.
+**Weather & news** — first drive of the local day (GPS). Off / Nice / Unhinged. Unhinged is NSFW (confirm on enable). Preview from Theme (lit when not Off) or the LAN console.
 
 ### Device
 
