@@ -11,7 +11,7 @@ Spoken briefing on the **first drive of the local day** (GPS day + coords).
 5. On `/grok`, set **daily topics** (one per line). Default is `npr` (NPR world). Weather is always included.
 6. Theme → **preview** speaks a short Ara sample. Tap the **home Grok mark** for a full on-demand briefing (test hook). Neither consumes the day.
 
-Grok `grok-4.6` writes the briefing. Ara TTS (`POST /v1/tts`, `voice_id=ara`) speaks it. soundd plays `/data/wxnews.wav`. No on-device synthesizers.
+Grok `grok-4-fast` writes the briefing from weather + your topics. Ara TTS speaks that text only — no canned scripts. soundd plays `/data/wxnews.wav`.
 
 Topic aliases: `npr`, `cnn`, `comma` (blog.comma.ai), `reddit` or `reddit:commaai`, `x` or `x:ApteraMotors`. Anything else is a Google News search (`Aptera Motors`).
 

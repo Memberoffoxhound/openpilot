@@ -16,9 +16,9 @@ from openpilot.selfdrive.weather_news import config as grok_cfg
 
 CHAT_URL = "https://api.x.ai/v1/chat/completions"
 TTS_URL = "https://api.x.ai/v1/tts"
-MODEL = "grok-4.6"
+MODEL = "grok-4-fast"
 VOICE_ID = "ara"
-TIMEOUT_CHAT = 45
+TIMEOUT_CHAT = 60
 TIMEOUT_TTS = 90
 
 NICE_SYS = (
@@ -116,29 +116,61 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
   user = {
     "location": location_name,
     "weather": weather or {},
+    "topics": grok_cfg.topics(),
     "items": items[:8],
   }
-  try:
-    r = requests.post(
-      CHAT_URL,
-      headers=_headers(key),
-      json={
-        "model": MODEL,
-        "temperature": 1.0 if unhinged else 0.6,
-        "messages": [
-          {"role": "system", "content": UNHINGED_SYS if unhinged else NICE_SYS},
-          {"role": "user", "content": json.dumps(user)},
-        ],
-      },
-      timeout=TIMEOUT_CHAT,
-    )
-    r.raise_for_status()
-    text = (r.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
-    text = " ".join(text.strip().split())
-    return text or None
-  except Exception:
-    cloudlog.exception("weather_news: grok chat failed")
+  return _chat(
+    UNHINGED_SYS if unhinged else NICE_SYS,
+    json.dumps(user),
+    temperature=1.0 if unhinged else 0.6,
+  )
+
+
+def write_preview(*, unhinged: bool) -> str | None:
+  sys = (
+    "You are Ara. Unhinged. One or two spoken sentences, 8 to 12 seconds. NSFW ok. "
+    "Confirm this is the Unhinged voice. No news, no weather, no lists."
+    if unhinged else
+    "You are Ara. Nice mode. One or two spoken sentences, 8 to 12 seconds, PG. "
+    "Confirm this is the Nice voice. No news, no weather, no lists."
+  )
+  return _chat(sys, "Preview tap. Speak now.", temperature=1.0 if unhinged else 0.5)
+
+
+def _chat(system: str, user: str, *, temperature: float) -> str | None:
+  key = grok_cfg.api_key()
+  if not key:
     return None
+  last_err = ""
+  for _ in range(2):
+    try:
+      r = requests.post(
+        CHAT_URL,
+        headers=_headers(key),
+        json={
+          "model": MODEL,
+          "temperature": temperature,
+          "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+          ],
+        },
+        timeout=TIMEOUT_CHAT,
+      )
+      if r.status_code != 200:
+        last_err = f"http {r.status_code} {r.text[:160]}"
+        cloudlog.warning(f"weather_news: grok chat {last_err}")
+        continue
+      text = (r.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+      text = " ".join(text.strip().split())
+      if text:
+        return text
+      last_err = "empty"
+    except Exception:
+      cloudlog.exception("weather_news: grok chat failed")
+      last_err = "exception"
+  cloudlog.warning(f"weather_news: grok chat gave up ({last_err})")
+  return None
 
 
 def _write_wav(dest: Path, pcm: bytes, rate: int = 24000, width: int = 2, ch: int = 1) -> None:

@@ -16,7 +16,6 @@ from openpilot.selfdrive.weather_news import grok as grok_api
 from openpilot.selfdrive.weather_news import mode as wx
 from openpilot.selfdrive.weather_news.news_bites import fetch_rss_items
 from openpilot.selfdrive.weather_news.voice import speak_lines
-from openpilot.selfdrive.weather_news.weather_lady import generate_forecast_script, generate_overnight_note, enjoy_your_drive, pay_attention
 
 ONROAD_DELAY_S = 10.0
 ONROAD_STABLE_S = 2.0
@@ -115,23 +114,6 @@ def fetch_weather(lat: float, lon: float) -> dict[str, Any] | None:
     return None
 
 
-def fallback_lines(aggressive: bool, loc: tuple[float, float, str] | None, day: dict[str, Any] | None) -> list[str]:
-  lines: list[str] = []
-  if day:
-    name = loc[2] if loc else "your area"
-    lines.append(generate_forecast_script(day, aggressive=aggressive, location_name=name))
-    lines.append(generate_overnight_note(day, aggressive=aggressive))
-  else:
-    lines.append(
-      "Weather data is being a little bitch right now. Skipping the forecast."
-      if aggressive else
-      "Weather data is being shy right now. Skipping the forecast."
-    )
-  lines.append(enjoy_your_drive(aggressive=aggressive))
-  lines.append(pay_attention(aggressive=aggressive))
-  return lines
-
-
 def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, str] | None) -> bool:
   if not grok_cfg.voice_enabled():
     _put(params, "WeatherNewsStatus", "enable grok")
@@ -153,8 +135,11 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   _put(params, "WeatherNewsStatus", "asking grok")
   script = grok_api.write_script(day, news, unhinged=aggressive, location_name=name)
   if not script:
-    cloudlog.warning("weather_news: grok chat missed, using local script")
-    script = " ".join(fallback_lines(aggressive, loc, day))
+    cloudlog.warning("weather_news: grok chat missed")
+    _put(params, "WeatherNewsStatus", "failed")
+    time.sleep(2.0)
+    _put(params, "WeatherNewsStatus", "")
+    return False
 
   ok = speak_lines(
     [script], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
@@ -163,10 +148,6 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   time.sleep(1.5 if ok else 2.5)
   _put(params, "WeatherNewsStatus", "")
   return ok
-
-
-PREVIEW_NICE = "Hi. I'm Ara. Nice mode. This is how I'll sound on the first drive of the day."
-PREVIEW_UNHINGED = "Hi. I'm Ara. Unhinged. I'll say whatever I want through this speaker. Not for kids."
 
 
 def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
@@ -188,8 +169,13 @@ def handle_preview(params: Params, sm: messaging.SubMaster) -> bool:
     time.sleep(1.5)
     _put(params, "WeatherNewsStatus", "")
     return True
-  _put(params, "WeatherNewsStatus", "queued")
-  line = PREVIEW_UNHINGED if aggressive else PREVIEW_NICE
+  _put(params, "WeatherNewsStatus", "asking grok")
+  line = grok_api.write_preview(unhinged=aggressive)
+  if not line:
+    _put(params, "WeatherNewsStatus", "failed")
+    time.sleep(2.0)
+    _put(params, "WeatherNewsStatus", "")
+    return True
   ok = speak_lines([line], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m))
   _put(params, "WeatherNewsStatus", "playing" if ok else "failed")
   time.sleep(1.2 if ok else 2.0)
