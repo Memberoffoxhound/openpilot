@@ -141,9 +141,10 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"WeatherNewsWifiOnly", {PERSISTENT, BOOL, "0"}},
     {"WeatherNewsEveryDrive", {PERSISTENT, BOOL, "0"}},  // 0 = 3x/day slots, 1 = start of every drive
     {"WeatherNewsPlayback", {PERSISTENT, INT, "1"}},  // 0=standard 1=boosted (road-noise)
-    {"GrokProvider", {PERSISTENT, STRING, "xai"}},  // xai | openai | groq
+    {"GrokProvider", {PERSISTENT, STRING, "xai"}},  // xai | openai | groq | gemini
     {"OpenaiApiKey", {PERSISTENT | DONT_LOG, STRING}},
     {"GroqApiKey", {PERSISTENT | DONT_LOG, STRING}},
+    {"GeminiApiKey", {PERSISTENT | DONT_LOG, STRING}},
     {"WeatherNewsOnDemand", {CLEAR_ON_MANAGER_START, BOOL, "0"}},
     {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},  // "nice" | "aggressive"
     {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},

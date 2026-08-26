@@ -45,7 +45,7 @@ DESCRIPTIONS = {
     "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
   ),
   "WeatherNewsMode": tr_noop(
-    "Local forecast plus news, spoken by Grok Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
+    "Local forecast plus news, written by the selected AI (Grok or Gemini) and spoken by Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
   ),
   "WeatherNewsSchedule": tr_noop(
     "3x a day plays once in the morning, once in the afternoon, and once after 7pm. Missed windows stay missed — never stacked. Every drive plays at the start of each onroad session."
@@ -54,7 +54,7 @@ DESCRIPTIONS = {
     "Voice-only. Standard is clean. Boosted is louder for road noise, with less speaker crackle."
   ),
   "GrokVoice": tr_noop(
-    "Grok Ara for weather and news. Nice and Unhinged share Ara. Scan the QR to paste your xAI API key on the LAN console."
+    "Grok or Gemini writes weather and news. Nice and Unhinged. Scan the QR to paste an API key on the LAN console. Gemini uses Ara (xAI) or OpenAI tts-1 to speak."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -173,16 +173,16 @@ class TogglesLayout(Widget):
     )
 
     self._grok_voice_setting = button_item(
-      lambda: tr("Theme: Grok Voice"),
+      lambda: tr("Theme: Gemini Voice") if grok_cfg.provider() == "gemini" else tr("Theme: Grok Voice"),
       lambda: tr("On" if grok_cfg.voice_enabled() else "Off"),
       description=lambda: tr(DESCRIPTIONS["GrokVoice"]),
       callback=self._toggle_grok_voice,
     )
 
     self._grok_qr_setting = button_item(
-      lambda: tr("Theme: Grok Setup"),
+      lambda: tr("Theme: Gemini Setup") if grok_cfg.provider() == "gemini" else tr("Theme: Grok Setup"),
       lambda: tr("Show QR"),
-      description=lambda: tr("Scan to open the LAN console and paste your xAI API key."),
+      description=lambda: tr("Scan to open the LAN console and paste a Grok, Gemini, OpenAI, or Groq key."),
       callback=self._show_grok_qr,
       enabled=lambda: grok_cfg.voice_enabled(),
     )
@@ -190,7 +190,7 @@ class TogglesLayout(Widget):
     self._weather_preview_setting = button_item(
       lambda: tr("Theme: Weather Preview"),
       lambda: tr("Preview"),
-      description=lambda: tr("Plays Nice or Unhinged through Ara. Enable Grok voice first."),
+      description=lambda: tr("Plays Nice or Unhinged. Enable voice first."),
       callback=self._preview_weather_news,
       enabled=lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled(),
     )
@@ -429,8 +429,9 @@ class TogglesLayout(Widget):
     )
 
   def _show_grok_qr(self):
+    who = grok_cfg.display_name()
     dlg = ConfirmDialog(
-      f"<h1>Grok setup</h1><p>On this network open:</p><p><b>{grok_api.console_url('/grok')}</b></p>",
+      f"<h1>{who} setup</h1><p>On this network open:</p><p><b>{grok_api.console_url('/grok')}</b></p>",
       tr("OK"), rich=True,
     )
     gui_app.push_widget(dlg)

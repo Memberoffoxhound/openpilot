@@ -25,7 +25,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | `WeatherNewsMode` | nice | `0` off `1` nice `2` aggressive. Morning, afternoon, and after 7pm — one briefing per window, never stacked. Weather is current to that time and GPS place. Default topic is NPR world. Unhinged is NSFW. Theme preview is a short sample. |
 | `WeatherNewsTopics` | `npr` | One topic per line on LAN `/grok`. Aliases: npr, cnn, comma, reddit[:sub], x[:query]. Else Google News. |
 | `WeatherNewsPlayback` | boosted | Theme → briefing playback. `0` standard `1` boosted. Boosted is louder for road noise, less C4 crackle. Voice only. |
-| `GrokVoiceEnabled` | off | Theme → grok voice. Ara TTS. QR to `http://<c4-ip>:8088/grok`. 50px Grok mark after Wi-Fi/LTE; tap it for an on-demand briefing (test hook). |
+| `GrokVoiceEnabled` | off | Theme → grok / gemini voice. QR to `http://<c4-ip>:8088/grok`. 50px mark after Wi-Fi/LTE (Grok or Gemini sparkle); tap it for an on-demand briefing (test hook). |
 
 ## Alpha longitudinal (stock)
 
@@ -44,7 +44,7 @@ Tesla stock ACC stays default until this is on. Experimental mode is gated on op
 
 `http://<c4-ip>:8088` — settings, files, shots, clips (offroad, local routes), stats, updates. No password. Local Wi-Fi only. Not comma Connect.
 
-`http://<c4-ip>:8088/grok` — Grok Ara key + Nice/Unhinged. Theme → grok voice QR lands here.
+`http://<c4-ip>:8088/grok` — Voice tab: Grok / Gemini / OpenAI / Groq keys + Nice/Unhinged. Theme → grok setup QR lands here. Gemini chat is `gemini-3.6-flash`; TTS is still Ara (xAI) or OpenAI tts-1. Keys are `DONT_LOG` and never committed.
 
 Connect livestream is **stock** (parked). Custom on-road WebRTC viewer was removed so Connect stays compatible.
 

@@ -1,4 +1,4 @@
-"""Theme → grok setup QR. Lands on the LAN console /grok page."""
+"""Theme → voice setup QR. Lands on the LAN console /grok page."""
 
 import time
 
@@ -6,6 +6,7 @@ import pyray as rl
 
 from openpilot.common.qrcode import make_texture
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.selfdrive.weather_news import grok as grok_api
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.widgets.label import UnifiedLabel
@@ -20,7 +21,8 @@ class GrokQrPage(NavWidget):
     self._qr_texture: rl.Texture | None = None
     self._last_qr_generation = float("-inf")
     self._url = ""
-    self._label = UnifiedLabel("scan for grok setup", font_size=48, font_weight=FontWeight.BOLD, line_height=0.8)
+    who = grok_cfg.display_name().lower()
+    self._label = UnifiedLabel(f"scan for {who} setup", font_size=48, font_weight=FontWeight.BOLD, line_height=0.8)
     self._sub = UnifiedLabel("", font_size=28, font_weight=FontWeight.MEDIUM, line_height=0.9)
 
   def _url_now(self) -> str:

@@ -186,6 +186,22 @@ class LongModeBadge(Widget):
       cy += sz.y + gap
 
 
+class VoiceHomeIcon(IconWidget):
+  """50px home mark. Swaps to the Gemini sparkle when Gemini is the active provider."""
+
+  def __init__(self):
+    super().__init__("icons_mici/grok.png", (50, 50), opacity=0.9)
+    self._marks = {
+      "grok": self._texture,
+      "gemini": gui_app.texture("icons_mici/gemini.png", 50, 50),
+    }
+
+  def _render(self, _) -> None:
+    tex = self._marks["gemini"] if grok_cfg.provider() == "gemini" else self._marks["grok"]
+    color = rl.Color(255, 255, 255, int(self._opacity * 255))
+    rl.draw_texture_ex(tex, rl.Vector2(self._rect.x, self._rect.y), 0.0, 1.0, color)
+
+
 _GROK_STATUS = {
   "queued": "Thinking",
   "fetching weather": "Thinking",
@@ -199,11 +215,14 @@ _GROK_STATUS = {
 
 
 class GrokOverlay(Widget):
-  """Tesla-style full-screen Grok wait. Shown while Ara is generating."""
+  """Tesla-style full-screen wait. Shown while the selected AI is generating."""
 
   def __init__(self):
     super().__init__()
-    self._mark = gui_app.texture("icons_mici/grok_lg.png", 160, 160)
+    self._marks = {
+      "grok": gui_app.texture("icons_mici/grok_lg.png", 160, 160),
+      "gemini": gui_app.texture("icons_mici/gemini_lg.png", 160, 160),
+    }
     self._font = gui_app.font(FontWeight.DISPLAY)
     self._small = gui_app.font(FontWeight.ROMAN)
     self._t0 = time.monotonic()
@@ -221,16 +240,22 @@ class GrokOverlay(Widget):
     cy = rect.y + rect.height * 0.42
     pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(t * 2.2))
     sz = 160.0 * pulse
-    src = rl.Rectangle(0, 0, float(self._mark.width), float(self._mark.height))
+    gemini = grok_cfg.provider() == "gemini"
+    mark = self._marks["gemini"] if gemini else self._marks["grok"]
+    name = grok_cfg.display_name()
+    src = rl.Rectangle(0, 0, float(mark.width), float(mark.height))
     dst = rl.Rectangle(cx, cy, sz, sz)
-    rl.draw_texture_pro(self._mark, src, dst, rl.Vector2(sz * 0.5, sz * 0.5), t * 18.0, rl.WHITE)
+    rl.draw_texture_pro(mark, src, dst, rl.Vector2(sz * 0.5, sz * 0.5), t * 18.0, rl.WHITE)
     ring_r = 108.0
     start = (t * 140.0) % 360.0
     rl.draw_ring(rl.Vector2(cx, cy), ring_r - 2.5, ring_r, start, start + 78.0, 40, rl.Color(255, 255, 255, 180))
-    name = "Grok"
     nw = measure_text_cached(self._font, name, 36)
     rl.draw_text_ex(self._font, name, rl.Vector2(cx - nw.x * 0.5, cy + 128), 36, 0, rl.WHITE)
     cap = self._caption
+    if cap == "Couldn't reach Grok":
+      cap = f"Couldn't reach {name}"
+    elif cap == "Turn Grok on":
+      cap = f"Turn {name} on"
     cw = measure_text_cached(self._small, cap, 22)
     rl.draw_text_ex(self._small, cap, rl.Vector2(cx - cw.x * 0.5, cy + 172), 22, 0, rl.Color(160, 160, 168, 255))
 
@@ -257,7 +282,7 @@ class MiciHomeLayout(Widget):
     self._egpu_icon_gray = IconWidget("icons_mici/egpu_gray.png", (50, 37))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
-    self._grok_icon = IconWidget("icons_mici/grok.png", (50, 50), opacity=0.9)
+    self._grok_icon = VoiceHomeIcon()
     self._grok_icon.set_click_callback(self._grok_ondemand)
     self._grok_overlay = GrokOverlay()
     self._grok_busy = False

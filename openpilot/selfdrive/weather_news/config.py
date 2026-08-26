@@ -16,10 +16,13 @@ WIFI_KEY = "WeatherNewsWifiOnly"
 PROVIDER_KEY = "GrokProvider"
 OPENAI_KEY = "OpenaiApiKey"
 GROQ_KEY = "GroqApiKey"
+GEMINI_KEY = "GeminiApiKey"
 EVERY_DRIVE_KEY = "WeatherNewsEveryDrive"
 PLAYBACK_KEY = "WeatherNewsPlayback"
 PLAYBACK_STANDARD = 0
 PLAYBACK_BOOSTED = 1
+PROVIDERS = ("xai", "openai", "groq", "gemini")
+PROVIDER_NAMES = {"xai": "Grok", "openai": "OpenAI", "groq": "Groq", "gemini": "Gemini"}
 DEFAULT_TOPICS = "npr"
 TOPIC_SUGGESTIONS = (
   "npr", "cnn", "comma", "reddit", "reddit:commaai", "reddit:openpilot",
@@ -130,14 +133,22 @@ def set_groq_key(key: str) -> None:
   _set_key(GROQ_KEY, key)
 
 
+def gemini_key() -> str:
+  return _key_file(GEMINI_KEY)
+
+
+def set_gemini_key(key: str) -> None:
+  _set_key(GEMINI_KEY, key)
+
+
 def provider() -> str:
   p = _key_file(PROVIDER_KEY).lower() or "xai"
-  return p if p in ("xai", "openai", "groq") else "xai"
+  return p if p in PROVIDERS else "xai"
 
 
 def set_provider(name: str) -> None:
   p = (name or "xai").strip().lower()
-  if p not in ("xai", "openai", "groq"):
+  if p not in PROVIDERS:
     p = "xai"
   try:
     _params().put(PROVIDER_KEY, p, block=True)
@@ -146,12 +157,18 @@ def set_provider(name: str) -> None:
     (PARAM_DIR / PROVIDER_KEY).write_text(p)
 
 
+def display_name(p: str | None = None) -> str:
+  return PROVIDER_NAMES.get(p or provider(), "Grok")
+
+
 def configured() -> bool:
   p = provider()
   if p == "openai":
     return bool(openai_key())
   if p == "groq":
     return bool(groq_key())
+  if p == "gemini":
+    return bool(gemini_key())
   return bool(api_key())
 
 
@@ -165,6 +182,8 @@ def active_key() -> str:
     return openai_key()
   if p == "groq":
     return groq_key()
+  if p == "gemini":
+    return gemini_key()
   return api_key()
 
 

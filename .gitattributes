@@ -29,6 +29,8 @@ openpilot/selfdrive/assets/sounds/shutter.wav -filter=lfs -diff=lfs -merge=lfs -
 # LFS smudge, asserts, and setup returns to the green Start button.
 openpilot/selfdrive/assets/icons_mici/grok.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/grok_lg.png -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/icons_mici/gemini.png -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/icons_mici/gemini_lg.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/tesla_t.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/on_air_on.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/on_air_off.png -filter=lfs -diff=lfs -merge=lfs -text

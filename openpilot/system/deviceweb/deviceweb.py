@@ -45,7 +45,7 @@ FILE_ROOTS = (
 )
 SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
-  "XaiApiKey", "OpenaiApiKey", "GroqApiKey",
+  "XaiApiKey", "OpenaiApiKey", "GroqApiKey", "GeminiApiKey",
 }
 WRITE_BOOL = {
   "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
@@ -88,6 +88,7 @@ GROK_HOWTO = {
   "xai": "console.x.ai → API keys. Paste an xAI key. Chat is grok-4-fast; spoken voice is Ara TTS.",
   "openai": "platform.openai.com → API keys. Chat is gpt-4o-mini; spoken voice is OpenAI tts-1 (alloy).",
   "groq": "console.groq.com → API keys. Chat is Llama 3.3 70B. Groq has no TTS — add an OpenAI key too if you want Ara-style spoken audio.",
+  "gemini": "aistudio.google.com → API keys. Chat is gemini-3.6-flash. Spoken voice is Ara if you also pasted an xAI key, otherwise OpenAI tts-1.",
 }
 
 _clip_lock = threading.Lock()
@@ -368,6 +369,7 @@ def _grok_status() -> dict:
     "masked": grok_cfg.masked_key(),
     "openai_masked": _mask(grok_cfg.openai_key()),
     "groq_masked": _mask(grok_cfg.groq_key()),
+    "gemini_masked": _mask(grok_cfg.gemini_key()),
     "url": grok_api.console_url("/grok"),
     "topics": grok_cfg.topics_text(),
     "suggestions": list(grok_cfg.TOPIC_SUGGESTIONS),
@@ -387,6 +389,8 @@ def _write_grok(body: dict) -> dict:
     grok_cfg.set_openai_key(str(body.get("openai_key") or ""))
   if "groq_key" in body:
     grok_cfg.set_groq_key(str(body.get("groq_key") or ""))
+  if "gemini_key" in body:
+    grok_cfg.set_gemini_key(str(body.get("gemini_key") or ""))
   if "provider" in body:
     grok_cfg.set_provider(str(body.get("provider") or "xai"))
   if "voice_on" in body:

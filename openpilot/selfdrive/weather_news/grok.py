@@ -1,4 +1,4 @@
-"""SpaceXAI (xAI) Grok chat + Ara TTS. Key lives in params, never in the repo."""
+"""SpaceXAI (xAI) Grok chat + Ara TTS. Gemini/OpenAI/Groq chat. Key lives in params, never in the repo."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from openpilot.selfdrive.weather_news import config as grok_cfg
 CHAT_URL = "https://api.x.ai/v1/chat/completions"
 TTS_URL = "https://api.x.ai/v1/tts"
 MODEL = "grok-4-fast"
+GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 VOICE_ID = "ara"
 TIMEOUT_CHAT = 60
 TIMEOUT_TTS = 90
@@ -33,6 +35,7 @@ def _note_bytes(kind: str, n: int) -> None:
 
 def _brief_sys(unhinged: bool, window: str = "") -> str:
   sec = grok_cfg.duration()
+  who = grok_cfg.display_name()
   slot = {
     "morning": "This is the morning briefing.",
     "afternoon": "This is the afternoon briefing.",
@@ -45,16 +48,23 @@ def _brief_sys(unhinged: bool, window: str = "") -> str:
     f"{slot} Do not recap other time windows from today. Skip empty lists."
   )
   if unhinged:
+    voice = "You are Ara, Tesla Grok Unhinged." if grok_cfg.provider() == "xai" else (
+      f"You are {who}, TeslaPilot Unhinged."
+    )
     return (
-      "You are Ara, Tesla Grok Unhinged. Write a spoken briefing a driver hears through a car speaker. "
+      f"{voice} Write a spoken briefing a driver hears through a car speaker. "
       f"{sec} seconds. NSFW, vulgar, unfiltered. Roast the weather and the headlines. "
+      "Never sexual. Never slurs. Never tell them to crash. "
       f"{loc} Cover each provided headline in order. "
       "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
       "You may insert TTS tags like [laugh], [pause], [sigh]. "
       "End by telling them not to crash and to keep their eyes on the road."
     )
+  voice = "You are Ara, the Grok voice, in Nice mode." if grok_cfg.provider() == "xai" else (
+    f"You are {who}, TeslaPilot copilot in Nice mode."
+  )
   return (
-    "You are Ara, the Grok voice, in Nice mode. Write a spoken briefing a driver hears "
+    f"{voice} Write a spoken briefing a driver hears "
     f"through a car speaker. {sec} seconds when read aloud. Warm, PG, first person. "
     f"{loc} Cover each provided headline in order. "
     "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
@@ -115,17 +125,24 @@ def test_key(key: str | None = None, provider: str | None = None) -> tuple[bool,
   if p == "openai":
     key = (key or grok_cfg.openai_key()).strip()
     url = "https://api.openai.com/v1/models"
+    headers = _headers(key)
   elif p == "groq":
     key = (key or grok_cfg.groq_key()).strip()
     url = "https://api.groq.com/openai/v1/models"
+    headers = _headers(key)
+  elif p == "gemini":
+    key = (key or grok_cfg.gemini_key()).strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}"
+    headers = {"x-goog-api-key": key}
   else:
     key = (key or grok_cfg.api_key()).strip()
     url = "https://api.x.ai/v1/tts/voices"
+    headers = _headers(key)
   if not key:
     return False, f"no {p} API key"
   try:
-    r = requests.get(url, headers=_headers(key), timeout=12)
-    if r.status_code == 401:
+    r = requests.get(url, headers=headers, timeout=12)
+    if r.status_code in (401, 403):
       return False, "unauthorized"
     if r.status_code in (200, 203):
       return True, "ok"
@@ -166,13 +183,23 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
 
 
 def write_preview(*, unhinged: bool) -> str | None:
-  sys = (
-    "You are Ara. Unhinged. One or two spoken sentences, 8 to 12 seconds. NSFW ok. "
-    "Confirm this is the Unhinged voice. No news, no weather, no lists."
-    if unhinged else
-    "You are Ara. Nice mode. One or two spoken sentences, 8 to 12 seconds, PG. "
-    "Confirm this is the Nice voice. No news, no weather, no lists."
-  )
+  who = grok_cfg.display_name()
+  if grok_cfg.provider() == "xai":
+    sys = (
+      "You are Ara. Unhinged. One or two spoken sentences, 8 to 12 seconds. NSFW ok. "
+      "Confirm this is the Unhinged voice. No news, no weather, no lists."
+      if unhinged else
+      "You are Ara. Nice mode. One or two spoken sentences, 8 to 12 seconds, PG. "
+      "Confirm this is the Nice voice. No news, no weather, no lists."
+    )
+  else:
+    sys = (
+      f"You are {who}. Unhinged. One or two spoken sentences, 8 to 12 seconds. NSFW ok, never sexual. "
+      f"Confirm this is the Unhinged {who} voice. No news, no weather, no lists."
+      if unhinged else
+      f"You are {who}. Nice mode. One or two spoken sentences, 8 to 12 seconds, PG. "
+      f"Confirm this is the Nice {who} voice. No news, no weather, no lists."
+    )
   return _chat(sys, "Preview tap. Speak now.", temperature=1.0 if unhinged else 0.5)
 
 
@@ -185,7 +212,47 @@ def _chat_endpoint() -> tuple[str, str, str]:
   return CHAT_URL, grok_cfg.api_key(), MODEL
 
 
+def _chat_gemini(system: str, user: str, *, temperature: float) -> str | None:
+  key = grok_cfg.gemini_key()
+  if not key:
+    return None
+  last_err = ""
+  for _ in range(2):
+    try:
+      r = requests.post(
+        GEMINI_URL,
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
+        json={
+          "systemInstruction": {"parts": [{"text": system}]},
+          "contents": [{"role": "user", "parts": [{"text": user}]}],
+          "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": 800,
+          },
+        },
+        timeout=TIMEOUT_CHAT,
+      )
+      _note_bytes("chat", len(system) + len(user) + 180 + len(r.content))
+      if r.status_code != 200:
+        last_err = f"http {r.status_code} {r.text[:160]}"
+        cloudlog.warning(f"weather_news: gemini chat {last_err}")
+        continue
+      parts = ((r.json().get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+      text = " ".join((p.get("text") or "") for p in parts if p.get("text") and not p.get("thought"))
+      text = " ".join(text.strip().split())
+      if text:
+        return text
+      last_err = "empty"
+    except Exception:
+      cloudlog.exception("weather_news: gemini chat failed")
+      last_err = "exception"
+  cloudlog.warning(f"weather_news: gemini chat gave up ({last_err})")
+  return None
+
+
 def _chat(system: str, user: str, *, temperature: float) -> str | None:
+  if grok_cfg.provider() == "gemini":
+    return _chat_gemini(system, user, temperature=temperature)
   url, key, model = _chat_endpoint()
   if not key:
     return None
@@ -265,8 +332,9 @@ def tts_wav(text: str, dest: Path, *, unhinged: bool = False) -> bool:
   if not text:
     return False
   p = grok_cfg.provider()
+  use_openai = p == "openai" or (p in ("groq", "gemini") and not grok_cfg.api_key())
   try:
-    if p == "openai" or (p == "groq" and grok_cfg.openai_key()):
+    if use_openai:
       key = grok_cfg.openai_key()
       if not key:
         return False

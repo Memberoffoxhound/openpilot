@@ -46,7 +46,7 @@ const S = {
   page: (location.hash.replace("#", "") || "home"),
   home: null,
   params: {},
-  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, playback: 1, provider: "xai", howto: {} },
+  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, playback: 1, provider: "xai", howto: {}, gemini_masked: "" },
   routes: [],
   topicDraft: "",
   toast: "",
@@ -262,6 +262,7 @@ function grokHTML() {
   const howto = g.howto || {};
   const providers = [
     { id: "xai", name: "xAI Grok", masked: g.masked, field: "api_key", ph: "xai-…" },
+    { id: "gemini", name: "Gemini", masked: g.gemini_masked, field: "gemini_key", ph: "Gemini API key" },
     { id: "openai", name: "OpenAI", masked: g.openai_masked, field: "openai_key", ph: "sk-…" },
     { id: "groq", name: "Groq", masked: g.groq_masked, field: "groq_key", ph: "gsk_…" },
   ];
@@ -269,7 +270,7 @@ function grokHTML() {
   return `<div class="stack">
     <p class="h-label">Weather + news</p>
     <div class="card">
-      <div class="set"><div class="meta"><b>Grok voice</b><p>Ara speaks the briefing. Weather is always included.</p></div>
+      <div class="set"><div class="meta"><b>Voice</b><p>Selected AI writes the briefing. Ara (or OpenAI tts-1) speaks it. Weather is always included.</p></div>
         <button class="tog${g.voice_on ? " on" : ""}" id="voiceOn"><i></i></button></div>
       <div class="set"><div class="meta"><b>Mode</b><p>Unhinged is NSFW through the speaker.</p></div>
         <div class="seg">

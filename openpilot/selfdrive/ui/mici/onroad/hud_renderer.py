@@ -5,6 +5,7 @@ from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE
+from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -145,6 +146,7 @@ class HudRenderer(Widget):
     self._txt_compass_fan90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 78, 78)
     self._txt_grok_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_grok_mark: rl.Texture = gui_app.texture('icons_mici/grok.png', 44, 44)
+    self._txt_gemini_mark: rl.Texture = gui_app.texture('icons_mici/gemini.png', 44, 44)
     self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
@@ -368,7 +370,7 @@ class HudRenderer(Widget):
       return ""
 
   def _draw_grok_bug(self, rect: rl.Rectangle) -> None:
-    """60px round Grok mark. Dark icon fills bottom-up like old iOS install."""
+    """60px round AI mark. Dark icon fills bottom-up like old iOS install."""
     st = self._wx_status()
     working = st in _WX_PROGRESS
     self._grok_fade.update(1.0 if working else 0.0)
@@ -392,17 +394,18 @@ class HudRenderer(Widget):
     bg_c = rl.Color(255, 255, 255, a)
     rl.draw_texture_ex(self._txt_grok_bg, rl.Vector2(cx - size / 2, cy - size / 2), 0.0, 1.0, bg_c)
 
+    mark = self._txt_gemini_mark if grok_cfg.provider() == "gemini" else self._txt_grok_mark
     mx = cx - mark_sz / 2
     my = cy - mark_sz / 2
     dim = rl.Color(255, 255, 255, int(255 * 0.32 * fade))
-    rl.draw_texture_ex(self._txt_grok_mark, rl.Vector2(mx, my), 0.0, 1.0, dim)
+    rl.draw_texture_ex(mark, rl.Vector2(mx, my), 0.0, 1.0, dim)
 
     progress = max(0.0, min(1.0, float(self._grok_fill.x)))
     fill_h = mark_sz * progress
     if fill_h > 0.6:
-      src = rl.Rectangle(0, self._txt_grok_mark.height - fill_h, float(self._txt_grok_mark.width), fill_h)
+      src = rl.Rectangle(0, mark.height - fill_h, float(mark.width), fill_h)
       dst = rl.Rectangle(mx, my + mark_sz - fill_h, mark_sz, fill_h)
-      rl.draw_texture_pro(self._txt_grok_mark, src, dst, rl.Vector2(0, 0), 0.0,
+      rl.draw_texture_pro(mark, src, dst, rl.Vector2(0, 0), 0.0,
                           rl.Color(255, 255, 255, int(255 * 0.95 * fade)))
 
     ring_in, ring_out = size / 2 - 4.0, size / 2 - 1.0

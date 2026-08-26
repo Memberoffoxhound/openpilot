@@ -139,7 +139,7 @@ class WeatherNewsCycle(BigMultiToggle):
 
 
 class GrokVoiceCycle(BigButton):
-  """Master switch for Grok Ara (Nice / Unhinged). Enabling opens the setup QR."""
+  """Master switch for Grok / Gemini (Nice / Unhinged). Enabling opens the setup QR."""
 
   def __init__(self, on_change=None):
     super().__init__("grok voice", "")
@@ -147,12 +147,19 @@ class GrokVoiceCycle(BigButton):
     self.refresh()
 
   def refresh(self):
+    title = "gemini voice" if grok_cfg.provider() == "gemini" else "grok voice"
+    if title != self.text:
+      self.set_text(title)
     value = "on" if grok_cfg.voice_enabled() else "off"
     if value != self.value:
       self.set_value(value)
 
   def show_event(self):
     super().show_event()
+    self.refresh()
+
+  def _update_state(self):
+    super()._update_state()
     self.refresh()
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
@@ -168,13 +175,16 @@ class GrokVoiceCycle(BigButton):
 
 class GrokQrButton(BigButton):
   def __init__(self):
-    super().__init__("grok setup", "QR")
+    super().__init__("voice setup", "QR")
     self.refresh()
 
   def refresh(self):
     on = grok_cfg.voice_enabled()
     self.set_enabled(on)
     self.set_value("QR" if on else "off")
+    title = "gemini setup" if grok_cfg.provider() == "gemini" else "grok setup"
+    if title != self.text:
+      self.set_text(title)
 
   def show_event(self):
     super().show_event()
