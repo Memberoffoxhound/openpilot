@@ -46,7 +46,7 @@ const S = {
   page: (location.hash.replace("#", "") || "home"),
   home: null,
   params: {},
-  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, playback: 1, provider: "xai", howto: {}, gemini_masked: "" },
+  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, world_breaking: true, playback: 1, provider: "xai", howto: {}, gemini_masked: "" },
   routes: [],
   topicDraft: "",
   toast: "",
@@ -289,6 +289,8 @@ function grokHTML() {
         </div></div>
       <div class="set"><div class="meta"><b>Every drive</b><p>Off = morning, afternoon, and after 7pm — one each, never stacked. On = start of every drive.</p></div>
         <button class="tog${g.every_drive ? " on" : ""}" id="everyDrive"><i></i></button></div>
+      <div class="set"><div class="meta"><b>World breaking</b><p>Lead with what broke in the last few hours, then your topics. Off = topics only.</p></div>
+        <button class="tog${g.world_breaking !== false ? " on" : ""}" id="worldBreaking"><i></i></button></div>
     </div>
     <p class="h-label">Topics · ${topics.length}/6</p>
     <div class="card" style="padding:12px 14px">
@@ -428,6 +430,7 @@ function bindPage() {
     $("voiceOn").onclick = () => saveGrok({ voice_on: !S.grok.voice_on });
     $("wifiOnly").onclick = () => saveGrok({ wifi_only: !S.grok.wifi_only });
     $("everyDrive").onclick = () => saveGrok({ every_drive: !S.grok.every_drive });
+    $("worldBreaking").onclick = () => saveGrok({ world_breaking: S.grok.world_breaking === false });
     $("page").querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
     $("page").querySelectorAll("[data-dur]").forEach(b => b.onclick = () => saveGrok({ duration: Number(b.dataset.dur) }));
     $("page").querySelectorAll("[data-play]").forEach(b => b.onclick = () => saveGrok({ playback: Number(b.dataset.play) }));

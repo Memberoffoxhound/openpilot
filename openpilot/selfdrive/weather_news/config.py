@@ -17,6 +17,8 @@ PROVIDER_KEY = "GrokProvider"
 OPENAI_KEY = "OpenaiApiKey"
 GROQ_KEY = "GroqApiKey"
 GEMINI_KEY = "GeminiApiKey"
+WORLD_BREAKING_KEY = "WeatherNewsWorldBreaking"
+LAST_ITEMS_KEY = "WeatherNewsLastItems"
 EVERY_DRIVE_KEY = "WeatherNewsEveryDrive"
 PLAYBACK_KEY = "WeatherNewsPlayback"
 PLAYBACK_STANDARD = 0
@@ -298,6 +300,58 @@ def set_playback(mode: int) -> None:
   except Exception:
     PARAM_DIR.mkdir(parents=True, exist_ok=True)
     (PARAM_DIR / PLAYBACK_KEY).write_text(str(v))
+
+
+def world_breaking() -> bool:
+  try:
+    v = _params().get(WORLD_BREAKING_KEY, return_default=True)
+    if v is None:
+      return True
+    if isinstance(v, bool):
+      return v
+    return str(v).strip().lower() in ("1", "true", "on", "yes")
+  except Exception:
+    f = PARAM_DIR / WORLD_BREAKING_KEY
+    if not f.exists():
+      return True
+    return f.read_text().strip().lower() in ("1", "true", "on", "yes", "")
+
+
+def set_world_breaking(on: bool) -> None:
+  try:
+    _params().put_bool(WORLD_BREAKING_KEY, bool(on), block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / WORLD_BREAKING_KEY).write_text("1" if on else "0")
+
+
+def last_items() -> list[str]:
+  raw = ""
+  try:
+    raw = _as_str(_params().get(LAST_ITEMS_KEY) or "")
+  except Exception:
+    f = PARAM_DIR / LAST_ITEMS_KEY
+    raw = f.read_text() if f.exists() else ""
+  return [ln.strip() for ln in raw.splitlines() if ln.strip()][:24]
+
+
+def set_last_items(titles: list[str]) -> None:
+  seen: set[str] = set()
+  lines: list[str] = []
+  for t in titles:
+    k = (t or "").strip()
+    if not k or k.lower() in seen:
+      continue
+    seen.add(k.lower())
+    lines.append(k)
+    if len(lines) >= 24:
+      break
+  value = "\n".join(lines)
+  try:
+    _params().put(LAST_ITEMS_KEY, value, block=True)
+  except Exception:
+    PARAM_DIR.mkdir(parents=True, exist_ok=True)
+    (PARAM_DIR / LAST_ITEMS_KEY).write_text(value)
 
 
 def set_topics(text: str) -> None:

@@ -53,7 +53,7 @@ WRITE_BOOL = {
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
   "ShowDebugInfo", "JoystickDebugMode", "GrokVoiceEnabled",
-  "WeatherNewsWifiOnly", "IsLiveStreaming",
+  "WeatherNewsWifiOnly", "WeatherNewsWorldBreaking", "IsLiveStreaming",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode",
              "WeatherNewsDuration", "WeatherNewsPlayback", "CustomOnroadUi"}
@@ -65,7 +65,7 @@ READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
   "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled", "WeatherNewsTopics",
-  "WeatherNewsDuration", "WeatherNewsWifiOnly", "WeatherNewsPlayback", "GrokProvider", "IsLiveStreaming",
+  "WeatherNewsDuration", "WeatherNewsWifiOnly", "WeatherNewsPlayback", "WeatherNewsWorldBreaking", "GrokProvider", "IsLiveStreaming",
   "LastGPSPosition", "CustomOnroadUi",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
@@ -376,6 +376,7 @@ def _grok_status() -> dict:
     "duration": grok_cfg.duration(),
     "wifi_only": grok_cfg.wifi_only(),
     "every_drive": grok_cfg.every_drive(),
+    "world_breaking": grok_cfg.world_breaking(),
     "playback": grok_cfg.playback(),
     "provider": grok_cfg.provider(),
     "howto": GROK_HOWTO,
@@ -403,6 +404,8 @@ def _write_grok(body: dict) -> dict:
     grok_cfg.set_wifi_only(str(body.get("wifi_only")) in ("1", "true", "True", "yes", "on"))
   if "every_drive" in body:
     grok_cfg.set_every_drive(str(body.get("every_drive")) in ("1", "true", "True", "yes", "on"))
+  if "world_breaking" in body:
+    grok_cfg.set_world_breaking(str(body.get("world_breaking")) in ("1", "true", "True", "yes", "on"))
   if "playback" in body:
     grok_cfg.set_playback(int(body.get("playback") or grok_cfg.PLAYBACK_BOOSTED))
   return _grok_status()

@@ -14,7 +14,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.selfdrive.weather_news import grok as grok_api
 from openpilot.selfdrive.weather_news import mode as wx
-from openpilot.selfdrive.weather_news.news_bites import fetch_rss_items
+from openpilot.selfdrive.weather_news.news_bites import fetch_breaking_news, fetch_rss_items
 from openpilot.selfdrive.weather_news.voice import speak_lines
 
 ONROAD_DELAY_S = 10.0
@@ -274,12 +274,18 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   if day:
     clock = _local_clock(lon or 0.0, day)
   _put(params, "WeatherNewsStatus", "getting news")
-  news = fetch_rss_items(grok_cfg.topics())
+  skip = set(grok_cfg.last_items())
+  breaking: list[dict] = []
+  if grok_cfg.world_breaking():
+    breaking = fetch_breaking_news(skip=skip)
+    skip |= {it["title"] for it in breaking}
+  news = fetch_rss_items(grok_cfg.topics(), skip=skip)
 
   _put(params, "WeatherNewsStatus", "asking grok")
   script = grok_api.write_script(
     day, news, unhinged=aggressive, location_name=name or "your area",
     lat=lat, lon=lon, local_time=clock, window=window,
+    breaking=breaking, already_told=grok_cfg.last_items(),
   )
   if not script:
     cloudlog.warning("weather_news: grok chat missed")
@@ -291,6 +297,8 @@ def build_and_speak(params: Params, aggressive: bool, loc: tuple[float, float, s
   ok = speak_lines(
     [script], aggressive=aggressive, on_status=lambda m: _put(params, "WeatherNewsStatus", m),
   )
+  if ok:
+    grok_cfg.set_last_items([it.get("title") or "" for it in (breaking + news)])
   b = grok_api.last_bytes()
   total = b.get("chat", 0) + b.get("tts", 0)
   cloudlog.info(

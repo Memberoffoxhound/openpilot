@@ -33,7 +33,7 @@ def last_bytes() -> dict[str, int]:
 def _note_bytes(kind: str, n: int) -> None:
   _last_bytes[kind] = max(0, int(n))
 
-def _brief_sys(unhinged: bool, window: str = "") -> str:
+def _brief_sys(unhinged: bool, window: str = "", *, world_breaking: bool = True) -> str:
   sec = grok_cfg.duration()
   who = grok_cfg.display_name()
   slot = {
@@ -42,10 +42,22 @@ def _brief_sys(unhinged: bool, window: str = "") -> str:
     "evening": "This is the evening briefing (after 7pm).",
   }.get(window, "This is a current briefing.")
   loc = (
-    "The user JSON has the driver's current latitude, longitude, local time, and a place name when known. "
+    "The user JSON has the driver's current latitude, longitude, local time (`as_of`), and a place name when known. "
     "Identify the city or area from those coordinates and use that location. Do not read the numbers aloud. "
-    "Weather must be current to this time and place — lead with conditions right now, then the rest of this window. "
+    "Weather must be current to this minute and place — lead with conditions right now, then the rest of this window. "
     f"{slot} Do not recap other time windows from today. Skip empty lists."
+  )
+  news = (
+    "News must be live as of `as_of`. "
+    + ("First a short WORLD BREAKING section: what actually changed in the last few hours. Then the driver's interest topics. "
+       if world_breaking else
+       "Cover the driver's interest topics. ")
+    + "Prefer items with the newest `pub` / smallest `age_s`. "
+    "Skip anything in `already_told` unless there is a new development since then. "
+    "Do not spend time on day-old running stories. Do not pad. "
+    "You may add a widely confirmed breaking event from this exact moment that is not in RSS yet — "
+    "no fake numbers, quotes, death tolls, or URLs. Do not invent a story that did not happen. "
+    "Cover fresh items; do not read the same recap as the last drive."
   )
   if unhinged:
     voice = "You are Ara, Tesla Grok Unhinged." if grok_cfg.provider() == "xai" else (
@@ -55,8 +67,8 @@ def _brief_sys(unhinged: bool, window: str = "") -> str:
       f"{voice} Write a spoken briefing a driver hears through a car speaker. "
       f"{sec} seconds. NSFW, vulgar, unfiltered. Roast the weather and the headlines. "
       "Never sexual. Never slurs. Never tell them to crash. "
-      f"{loc} Cover each provided headline in order. "
-      "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
+      f"{loc} {news} "
+      "No markdown, no lists, no URLs. "
       "You may insert TTS tags like [laugh], [pause], [sigh]. "
       "End by telling them not to crash and to keep their eyes on the road."
     )
@@ -66,8 +78,8 @@ def _brief_sys(unhinged: bool, window: str = "") -> str:
   return (
     f"{voice} Write a spoken briefing a driver hears "
     f"through a car speaker. {sec} seconds when read aloud. Warm, PG, first person. "
-    f"{loc} Cover each provided headline in order. "
-    "Do not invent stories that are not in the items. No markdown, no lists, no URLs. "
+    f"{loc} {news} "
+    "No markdown, no lists, no URLs. "
     "Plain sentences. End by telling them to enjoy the drive and keep their eyes on the road."
   )
 
@@ -153,17 +165,33 @@ def test_key(key: str | None = None, provider: str | None = None) -> tuple[bool,
 
 def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: bool,
                  location_name: str = "your area", lat: float | None = None,
-                 lon: float | None = None, local_time: str = "", window: str = "") -> str | None:
+                 lon: float | None = None, local_time: str = "", window: str = "",
+                 breaking: list[dict] | None = None, already_told: list[str] | None = None) -> str | None:
   if not grok_cfg.configured():
     return None
 
-  items = []
-  for item in news:
-    t = (item.get("title") or "").strip()
-    if t:
-      items.append({"source": item.get("source") or "news", "title": t})
+  def _slim(rows: list[dict], n: int) -> list[dict]:
+    out = []
+    for item in rows:
+      t = (item.get("title") or "").strip()
+      if not t:
+        continue
+      row = {"source": item.get("source") or "news", "title": t}
+      if item.get("pub"):
+        row["pub"] = item["pub"]
+      if item.get("age_s") is not None:
+        row["age_s"] = item["age_s"]
+      if item.get("desc"):
+        row["blurb"] = str(item["desc"])[:160]
+      out.append(row)
+      if len(out) >= n:
+        break
+    return out
+
+  use_breaking = bool(breaking) and grok_cfg.world_breaking()
   user = {
     "request_location": True,
+    "as_of": local_time,
     "location": {
       "name": location_name,
       "latitude": None if lat is None else round(float(lat), 5),
@@ -173,12 +201,14 @@ def write_script(weather: dict[str, Any] | None, news: list[dict], *, unhinged: 
     },
     "weather": weather or {},
     "topics": grok_cfg.topics(),
-    "items": items[:8],
+    "world_breaking": _slim(breaking or [], 5) if use_breaking else [],
+    "interests": _slim(news, 8),
+    "already_told": [t for t in (already_told or []) if t][:16],
   }
   return _chat(
-    _brief_sys(unhinged, window=window),
+    _brief_sys(unhinged, window=window, world_breaking=use_breaking),
     json.dumps(user),
-    temperature=1.0 if unhinged else 0.6,
+    temperature=1.0 if unhinged else 0.75,
   )
 
 

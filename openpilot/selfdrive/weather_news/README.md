@@ -10,7 +10,7 @@ Spoken briefing **three times a day**: once in the morning (5am–noon), once in
    - **OpenAI** — [platform.openai.com](https://platform.openai.com). Chat `gpt-4o-mini`, voice `tts-1`.
    - **Groq** — [console.groq.com](https://console.groq.com). Chat Llama 3.3 70B. Add an OpenAI key too if you want spoken audio (Groq has no TTS).
 4. Theme → weather & news: **Off / Nice / Unhinged**. Unhinged is NSFW (crude roast, not sexual); confirm on enable. Same modes for Grok and Gemini.
-5. Topics: up to 6, autocomplete on the Voice page. Default is weather + `npr`.
+5. Topics: up to 6, autocomplete on the Voice page. Default is weather + `npr`. **World breaking** (Voice tab, default on) leads with live world news, then those topics.
 6. Theme → **briefing length** 60 / 90 / 120 s. **briefing on wifi only** skips LTE.
 7. Theme → **briefing playback**: **Standard** (clean) or **Boosted** (default, louder for road noise, less C4 crackle). Voice only.
 8. Theme → **briefing schedule**: **3x a day** (default) or **every drive**. 3x a day is morning / afternoon / after 7pm, one each, never stacked. Every drive waits ~10s after onroad. Use it to test reliability.
@@ -18,9 +18,9 @@ Spoken briefing **three times a day**: once in the morning (5am–noon), once in
 
 While the selected AI writes and speaks, a **60px round bug** sits top-right onroad (same translucent dm_background as the DM / compass bugs). Grok uses the Grok mark; Gemini uses the Gemini sparkle. The mark starts dark and fills bottom-up like an old iOS app install, with a round progress ring. Home uses the same loading animation while a briefing is generated.
 
-The active provider writes the briefing from **current** weather at your GPS location (city is requested in the prompt) plus your topics. TTS speaks that text only — no canned scripts. weather_news_d enhances the WAV (standard or boosted, 48 kHz) then soundd plays `/data/wxnews.wav` from a background decode so the 20 Hz audio thread does not stall.
+The active provider writes the briefing from **current** weather at your GPS location (city is requested in the prompt) plus a **world breaking** pass (what changed in the last ~8 hours) and then your interest topics. TTS speaks that text only — no canned scripts. weather_news_d enhances the WAV (standard or boosted, 48 kHz) then soundd plays `/data/wxnews.wav` from a background decode so the 20 Hz audio thread does not stall.
 
-Topic aliases: `npr`, `cnn`, `comma` (blog.comma.ai), `reddit` or `reddit:commaai`, `x` or `x:ApteraMotors`. Anything else is a Google News search (`Aptera Motors`).
+Topic aliases: `npr`, `cnn`, `comma` (blog.comma.ai), `reddit` or `reddit:commaai`, `x` or `x:ApteraMotors`. Anything else is a Google News search (`Aptera Motors`). World breaking is BBC World + Google World + NPR hourly, filtered to 8 hours, and skipped if it was already in the last briefing. Toggle it on the LAN Voice page (default on).
 
 ## LTE
 
@@ -75,6 +75,8 @@ This fork stays on Grok Ara (or OpenAI tts-1). Do not re-add Piper/Kokoro on the
 | `WeatherNewsWifiOnly` | Skip fetch + TTS on cellular. Default off. |
 | `WeatherNewsPlayback` | `0` standard, `1` boosted. Default boosted. |
 | `WeatherNewsEveryDrive` | `0` 3x/day slots, `1` start of every drive. Default off. |
+| `WeatherNewsWorldBreaking` | Lead with live world news (~8h), then topics. Default on. LAN Voice toggle. |
+| `WeatherNewsLastItems` | Titles from the last briefing so the next one does not recap them. |
 | `WeatherNewsOnDemand` | Home mark tap. Full briefing, no window consume. Test hook. |
 | `WeatherNewsPreview` | `nice` or `aggressive`. Cleared on manager start. |
 | `WeatherNewsLastRunDate` | `YYYY-MM-DD:morning\|afternoon\|evening` after a wav is queued. |
