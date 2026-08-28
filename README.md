@@ -53,8 +53,6 @@ Inspired by Tesla’s Self-Driving stats, miniaturized for the comma 4. Work in 
 
 Open it from the Home stats row, or Settings → **statistics** (the wheel).
 
-![Settings — statistics](docs/screenshots/settings-statistics.jpg)
-
 Three snap pages. Accents follow Theme (Tesla blue / Openpilot green).
 
 **Engaged** — lifetime ring, day-streak checks, total miles, engaged miles, longest stretch.
