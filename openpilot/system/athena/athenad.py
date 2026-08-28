@@ -805,6 +805,7 @@ def startStream(sdp: str, enabled: bool) -> dict:
     # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
     # webrtcd clears IsLiveStreaming when the session ends
     params.put_bool("IsLiveStreaming", True)
+    # wait for webrtcd end points to wake up
     try:
       wait_for_webrtcd()
     except TimeoutError:

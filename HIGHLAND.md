@@ -2,7 +2,7 @@
 
 # S3XYPilot — Highland
 
-Working branch. Version **0.11.12**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
+Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
 `master` is an unmodified comma.ai/openpilot mirror. Highland is the Tesla fork. Sync comma diffs onto `master`, then cherry-pick onto Highland.
 
@@ -38,9 +38,7 @@ Tesla stock ACC stays default until this is on. Experimental mode is gated on op
 
 ## LAN console
 
-`http://<c4-ip>:8088` — settings, files, shots, clips (offroad, local routes), stats, updates. No password. Local Wi-Fi only. Not comma Connect.
-
-Connect livestream is **stock** (parked). Custom on-road WebRTC viewer was removed so Connect stays compatible.
+`http://<c4-ip>:8088` — settings, files, shots, clips (offroad, local routes), stats, updates. No password. Local Wi-Fi only. Not comma Connect. comma Connect livestream is stock (parked only).
 
 ## Screenshots
 

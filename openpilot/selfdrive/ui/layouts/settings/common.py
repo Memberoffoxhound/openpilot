@@ -11,7 +11,7 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
-  day_id, sunday_id, seed_week_today, empty_trip, merge_snapshots, apply_seed, roll_ids,
+  seed_week_today, empty_trip, merge_snapshots, apply_seed, roll_ids,
   week_cache_valid, cache_segments_idle,
 )
 

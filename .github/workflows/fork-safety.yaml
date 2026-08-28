@@ -1,4 +1,4 @@
-# DELAMAIN fork-safety gate.
+# S3XYPilot fork-safety gate.
 # comma docs/SAFETY.md: disable/nerf driver monitoring or excessive-actuation
 # checks, or ship modified opendbc/safety without the full test suite, and
 # comma will ban the dongle from their servers.

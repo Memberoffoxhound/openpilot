@@ -37,7 +37,6 @@ inline int livestream_width() {
 inline int livestream_height() {
   switch (Hardware::get_device_type()) {
     case cereal::InitData::DeviceType::TIZI:
-      return 720;
     case cereal::InitData::DeviceType::MICI: return 720;
     default: return -1;
   }

@@ -1,11 +1,5 @@
 /* S3XYPilot LAN console — mobile-first */
-const PAGES = ["home", "settings", "live", "shots"];
-const CAMS = [
-  { id: "wideRoad", label: "E CAM" },
-  { id: "road", label: "F CAM" },
-  { id: "driver", label: "D CAM" },
-];
-const PIP_CORNERS = ["br", "bl", "tl", "tr"];
+const PAGES = ["home", "settings", "shots"];
 const GROUPS = [
   { id: "drive", title: "Driving", items: [
     { key: "OpenpilotEnabledToggle", label: "Enable S3XYPilot", type: "bool", desc: "Master switch. Restart required.", restart: true },
@@ -55,12 +49,6 @@ const S = {
   player: null,
   route: null,
   seg: 0,
-  pc: null,
-  liveOn: false,
-  webrtc: false,
-  layout: "triple",
-  pipCorner: "br",
-  singleCam: "road",
   shots: [],
   shotView: null,
   shotPick: false,
@@ -116,7 +104,6 @@ function paintHeader() {
 
 function setPage(p) {
   if (!PAGES.includes(p)) p = "home";
-  if (S.page === "live" && p !== "live") hangup();
   if (S.page === "home" && p !== "home") teardownHome();
   if (p !== "shots") { S.shotView = null; S.shotPick = false; document.onkeydown = null; }
   S.page = p;
@@ -134,11 +121,9 @@ function render() {
   const root = $("page");
   if (S.page === "home") root.innerHTML = homeHTML();
   else if (S.page === "settings") root.innerHTML = settingsHTML();
-  else if (S.page === "live") root.innerHTML = liveHTML();
   else root.innerHTML = shotsHTML();
   bindPage();
   if (S.page === "home") setupHome();
-  if (S.page === "live") bindVideos();
 }
 
 function homeHTML() {
@@ -220,36 +205,6 @@ function confirmHTML() {
       <button class="btn" id="confirmNo">Cancel</button>
     </div>
   </div></div>`;
-}
-
-function liveHTML() {
-  const air = S.liveOn;
-  return `<div class="stack">
-    <div class="h-row">
-      <p class="h-label">WebRTC · 720p VBR up to 6 Mb/s</p>
-      <span class="badge"><span class="dot${air ? " live" : ""}"></span> ${air ? "ON AIR" : "STANDBY"}</span>
-    </div>
-    <div class="live-tools">
-      <button class="btn${air ? " live" : " primary"}" id="airBtn">${air ? "End" : "Go live"}</button>
-      <button class="btn" data-layout="triple">3-up</button>
-      <button class="btn" data-layout="one" data-cam="road">F</button>
-      <button class="btn" data-layout="one" data-cam="wideRoad">E</button>
-      <button class="btn" data-layout="one" data-cam="driver">D</button>
-      <button class="btn" data-layout="pip" data-cam="road">F + D</button>
-      <button class="btn" data-layout="pip" data-cam="wideRoad">E + D</button>
-      <button class="btn" id="fsBtn">Fullscreen</button>
-    </div>
-    <div id="stage" class="stage ${stageClass()}">
-      ${CAMS.map(c => `<div class="tile" data-cam="${c.id}"><video playsinline autoplay muted></video><label>${c.label}</label></div>`).join("")}
-    </div>
-    <p class="tiny">Three cameras at once (BTTF2). PIP d-cam tap cycles corners. Fullscreen is 16:9 black for Discord / Twitch capture.</p>
-  </div>`;
-}
-
-function stageClass() {
-  if (S.layout === "triple") return "triple";
-  if (S.layout === "pip") return `pip pip-${S.pipCorner}`;
-  return "one";
 }
 
 function shotUrl(name) { return "/api/screenshots/raw?name=" + encodeURIComponent(name); }
@@ -339,15 +294,6 @@ function bindPage() {
     $("reboot").onclick = () => act("reboot");
     $("shutdown").onclick = () => act("shutdown");
     bindConfirm();
-  }
-  if (S.page === "live") {
-    $("airBtn").onclick = () => S.liveOn ? hangup() : goLive();
-    $("fsBtn").onclick = () => toggleFs();
-    $("page").querySelectorAll("[data-layout]").forEach(b => b.onclick = () => {
-      S.layout = b.dataset.layout;
-      if (b.dataset.cam) S.singleCam = b.dataset.cam;
-      applyLayout();
-    });
   }
   if (S.page === "shots") {
     $("shotCap").onclick = () => captureShot();
@@ -560,107 +506,6 @@ function stepSeg(d) {
   playSeg();
 }
 
-function applyLayout() {
-  const stage = $("stage");
-  if (!stage) return;
-  stage.className = "stage " + stageClass() + (stage.classList.contains("fs") ? " fs" : "");
-  stage.querySelectorAll(".tile").forEach(t => {
-    const id = t.dataset.cam;
-    t.classList.remove("show", "main", "pipcam");
-    if (S.layout === "triple") return;
-    if (S.layout === "one" && id === S.singleCam) t.classList.add("show");
-    if (S.layout === "pip") {
-      if (id === S.singleCam) t.classList.add("main");
-      if (id === "driver") t.classList.add("pipcam");
-    }
-  });
-  const pip = stage.querySelector(".pipcam");
-  if (pip) pip.onclick = () => {
-    S.pipCorner = PIP_CORNERS[(PIP_CORNERS.indexOf(S.pipCorner) + 1) % PIP_CORNERS.length];
-    applyLayout();
-  };
-}
-
-function bindVideos() {
-  applyLayout();
-}
-
-function iceDone(pc) {
-  if (pc.iceGatheringState === "complete") return Promise.resolve();
-  return new Promise(res => {
-    const t = setTimeout(res, 2200);
-    pc.addEventListener("icegatheringstatechange", () => {
-      if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); }
-    });
-  });
-}
-
-async function goLive() {
-  try {
-    await api("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) });
-    S.liveOn = true;
-    render();
-    say("warming cameras…");
-    let ready = false;
-    for (let i = 0; i < 12; i++) {
-      const st = await api("/api/live");
-      if (st.webrtc) { ready = true; break; }
-      await new Promise(r => setTimeout(r, 700));
-    }
-    if (!ready) { say("webrtcd not up yet — retry Go live"); return; }
-    hangup(false);
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    S.pc = pc;
-    pc.createDataChannel("data");
-    CAMS.forEach(() => pc.addTransceiver("video", { direction: "recvonly" }));
-    const videos = [...document.querySelectorAll("#stage video")];
-    let i = 0;
-    pc.ontrack = (ev) => {
-      const v = videos[i++] || videos[0];
-      if (v) v.srcObject = new MediaStream([ev.track]);
-    };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await iceDone(pc);
-    const ans = await api("/api/webrtc/stream", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sdp: pc.localDescription.sdp,
-        cameras: CAMS.map(c => c.id),
-        enabled: true,
-        bridge_services_in: [],
-        bridge_services_out: [],
-      }),
-    });
-    if (ans.error) throw new Error(ans.error + (ans.hint ? " — " + ans.hint : ""));
-    await pc.setRemoteDescription({ type: ans.type || "answer", sdp: ans.sdp });
-    say("live");
-  } catch (e) { say(e.message || String(e)); }
-}
-
-function hangup(update = true) {
-  if (S.pc) { try { S.pc.close(); } catch (e) {} S.pc = null; }
-  document.querySelectorAll("#stage video").forEach(v => { v.srcObject = null; });
-  if (update) {
-    S.liveOn = false;
-    api("/api/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: false }) }).catch(() => {});
-    if (S.page === "live") render();
-  }
-}
-
-function toggleFs() {
-  const stage = $("stage");
-  if (!stage) return;
-  const go = () => { stage.classList.add("fs"); applyLayout(); };
-  const leave = () => { stage.classList.remove("fs"); applyLayout(); };
-  if (!document.fullscreenElement) {
-    (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage).then(go).catch(go);
-  } else {
-    (document.exitFullscreen || document.webkitExitFullscreen).call(document).then(leave).catch(leave);
-  }
-  document.onfullscreenchange = () => { if (!document.fullscreenElement) leave(); };
-}
-
 async function refreshHome() {
   try {
     S.home = await api("/api/home");
@@ -692,12 +537,11 @@ async function boot() {
   });
   render();
   try {
-    const [home, params, routes, live] = await Promise.all([
+    const [home, params, routes] = await Promise.all([
       api("/api/home"), api("/api/params"),
-      api("/api/routes").catch(() => ({ routes: [] })), api("/api/live").catch(() => ({})),
+      api("/api/routes").catch(() => ({ routes: [] })),
     ]);
     S.home = home; S.params = params; S.routes = routes.routes || [];
-    S.liveOn = !!live.live; S.webrtc = !!live.webrtc;
     paintHeader();
     render();
     if (S.page === "shots") loadShots();

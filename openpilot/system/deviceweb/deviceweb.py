@@ -13,8 +13,6 @@ import sys
 import threading
 import time
 import traceback
-import urllib.error
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -49,7 +47,7 @@ WRITE_BOOL = {
   "AutoLaneChangeEnabled", "IsLdwEnabled", "AlwaysOnDM", "IsMetric",
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
-  "ShowDebugInfo", "JoystickDebugMode", "IsLiveStreaming",
+  "ShowDebugInfo", "JoystickDebugMode",
 }
 WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "CustomOnroadUi"}
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
@@ -71,8 +69,6 @@ SEG_RE = re.compile(
 ROUTE_RE = re.compile(r"^(?P<rid>\d{8}--[0-9a-fA-F]+)(?:--(?P<seg>\d+))?$")
 REALDATA = Path("/data/media/0/realdata")
 FONT_PATH = OPENPILOT_DIR / "openpilot/selfdrive/assets/fonts/TESLA.ttf"
-WEBRTC_URL = "http://127.0.0.1:5001/stream"
-WEBRTC_SCHEMA = "http://127.0.0.1:5001/schema?services=deviceState"
 TRIP_PATH = Path("/data/trip_meter.json")
 GPS_CACHE = DATA_DIR / "stats"
 DELOREAN_PATH = Path("/data/delorean_sound")
@@ -725,33 +721,6 @@ def _route_gps(rid: str) -> dict:
   return report
 
 
-def _webrtc_ready() -> bool:
-  try:
-    with urllib.request.urlopen(WEBRTC_SCHEMA, timeout=1) as r:
-      return r.status == 200
-  except Exception:
-    return False
-
-
-def _webrtc_stream(body: dict) -> tuple[int, dict]:
-  raw = json.dumps(body).encode()
-  req = urllib.request.Request(
-    WEBRTC_URL, data=raw, method="POST",
-    headers={"Content-Type": "application/json", "Content-Length": str(len(raw))},
-  )
-  try:
-    with urllib.request.urlopen(req, timeout=35) as r:
-      return r.status, json.loads(r.read().decode() or "{}")
-  except urllib.error.HTTPError as e:
-    try:
-      payload = json.loads(e.read().decode() or "{}")
-    except Exception:
-      payload = {"error": str(e)}
-    return e.code, payload
-  except Exception as e:
-    return 503, {"error": str(e), "hint": "Turn On-Air on and wait for webrtcd."}
-
-
 def _clip_status() -> dict:
   with _clip_lock:
     j = dict(_clip_job)
@@ -1005,11 +974,6 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, drive_stats.status())
       if path in ("/api/home", "/api/device/home"):
         return self._json(200, _home())
-      if path in ("/api/live", "/api/device/live"):
-        return self._json(200, {
-          "live": bool(_params().get_bool("IsLiveStreaming")),
-          "webrtc": _webrtc_ready(),
-        })
       if path in ("/api/qcam", "/api/device/qcam"):
         rid = _route_id((qs.get("route") or [""])[0])
         if not rid:
@@ -1115,14 +1079,6 @@ class Handler(BaseHTTPRequestHandler):
         if not start or not end:
           start, end = drive_stats.default_range()
         return self._json(200, drive_stats.start(start, end, p.get_bool("IsOffroad")))
-      if path in ("/api/live", "/api/device/live"):
-        body = self._read_json()
-        on = str(body.get("on", True)).lower() in ("1", "true", "yes", "on")
-        p.put_bool("IsLiveStreaming", on, block=True)
-        return self._json(200, {"ok": True, "live": on, "webrtc": _webrtc_ready()})
-      if path in ("/api/webrtc/stream", "/api/device/webrtc/stream"):
-        code, payload = _webrtc_stream(self._read_json())
-        return self._json(code, payload)
       if path in ("/api/screenshots/capture", "/api/device/screenshots/capture"):
         return self._json(200, _request_shot())
       if path in ("/api/screenshots/delete", "/api/device/screenshots/delete"):

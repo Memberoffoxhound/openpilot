@@ -17,19 +17,14 @@ openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
 # do not need LFS to fetch the white Tesla T spinner.
 openpilot/selfdrive/assets/images/spinner_comma.png -filter=lfs -diff=lfs -merge=lfs -text
 
-# C4 Settings → theme paintbrush icon (small white silhouette).
+# Highland-only blobs. Must be normal files: .lfsconfig points at comma GitLab.
 openpilot/selfdrive/assets/fonts/TESLA.ttf -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/sounds/88mph.wav -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/sounds/ludicrous.wav -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/sounds/buckle.wav -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/sounds/shutter.wav -filter=lfs -diff=lfs -merge=lfs -text
 
 # Highland-only media. Must be normal blobs: .lfsconfig points at comma's
 # GitLab, and these OIDs are not there. A fresh installer clone 404s on
 # LFS smudge, asserts, and setup returns to the green Start button.
 openpilot/selfdrive/assets/icons_mici/tesla_t.png -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/icons_mici/on_air_on.png -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/icons_mici/on_air_off.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/settings/theme.png -filter=lfs -diff=lfs -merge=lfs -text
-openpilot/selfdrive/assets/icons_mici/settings/clapper.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/system/deviceweb/static/icon.svg -filter=lfs -diff=lfs -merge=lfs -text

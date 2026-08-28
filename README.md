@@ -2,7 +2,7 @@
 
 Tesla-first fork built for simplicity. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
 
-Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.12. This branch versions as **0.11.12**.
+Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
 
 Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
 
@@ -32,9 +32,9 @@ Home stats: **Today** / **Week** miles and distance-engaged %. Survives reboot a
 
 ### Driving
 
-- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
-- Cooperative steering — on. Based on dzid26's implementation of cooperative steering (VTB). AmyJeanes landed the sunnypilot Tesla Coop Steering path.
-- Scroll-wheel disengage — stalkless cancel. Based on dkiiv's implementation of stalkless scroll-wheel cancel, pulled from dzid26's Tesla fork.
+- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
+- Cooperative steering — on.
+- Scroll-wheel disengage — stalkless cancel.
 
 ### Theme
 
@@ -46,7 +46,7 @@ Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ig
 3s display hold → screenshot (`/data/media/0/screenshots`).
 
 <!-- docs/screenshots/lan-console.png -->
-LAN dashboard `http://<device-ip>:8088/` — local Wi-Fi, no login. comma Connect livestream is **stock** (parked only).
+LAN dashboard `http://<device-ip>:8088/` — local Wi-Fi, no login. Settings, files, shots, clips (offroad), stats, updates. comma Connect livestream is stock (parked only).
 
 Planned shots live in [`docs/screenshots/`](docs/screenshots/README.md).
 
