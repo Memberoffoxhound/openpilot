@@ -14,6 +14,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   empty_trip, merge_snapshots, apply_seed, roll_ids, week_cache_valid,
+  sunday_id, day_id,
 )
 
 
@@ -188,22 +189,32 @@ _trip_t = 0.0
 _trip_flush = 0.0
 _trip_param = 0.0
 _seed_started = False
+_awaiting_seed = False
 _was_offroad = True
+_live_streak = 0.0
 _trip_lock = threading.Lock()
 _PERSIST_KEYS = (
   "trip_m", "eng_m", "eng_s", "tot_s",
   "last_m", "last_eng_m", "last_eng_s", "last_tot_s", "route",
   "week_m", "week_eng_m", "week_eng_s", "week_tot_s", "week_id",
   "today_m", "today_eng_m", "day_id", "seed",
+  "life_m", "life_e", "max_streak_m", "max_day_streak",
 )
 
 
 def _params_trip() -> dict:
   try:
     v = Params().get("TripMeter")
-    return v if isinstance(v, dict) else {}
+    if isinstance(v, dict):
+      return v
+    if isinstance(v, (bytes, bytearray)):
+      v = v.decode()
+    if isinstance(v, str) and v.strip():
+      d = json.loads(v)
+      return d if isinstance(d, dict) else {}
   except Exception:
-    return {}
+    pass
+  return {}
 
 
 def _persist_blob(t: dict) -> dict:
@@ -229,9 +240,9 @@ def _write_trip_file(blob: dict) -> None:
   os.replace(tmp, TRIP_PATH)
 
 
-def _write_trip_param(blob: dict) -> None:
+def _write_trip_param(blob: dict, block: bool = False) -> None:
   try:
-    Params().put("TripMeter", blob, block=False)
+    Params().put("TripMeter", blob, block=block)
   except Exception:
     pass
 
@@ -247,6 +258,10 @@ def _spawn_trip_job(kind: str) -> None:
     )
   except Exception:
     cloudlog.exception("trip job")
+
+
+def spawn_trip_job(kind: str) -> None:
+  _spawn_trip_job(kind)
 
 
 def _read_seed_out() -> dict | None:
@@ -267,8 +282,35 @@ def _load_trip() -> tuple[dict, bool]:
   except Exception:
     pass
   t = merge_snapshots(t, _params_trip())
+  try:
+    from openpilot.selfdrive.ui.layouts.settings.trip_stats import apply_stats_to_trip
+    apply_stats_to_trip(t)
+  except Exception:
+    pass
   need_seed = not week_cache_valid(t)
-  return roll_ids(t), need_seed
+  if need_seed:
+    # Keep live miles. Stamp missing ids so Home has a period, but do not
+    # treat a missing id as a Sunday rollover (that zeros the JSON on overlay).
+    if not str(t.get("week_id") or ""):
+      t["week_id"] = sunday_id()
+    if not str(t.get("day_id") or ""):
+      t["day_id"] = day_id()
+  else:
+    roll_ids(t)
+  return t, need_seed
+
+
+def trip_snapshot() -> dict:
+  """Home Today/Week. Prefer live tick state, then JSON/param."""
+  with _trip_lock:
+    if _trip is not None:
+      return dict(_trip)
+  t = empty_trip()
+  try:
+    t = merge_snapshots(t, json.loads(open(TRIP_PATH, encoding="utf-8").read()))
+  except Exception:
+    pass
+  return merge_snapshots(t, _params_trip())
 
 
 def tick_trip() -> None:
@@ -277,74 +319,104 @@ def tick_trip() -> None:
   Live JSON is the cache (1s). TripMeter param is a slower dual-write (5s).
   Boot skips qlogs when week_id matches. Parked cache/seed run in a subprocess.
   """
-  global _trip, _trip_t, _trip_flush, _trip_param, _seed_started, _was_offroad
+  global _trip, _trip_t, _trip_flush, _trip_param, _seed_started, _awaiting_seed, _was_offroad, _live_streak
   now = time.monotonic()
   seed_blob = _read_seed_out()
   park_cache = False
   file_blob = None
   param_blob = None
+  param_block = False
   with _trip_lock:
     if _trip is None:
       _trip, need_seed = _load_trip()
       _trip_t = now
+      _awaiting_seed = need_seed
+      file_blob = _persist_blob(_trip)
+      param_blob = file_blob
+      param_block = True
       if not _seed_started:
         _seed_started = True
         if need_seed:
           _spawn_trip_job("seed")
         elif not _trip.get("seed"):
           _trip["seed"] = "json"
-      return
+          file_blob = _persist_blob(_trip)
+          param_blob = file_blob
+    else:
+      if seed_blob:
+        merged = apply_seed(_trip, seed_blob)
+        _trip.clear()
+        _trip.update(merged)
+        _trip["seed"] = "qlog"
+        _awaiting_seed = False
+        file_blob = _persist_blob(_trip)
+        param_blob = file_blob
+      elif _awaiting_seed:
+        try:
+          from openpilot.selfdrive.ui.layouts.settings.trip_stats import apply_stats_to_trip
+          apply_stats_to_trip(_trip)
+          if week_cache_valid(_trip):
+            _awaiting_seed = False
+            file_blob = _persist_blob(_trip)
+            param_blob = file_blob
+        except Exception:
+          pass
 
-    if seed_blob:
-      merged = apply_seed(_trip, seed_blob)
-      _trip.clear()
-      _trip.update(merged)
-      _trip["seed"] = "qlog"
-      file_blob = _persist_blob(_trip)
-      param_blob = file_blob
-
-    roll_ids(_trip)
-    dt = min(1.0, max(0.0, now - _trip_t))
-    _trip_t = now
-    params = ui_state.params
-    route = params.get("CurrentRoute") or ""
-    if isinstance(route, bytes):
-      route = route.decode(errors="replace")
-    if route and route != _trip.get("route"):
-      _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
-      _trip["route"] = route
-      file_blob = _persist_blob(_trip)
-      param_blob = file_blob
-    try:
-      offroad = params.get_bool("IsOffroad")
-      cs_ok = ui_state.sm.recv_frame["carState"] > 0
-    except Exception:
-      offroad, cs_ok = True, False
-    if offroad and not _was_offroad:
-      park_cache = True
-    _was_offroad = offroad
-    if (not offroad) and cs_ok:
-      v = max(0.0, float(ui_state.sm["carState"].vEgo))
-      _trip["tot_s"] += dt
-      if v > 0.15:
-        _trip["trip_m"] += v * dt
-        _trip["week_m"] += v * dt
-        _trip["today_m"] = _trip.get("today_m", 0.0) + v * dt
+      if not _awaiting_seed:
+        roll_ids(_trip)
+      dt = min(1.0, max(0.0, now - _trip_t))
+      _trip_t = now
+      params = ui_state.params
+      route = params.get("CurrentRoute") or ""
+      if isinstance(route, bytes):
+        route = route.decode(errors="replace")
+      if route and route != _trip.get("route"):
+        _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
+        _trip["route"] = route
+        _live_streak = 0.0
+        file_blob = _persist_blob(_trip)
+        param_blob = file_blob
       try:
-        if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
-          _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
-          _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
-          _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
-          _trip["eng_s"] += dt
-          _trip["week_eng_s"] += dt
+        offroad = params.get_bool("IsOffroad")
+        cs_ok = ui_state.sm.recv_frame["carState"] > 0
       except Exception:
-        pass
-    if now - _trip_flush > 1.0:
-      file_blob = _persist_blob(_trip)
-      _trip_flush = now
-    if now - _trip_param > 5.0:
-      param_blob = file_blob or _persist_blob(_trip)
-      _trip_param = now
+        offroad, cs_ok = True, False
+      if offroad and not _was_offroad:
+        park_cache = True
+      _was_offroad = offroad
+      if (not offroad) and cs_ok:
+        v = max(0.0, float(ui_state.sm["carState"].vEgo))
+        _trip["tot_s"] += dt
+        engaged = False
+        try:
+          engaged = ui_state.sm.recv_frame["selfdriveState"] > 0 and bool(ui_state.sm["selfdriveState"].enabled)
+        except Exception:
+          engaged = False
+        if v > 0.15:
+          d = v * dt
+          _trip["trip_m"] += d
+          _trip["week_m"] += d
+          _trip["today_m"] = _trip.get("today_m", 0.0) + d
+          _trip["life_m"] = _trip.get("life_m", 0.0) + d
+          if engaged:
+            _trip["eng_m"] = _trip.get("eng_m", 0.0) + d
+            _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + d
+            _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + d
+            _trip["life_e"] = _trip.get("life_e", 0.0) + d
+            _trip["eng_s"] += dt
+            _trip["week_eng_s"] += dt
+            _live_streak += d
+            _trip["max_streak_m"] = max(float(_trip.get("max_streak_m") or 0), _live_streak)
+          else:
+            _live_streak = 0.0
+        elif not engaged:
+          _live_streak = 0.0
+      if now - _trip_flush > 1.0:
+        file_blob = _persist_blob(_trip)
+        _trip_flush = now
+      if now - _trip_param > 5.0:
+        param_blob = file_blob or _persist_blob(_trip)
+        _trip_param = now
 
   if file_blob is not None:
     try:
@@ -352,7 +424,13 @@ def tick_trip() -> None:
     except Exception:
       cloudlog.exception("trip save")
   if param_blob is not None:
-    _write_trip_param(param_blob)
+    _write_trip_param(param_blob, block=param_block or park_cache)
+    try:
+      from openpilot.selfdrive.ui.layouts.settings.trip_stats import touch_live_stats
+      t = _trip or {}
+      touch_live_stats(t.get("today_m", 0), t.get("today_eng_m", 0), _live_streak)
+    except Exception:
+      pass
   if park_cache:
     _spawn_trip_job("cache")
 

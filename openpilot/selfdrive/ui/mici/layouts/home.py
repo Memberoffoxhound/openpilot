@@ -1,5 +1,4 @@
 import datetime
-import json
 import time
 
 from openpilot.cereal import log
@@ -13,18 +12,19 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
+from openpilot.selfdrive.ui.layouts.settings.common import trip_snapshot
+from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
-TRIP_PATH = "/data/trip_meter.json"
 WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
-  """Dies/KAYOver TESLA.ttf for SEXYPILOT. Falls back to Inter DISPLAY."""
+  """SEXYPILOT wordmark from TESLA.ttf. Falls back to Inter DISPLAY."""
   try:
     chars = "SEXYPILOT"
     cps = sorted(map(ord, chars))
@@ -150,7 +150,7 @@ class NetworkIcon(Widget):
 
 
 class LongModeBadge(Widget):
-  """Footer: Tesla T + TACC, or comma + LONG. 48px tall like experimental."""
+  """Footer: Tesla T + TACC, or comma + LONG."""
   H = 48
   LOGO_W = 48
   COL_W = 16
@@ -227,6 +227,8 @@ class MiciHomeLayout(Widget):
     self._trip_at = 0.0
     self._last_txt = ("Today ", "0mi 0%")
     self._week_txt = ("Week ", "0mi 0%")
+    self._trip_hit = rl.Rectangle(0, 0, 0, 0)
+    self._on_stats_click: Callable | None = None
 
   def _update_state(self):
     self._refresh_trip()
@@ -244,18 +246,17 @@ class MiciHomeLayout(Widget):
     if now - self._trip_at < 1.0:
       return
     self._trip_at = now
-    try:
-      t = json.loads(open(TRIP_PATH).read())
-    except Exception:
-      t = {}
-    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_eng_m", 0) or 0))
-    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_m", 0) or 0))
+    t = stats_view(trip_snapshot())
+    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
+                    on_stats: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
                     max_severity_callback: Callable[[], int | None] | None = None):
     self._on_settings_click = on_settings
     self._on_alerts_click = on_alerts
+    self._on_stats_click = on_stats
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, max_severity_callback)
 
@@ -269,6 +270,10 @@ class MiciHomeLayout(Widget):
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
         rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
+      return
+    if (self._on_stats_click and self._trip_hit.width > 0 and
+        rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
+      self._on_stats_click()
       return
     relative_x = mouse_pos.x - self.rect.x
     has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
@@ -343,6 +348,8 @@ class MiciHomeLayout(Widget):
       rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
       x += measure_text_cached(f, wl, lsz).x
       rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4,
+                                    min(avail, x - version_pos.x) + 8, lsz + 8)
 
     # ***** Center-aligned bottom section icons *****
     op_long = bool(ui_state.has_longitudinal_control)

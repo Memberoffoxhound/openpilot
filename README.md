@@ -1,6 +1,6 @@
 # S3XYPilot
 
-Tesla-first fork built for simplicity. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
+Tesla-first fork. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
 
 Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
 
@@ -22,30 +22,69 @@ comma 4 UI. comma 3X may boot; UI is not tailored to it.
 
 ### Onroad
 
-<!-- docs/screenshots/onroad-custom.png -->
-Custom HUD (Theme → onroad UI): Tesla Autopilot-blue lanes, wheel, confidence, compass, and DM. Theme → Tesla / Openpilot. Compass small left or large top-right. Stock HUD is one tap away.
+Theme → onroad UI is **stock** or **custom**. Custom paints Tesla Autopilot-blue lanes, wheel, confidence, compass, and DM. Theme → Tesla or Openpilot. Compass is small-left or large top-right.
 
-<!-- docs/screenshots/home.png -->
-Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
+![Custom onroad HUD](docs/screenshots/onroad-custom.jpg)
 
-Home stats: **Today** / **Week** miles and distance-engaged %. Survives reboot and update. Boot reads the JSON cache; qlogs are parsed parked after a drive.
+Stock HUD is one tap away.
 
-### Driving
+![Stock onroad HUD](docs/screenshots/onroad-stock.jpg)
 
 - Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
 - Cooperative steering — on.
 - Scroll-wheel disengage — stalkless cancel.
 
+### Home
+
+Home is the parked comma 4. Version, date, and branch sit under the wordmark. Under that: **engagement stats**.
+
+![Home with Tesla TACC](docs/screenshots/home-tacc.jpg)
+
+![Home with openpilot longitudinal](docs/screenshots/home-long.jpg)
+
+**Today** and **Week** are distance and percent of that distance spent engaged. Today resets at Chicago midnight. Week resets Sunday. Totals survive reboot and update. Tap the row to open statistics.
+
+The footer shows which longitudinal stack is live:
+
+| | |
+|:---:|:---|
+| <img src="docs/screenshots/icon-tacc.png" height="88" alt="TACC"> | **TACC** — Tesla Traffic-Aware Cruise Control. Openpilot steers. Tesla still does gas and brake. |
+| <img src="docs/screenshots/icon-long.png" height="88" alt="LONG"> | **LONG** — openpilot longitudinal. Alpha. Openpilot does gas and brake, not Tesla ACC. |
+| <img src="docs/screenshots/icon-experimental.png" height="88" alt="Experimental"> | **Experimental** — the atom. Tap to toggle when LONG is on. Hidden on TACC; Tesla is already the longitudinal stack. |
+
+Speaking of statistics…
+
+### Statistics
+
+Inspired by Tesla’s Self-Driving stats, miniaturized for the comma 4. Work in progress. Yes, it’s a 536×240 windshield display. Small, but interesting.
+
+Open it from the Home stats row, or Settings → **statistics** (the wheel).
+
+![Settings — statistics](docs/screenshots/settings-statistics.jpg)
+
+Three snap pages. Accents follow Theme (Tesla blue / Openpilot green).
+
+**Engaged** — lifetime ring, day-streak checks, total miles, engaged miles, longest stretch.
+
+![Statistics — engaged](docs/screenshots/stats-ring.jpg)
+
+**Weekly Engaged** — each day is engaged miles out of that day’s total.
+
+![Statistics — weekly](docs/screenshots/stats-weekly.jpg)
+
+**Monthly Engaged** — same idea, by month. Lifetime totals stay after old qlogs are deleted.
+
+![Statistics — monthly](docs/screenshots/stats-monthly.jpg)
+
 ### Theme
 
-<!-- docs/screenshots/theme.png -->
 Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ignition settles).
 
-### Device
+### Device web UI
 
-3s display hold → screenshot (`/data/media/0/screenshots`).
+Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
 
-Planned shots live in [`docs/screenshots/`](docs/screenshots/README.md).
+On the LAN: `http://<comma-ip>:8088`. Work in progress. Statistics plus a screenshot capture tool and gallery. Way more to come here. No auth — local network only.
 
 ## Tesla compatibility
 

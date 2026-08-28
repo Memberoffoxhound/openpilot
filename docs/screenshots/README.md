@@ -1,9 +1,17 @@
 # Screenshots
 
-Drop PNGs here. [README.md](../../README.md) lists the same filenames under each feature. Until a file exists, the README stays text-only.
+Device photos used in the root [README](../../README.md).
 
 | File | Shot |
 |---|---|
-| `onroad-custom.png` | Custom onroad HUD (Tesla-blue lanes, compass) |
-| `home.png` | Home: TACC/LONG footer + Today/Week |
-| `theme.png` | Theme: Tesla / Openpilot, compass, Delorean |
+| `onroad-custom.jpg` | Custom HUD in the car |
+| `onroad-stock.jpg` | Stock HUD |
+| `home-tacc.jpg` | Home, Tesla TACC |
+| `home-long.jpg` | Home, openpilot LONG + experimental |
+| `icon-tacc.png` | TACC badge |
+| `icon-long.png` | LONG badge |
+| `icon-experimental.png` | Experimental atom |
+| `settings-statistics.jpg` | Settings → statistics |
+| `stats-ring.jpg` | Engaged ring |
+| `stats-weekly.jpg` | Weekly Engaged |
+| `stats-monthly.jpg` | Monthly Engaged |

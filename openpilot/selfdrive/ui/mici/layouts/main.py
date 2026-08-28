@@ -74,6 +74,7 @@ class MiciMainLayout(Scroller):
     self._home_layout.set_callbacks(
       on_settings=lambda: gui_app.push_widget(self._settings_layout),
       on_alerts=lambda: self._scroll_to(self._alerts_layout),
+      on_stats=lambda: gui_app.push_widget(self._settings_layout.stats_layout),
       alert_count_callback=self._alerts_layout.active_alerts,
       max_severity_callback=self._alerts_layout.max_severity,
     )

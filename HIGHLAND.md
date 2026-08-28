@@ -4,41 +4,40 @@
 
 Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
-`master` is an unmodified comma.ai/openpilot mirror. Highland is the Tesla fork on current comma master.
+`master` is an unmodified comma.ai/openpilot mirror.
 
-## Onroad
-
-Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla Autopilot-blue lanes, compass (theme → compass size). Small is 60px on the left between DM and the wheel and hides while MAX is up. Large is 90px top-right and stays while engaged. Accent fan = heading, letter in the hub, torque-bar ring. GPS-backed. Custom UI only. Theme Tesla vs Openpilot paints lanes, wheel, confidence ball, compass fan, and DM cone.
-
-Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
-
-Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday). Distance / distance-engaged, whole miles, no space before `mi`/`km`. Labels match the version row; values sit one step smaller. Both shrink if the row would clip. Totals live in `/data/trip_meter.json` and the `TripMeter` param so reboot and overlay do not zero them. Boot reads that cache when `week_id` is this Chicago Sunday — no qlog scan on Home. After a drive, while parked, a subprocess writes `/data/trip_seed_cache.json` (per-segment meters) so a later reseed (install, missing json) does not LogReader the week on the UI thread. Qlogs never overwrite live miles.
-
-## Toggles
+## Params
 
 | Param | Default | Meaning |
 |---|---|---|
-| `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot). |
-| `LaneColor` | tesla | Theme paint. `0` Openpilot (stock green), `1` Tesla (Autopilot blue on lanes, wheel, confidence, compass, DM). Wheel alpha matches the lanes. |
-| `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
-| Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
+| `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
+| `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
+| `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
+| Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
+
+## Trip files
+
+| Path | Role |
+|---|---|
+| `/data/trip_meter.json` + `TripMeter` param | Live Today/Week. Boot reads this. |
+| `/data/trip_seed_cache.json` | Per-segment meters, filled parked after a drive. |
+| `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
+
+Chicago local for day/week. UI thread never LogReader.
 
 ## Alpha longitudinal (stock)
 
-A 2026 Model 3 Highland fingerprints as `TESLA_MODEL_3`. Stock openpilot master sets `alphaLongitudinalAvailable = True` for Tesla, so **you should have** Developer → alpha longitudinal.
+A 2026 Model 3 Highland fingerprints as `TESLA_MODEL_3`. Stock master sets `alphaLongitudinalAvailable = True`.
 
-Stock C4 behavior, which Highland mirrors:
+- Visible on development branches (`AlphaLongitudinalEnabled` is `DEVELOPMENT_ONLY`).
+- Can change onroad while not engaged. Cannot while engaged.
+- Change requests an onroad cycle (`OnroadCycleRequested`) so panda safety reinits.
 
-- Visible on development branches only (`AlphaLongitudinalEnabled` is `DEVELOPMENT_ONLY`; Highland is not a release branch).
-- You **can** enable/disable it **onroad while not engaged**.
-- You **cannot** change it while engaged.
-- Changing it requests an onroad cycle (`OnroadCycleRequested`) because panda safety has to reinit longitudinal.
+Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 
-Tesla stock ACC stays default until this is on. Experimental mode is gated on openpilot long.
+## Screenshots / LAN
 
-## Screenshots
-
-Hold the display 3s (don’t drag). White flash + shutter. PNG in `/data/media/0/screenshots`. Repo copies go in [`docs/screenshots/`](docs/screenshots/README.md).
+Hold display 3s → `/data/media/0/screenshots`. `deviceweb` on **8088**, no auth.
 
 ## Safety
 

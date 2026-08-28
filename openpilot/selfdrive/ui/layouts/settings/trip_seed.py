@@ -1,10 +1,8 @@
 """Today/Week trip totals.
 
-/data/trip_meter.json + TripMeter param are the live cache. Boot does not
-LogReader when week_id is already this Chicago Sunday.
-
-Per-segment cache (/data/trip_seed_cache.json) is filled at the end of a
-drive while parked, so a later reseed (install, missing json) is cheap.
+Live cache: /data/trip_meter.json + TripMeter param.
+Segment cache: /data/trip_seed_cache.json, filled parked after a drive.
+Boot does not LogReader when week_id is this Chicago Sunday.
 """
 from __future__ import annotations
 
@@ -23,7 +21,7 @@ WEEK_KEYS = ("week_m", "week_eng_m", "week_eng_s", "week_tot_s")
 DAY_KEYS = ("today_m", "today_eng_m")
 CACHE_VER = 1
 HOT_SEC = 120.0
-CACHE_KEEP_SEC = 14 * 86400
+CACHE_KEEP_SEC = 200 * 86400
 SEED_OUT = Path("/data/trip_seed_out.json")
 CACHE_LOCK = Path("/data/trip_cache.lock")
 
@@ -34,6 +32,7 @@ def empty_trip() -> dict:
     "last_m": 0.0, "last_eng_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
     "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": "",
     "today_m": 0.0, "today_eng_m": 0.0, "day_id": "", "seed": "",
+    "life_m": 0.0, "life_e": 0.0, "max_streak_m": 0.0,
   }
 
 
@@ -85,15 +84,23 @@ def apply_seed(trip: dict, seed: dict | None) -> dict:
 
 
 def roll_ids(trip: dict) -> dict:
-  """Zero Today at Chicago midnight, Week on Sunday. Does not touch a matching period."""
+  """Zero Today at Chicago midnight, Week on Sunday.
+
+  Missing ids are stamped, not treated as a rollover. An overlay/update that
+  drops week_id must not wipe live miles before a reseed.
+  """
   wid, did = sunday_id(), day_id()
-  if trip.get("week_id") != wid:
-    for k in WEEK_KEYS:
-      trip[k] = 0.0
+  prev_w = str(trip.get("week_id") or "")
+  if prev_w != wid:
+    if prev_w:
+      for k in WEEK_KEYS:
+        trip[k] = 0.0
     trip["week_id"] = wid
-  if trip.get("day_id") != did:
-    for k in DAY_KEYS:
-      trip[k] = 0.0
+  prev_d = str(trip.get("day_id") or "")
+  if prev_d != did:
+    if prev_d:
+      for k in DAY_KEYS:
+        trip[k] = 0.0
     trip["day_id"] = did
   return trip
 
@@ -113,8 +120,12 @@ def sunday_id(dt: datetime | None = None) -> str:
 
 
 def week_cache_valid(trip: dict | None) -> bool:
-  """True when the live JSON/param already holds this Chicago week. Do not LogReader."""
-  return bool(trip) and str(trip.get("week_id") or "") == sunday_id()
+  """True when the live JSON/param already holds this Chicago week's miles."""
+  if not trip or str(trip.get("week_id") or "") != sunday_id():
+    return False
+  # Zeros with a stamped id are a wipe (overlay), not a real empty week.
+  # Cheap reseed via the segment cache recovers engagement stats.
+  return _f(trip, "week_m") > 0 or _f(trip, "today_m") > 0
 
 
 def _bounds() -> tuple[datetime, datetime, datetime]:
@@ -190,8 +201,8 @@ def _iter_qlogs(min_mtime: float):
     yield ent.name, q, st.st_size, st.st_mtime
 
 
-def _read_qlog(path: Path) -> tuple[float, float, float] | None:
-  """(wall_start, meters, engaged_meters) for the whole file, or None."""
+def _read_qlog(path: Path) -> tuple[float, float, float, float] | None:
+  """(wall_start, meters, engaged_meters, max_engaged_streak_m) or None."""
   try:
     from openpilot.tools.lib.logreader import LogReader
     lr = LogReader(str(path))
@@ -201,7 +212,7 @@ def _read_qlog(path: Path) -> tuple[float, float, float] | None:
   last_mono = None
   v = 0.0
   en = False
-  meters = eng = 0.0
+  meters = eng = streak = cur = 0.0
   n = 0
   for msg in lr:
     n += 1
@@ -239,15 +250,32 @@ def _read_qlog(path: Path) -> tuple[float, float, float] | None:
     meters += d
     if en:
       eng += d
+      cur += d
+      if cur > streak:
+        streak = cur
+    else:
+      cur = 0.0
   if origin_wall is None:
     return None
-  return origin_wall, meters, eng
+  return origin_wall, meters, eng, streak
 
 
-def _fill_seg_cache() -> int:
+def _seg_tuple(hit: dict) -> tuple[float, float, float, float]:
+  return (
+    float(hit.get("t0") or 0),
+    float(hit.get("m") or 0),
+    float(hit.get("e") or 0),
+    float(hit.get("s") or 0),
+  )
+
+
+def _fill_seg_cache(lookback_sec: float | None = None) -> int:
   """LogReader finished qlogs that are not already cached. Returns new entries."""
-  _, _, week0 = _bounds()
-  min_mt = week0.timestamp() - 2 * 86400
+  if lookback_sec is None:
+    _, _, week0 = _bounds()
+    min_mt = week0.timestamp() - 2 * 86400
+  else:
+    min_mt = time.time() - lookback_sec
   cache = _load_seg_cache()
   wrote = 0
   dirty = False
@@ -260,8 +288,11 @@ def _fill_seg_cache() -> int:
     time.sleep(0.01)
     if got is None:
       continue
-    t0, meters, eng = got
-    cache[name] = {"sz": int(sz), "mt": float(mt), "t0": float(t0), "m": float(meters), "e": float(eng)}
+    t0, meters, eng, streak = got
+    cache[name] = {
+      "sz": int(sz), "mt": float(mt), "t0": float(t0),
+      "m": float(meters), "e": float(eng), "s": float(streak),
+    }
     wrote += 1
     dirty = True
     if wrote % 8 == 0:
@@ -283,6 +314,9 @@ def cache_segments_idle() -> None:
     n = _fill_seg_cache()
     time.sleep(45.0)
     n += _fill_seg_cache()
+    n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
+    from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
+    fold_stats_history()
     from openpilot.common.swaglog import cloudlog
     cloudlog.info(f"trip_cache wrote={n}")
   except Exception:
@@ -316,16 +350,19 @@ def seed_week_today() -> dict | None:
       hot = (time.time() - mt) < HOT_SEC
       hit = None if hot else _cache_hit(cache, name, sz, mt)
       if hit is not None:
-        t0, meters, eng = float(hit.get("t0") or 0), float(hit.get("m") or 0), float(hit.get("e") or 0)
+        t0, meters, eng, _streak = _seg_tuple(hit)
         n_hit += 1
       else:
         got = _read_qlog(q)
         time.sleep(0)
         if got is None:
           continue
-        t0, meters, eng = got
+        t0, meters, eng, streak = got
         if not hot:
-          cache[name] = {"sz": int(sz), "mt": float(mt), "t0": float(t0), "m": float(meters), "e": float(eng)}
+          cache[name] = {
+            "sz": int(sz), "mt": float(mt), "t0": float(t0),
+            "m": float(meters), "e": float(eng), "s": float(streak),
+          }
           dirty = True
       if t0 < week0_ts or meters <= 0:
         continue
@@ -357,7 +394,19 @@ def seed_week_today() -> dict | None:
 if __name__ == "__main__":
   import sys
   kind = sys.argv[1] if len(sys.argv) > 1 else "cache"
-  if kind == "seed":
-    write_seed_out(seed_week_today())
-  else:
-    cache_segments_idle()
+  try:
+    if kind == "seed":
+      write_seed_out(seed_week_today())
+      _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
+      from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
+      fold_stats_history()
+    elif kind == "stats":
+      _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
+      from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
+      fold_stats_history()
+    else:
+      cache_segments_idle()
+  except Exception:
+    from openpilot.common.swaglog import cloudlog
+    cloudlog.exception("trip_seed main")
+    raise

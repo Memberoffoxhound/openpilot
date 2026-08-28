@@ -1,4 +1,4 @@
-"""3s display hold → PNG in /data/media/0/screenshots."""
+"""3s display hold → PNG in /data/media/0/screenshots. Web UI sets SHOT_REQ."""
 import os
 import time
 
@@ -6,6 +6,7 @@ import pyray as rl
 
 SHOT_DIR = "/data/media/0/screenshots"
 SHOT_PLAY = "/data/screenshot_play"
+SHOT_REQ = "/data/screenshot_request"
 HOLD_S = 3.0
 MOVE_PX = 28
 
@@ -18,7 +19,23 @@ class ScreenShotter:
     self.pending = False
     self.flash = 0.0
 
+  def _arm(self) -> None:
+    self._fired = True
+    self._t = None
+    self.pending = True
+    try:
+      open(SHOT_PLAY, "w").write("1")
+    except OSError:
+      pass
+
   def held(self, events) -> bool:
+    try:
+      if os.path.isfile(SHOT_REQ):
+        os.remove(SHOT_REQ)
+        self._arm()
+        return True
+    except OSError:
+      pass
     for e in events:
       if e.left_pressed:
         self._t = time.monotonic()
@@ -29,15 +46,8 @@ class ScreenShotter:
           self._t = None
       if e.left_released:
         self._t = None
-    # Clock, not lift. Still finger + no events still fires at 3s.
     if self._t is not None and not self._fired and (time.monotonic() - self._t) >= HOLD_S:
-      self._fired = True
-      self._t = None
-      self.pending = True
-      try:
-        open(SHOT_PLAY, "w").write("1")
-      except OSError:
-        pass
+      self._arm()
       return True
     return False
 

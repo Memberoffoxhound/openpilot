@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#000000"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>SEXYPILOT</title>
+  <link rel="manifest" href="/manifest.webmanifest"/>
+  <link rel="icon" href="/icon.svg"/>
+  <link rel="apple-touch-icon" href="/icon.svg"/>
+  <link rel="stylesheet" href="/app.css?v=26"/>
+</head>
+<body data-theme="tesla">
+  <a class="skip" href="#page">Skip to content</a>
+  <div id="scrim" class="scrim" hidden></div>
+  <aside id="drawer" class="drawer" aria-label="Menu">
+    <div class="drawer-head">
+      <span class="wordmark">SEXYPILOT</span>
+      <button type="button" id="drawerClose" class="icon-btn" aria-label="Close menu">✕</button>
+    </div>
+    <nav>
+      <button type="button" data-page="home">Statistics</button>
+      <button type="button" data-page="shots">Screenshots</button>
+    </nav>
+    <p class="drawer-foot" id="drawerFoot"></p>
+  </aside>
+
+  <header class="top">
+    <button type="button" id="menuBtn" class="icon-btn" aria-label="Open menu" aria-controls="drawer" aria-expanded="false">
+      <span class="burger" aria-hidden="true"></span>
+    </button>
+    <div class="brand">
+      <div class="wordmark">SEXYPILOT</div>
+      <div class="clock" id="clock" aria-live="polite">—</div>
+    </div>
+    <div class="hdr-stats" id="hdrStats" aria-label="Device resources">
+      <span><em>CPU</em>—</span>
+      <span><em>MEM</em>—</span>
+    </div>
+  </header>
+
+  <main id="page" tabindex="-1"></main>
+  <div id="toast" class="toast" hidden role="status"></div>
+  <script src="/app.js?v=26" defer></script>
+</body>
+</html>
