@@ -8,7 +8,7 @@ Working branch. Version **0.11.12**. Repo name is `openpilot` so `installer.comm
 
 ## Onroad
 
-Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla-blue lanes, compass (theme → compass size). Small is 60px on the left between DM and the wheel and hides while MAX is up. Large is 90px top-right and stays while engaged. Green fan = heading, letter in the hub, torque-bar ring. GPS-backed. Custom UI only.
+Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla Autopilot-blue lanes, compass (theme → compass size). Small is 60px on the left between DM and the wheel and hides while MAX is up. Large is 90px top-right and stays while engaged. Accent fan = heading, letter in the hub, torque-bar ring. GPS-backed. Custom UI only. Theme Tesla vs Openpilot paints lanes, wheel, confidence ball, compass fan, and DM cone.
 
 Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
 
@@ -19,7 +19,7 @@ Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday)
 | Param | Default | Meaning |
 |---|---|---|
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot). |
-| `LaneColor` | Tesla blue | Custom UI only. `0` comma green, `1` Tesla blue. |
+| `LaneColor` | tesla | Theme paint. `0` Openpilot (stock green), `1` Tesla (Autopilot blue on lanes, wheel, confidence, compass, DM). Wheel alpha matches the lanes. |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. One at a time. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. Personal use. |
 

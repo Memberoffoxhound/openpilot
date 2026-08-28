@@ -21,7 +21,7 @@ const GROUPS = [
   ]},
   { id: "theme", title: "Theme", items: [
     { key: "CustomOnroadUi", label: "Onroad UI", type: "select", desc: "Stock HUD or custom compass / lanes.", options: [["0", "Stock"], ["1", "Custom"]] },
-    { key: "LaneColor", label: "Lane color", type: "select", desc: "Engaged lane lines.", options: [["1", "Tesla blue"], ["0", "comma green"]] },
+    { key: "LaneColor", label: "Theme", type: "select", desc: "Tesla is Autopilot blue on lanes, wheel, confidence, compass, and DM. Openpilot is stock green.", options: [["1", "Tesla"], ["0", "Openpilot"]] },
     { key: "CompassSize", label: "Compass size", type: "select", desc: "Custom onroad compass.", options: [["0", "Small"], ["1", "Large"]] },
     { key: "Delorean", label: "Delorean", type: "bool", desc: "88 mph clip on going onroad." },
   ]},

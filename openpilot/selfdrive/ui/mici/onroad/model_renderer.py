@@ -8,7 +8,7 @@ from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
-from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, THEME_TESLA_RGB, THEME_OPENPILOT_RGB
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -30,8 +30,8 @@ NO_THROTTLE_COLORS = [
   rl.Color(242, 242, 242, 0),   # HSLF(112/360, 0.0, 0.95, 0.0)
 ]
 
-STOCK_LANE_GREEN = rl.Color(0, 255, 64, 255)
-TESLA_LANE_BLUE = rl.Color(62, 140, 235, 255)  # Tesla Autopilot visualization blue
+STOCK_LANE_GREEN = rl.Color(*THEME_OPENPILOT_RGB, 255)
+TESLA_LANE_BLUE = rl.Color(*THEME_TESLA_RGB, 255)
 
 LANE_LINE_COLORS = {
   UIStatus.DISENGAGED: rl.Color(200, 200, 200, 255),

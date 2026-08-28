@@ -86,10 +86,10 @@ class CompassSizeCycle(BigButton):
 
 
 class LaneColorCycle(BigButton):
-  """Tap to cycle tesla blue / comma green. Applied in custom onroad UI."""
+  """Tap to cycle tesla / openpilot paint. Tesla is Autopilot blue on lanes and HUD chrome."""
 
   def __init__(self):
-    super().__init__("lane color", "")
+    super().__init__("theme", "")
     self._params = Params()
     self.refresh()
 

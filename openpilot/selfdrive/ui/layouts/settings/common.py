@@ -21,7 +21,13 @@ def restart_needed_callback(_=None):
 
 LANE_COLOR_GREEN = 0
 LANE_COLOR_TESLA = 1
-LANE_COLOR_LABELS = ("comma green", "tesla blue")
+LANE_COLOR_LABELS = ("openpilot", "tesla")
+
+# Tesla Autopilot viz blue / stock openpilot green.
+THEME_TESLA_RGB = (62, 140, 235)
+THEME_OPENPILOT_RGB = (0, 255, 64)
+# Lane lines clip alpha at 0.7 so the HUD does not burn an OLED. Tesla wheel uses the same cap.
+THEME_LANE_ALPHA = 0.7
 
 ONROAD_UI_STOCK = 0
 ONROAD_UI_CUSTOM = 1
@@ -33,8 +39,17 @@ COMPASS_LARGE = 1
 COMPASS_SIZE_LABELS = ("small", "large")
 
 
+def _theme_params(params: Params | None = None) -> Params:
+  if params is not None:
+    return params
+  try:
+    return ui_state.params
+  except Exception:
+    return Params()
+
+
 def lane_color_mode(params: Params | None = None) -> int:
-  params = params or Params()
+  params = _theme_params(params)
   mode = params.get("LaneColor", return_default=True)
   return LANE_COLOR_TESLA if mode == LANE_COLOR_TESLA else LANE_COLOR_GREEN
 
@@ -45,6 +60,20 @@ def lane_color_label(params: Params | None = None) -> str:
 
 def next_lane_color(params: Params | None = None) -> int:
   return LANE_COLOR_GREEN if lane_color_mode(params) == LANE_COLOR_TESLA else LANE_COLOR_TESLA
+
+
+def tesla_theme(params: Params | None = None) -> bool:
+  return lane_color_mode(params) == LANE_COLOR_TESLA
+
+
+def theme_rgb(params: Params | None = None) -> tuple[int, int, int]:
+  return THEME_TESLA_RGB if tesla_theme(params) else THEME_OPENPILOT_RGB
+
+
+def theme_color(alpha: float = 1.0, params: Params | None = None) -> rl.Color:
+  r, g, b = theme_rgb(params)
+  a = int(max(0.0, min(1.0, float(alpha))) * 255)
+  return rl.Color(r, g, b, a)
 
 
 def _read_onroad_ui_file() -> int:

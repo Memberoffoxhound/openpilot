@@ -23,7 +23,7 @@ comma 4 UI. comma 3X may boot; UI is not tailored to it.
 ### Onroad
 
 <!-- docs/screenshots/onroad-custom.png -->
-Custom HUD (Theme → onroad UI): Tesla-blue lanes, compass (small left or large top-right). Stock comma HUD is one tap away.
+Custom HUD (Theme → onroad UI): Tesla Autopilot-blue lanes, wheel, confidence, compass, and DM. Theme → Tesla / Openpilot. Compass small left or large top-right. Stock HUD is one tap away.
 
 <!-- docs/screenshots/home.png -->
 Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.

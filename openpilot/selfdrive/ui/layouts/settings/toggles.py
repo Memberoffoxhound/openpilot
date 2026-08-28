@@ -33,7 +33,7 @@ DESCRIPTIONS = {
     "When off, a steering-wheel nudge is required (stock openpilot). Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot)."
   ),
   "LaneColor": tr_noop(
-    "Theme. Color of the engaged lane lines. Tesla blue matches Autopilot visualization. Comma green is default openpilot. Applied in custom onroad UI."
+    "Theme. Tesla paints lanes, steering wheel, confidence, compass, and DM Autopilot blue. Openpilot is stock green. Wheel uses the same alpha as the lanes."
   ),
   "CustomOnroadUi": tr_noop(
     "Stock UI is comma's onroad HUD. Custom UI is this fork's onroad overlays, starting with a compass heading."
@@ -134,7 +134,7 @@ class TogglesLayout(Widget):
     )
 
     self._lane_color_setting = button_item(
-      lambda: tr("Theme: Lane Color"),
+      lambda: tr("Theme"),
       lambda: tr(lane_color_label(self._params)),
       description=lambda: tr(DESCRIPTIONS["LaneColor"]),
       callback=self._cycle_lane_color,

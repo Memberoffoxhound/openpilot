@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
-from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE,
+  tesla_theme, theme_color, THEME_TESLA_RGB, THEME_LANE_ALPHA,
+)
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -243,6 +246,7 @@ class HudRenderer(Widget):
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
     wheel_txt = self._txt_wheel_critical if self._show_wheel_critical else self._txt_wheel
 
+    tesla = tesla_theme()
     if self._show_wheel_critical:
       self._wheel_alpha_filter.update(255)
       self._wheel_y_filter.update(0)
@@ -251,7 +255,8 @@ class HudRenderer(Widget):
         self._wheel_alpha_filter.update(0)
         self._wheel_y_filter.update(wheel_txt.height / 2)
       else:
-        self._wheel_alpha_filter.update(255 * 0.9)
+        # Tesla: same 0.7 cap as the lane lines so a parked HUD does not burn the OLED.
+        self._wheel_alpha_filter.update(255 * (THEME_LANE_ALPHA if tesla else 0.9))
         self._wheel_y_filter.update(0)
 
     # pos
@@ -272,7 +277,12 @@ class HudRenderer(Widget):
     origin = (wheel_txt.width / 2, wheel_txt.height / 2)
 
     # color and draw
-    color = rl.Color(255, 255, 255, int(self._wheel_alpha_filter.x))
+    a = int(self._wheel_alpha_filter.x)
+    if tesla and not self._show_wheel_critical:
+      r, g, b = THEME_TESLA_RGB
+      color = rl.Color(r, g, b, a)
+    else:
+      color = rl.Color(255, 255, 255, a)
     rl.draw_texture_pro(wheel_txt, src_rect, dest_rect, origin, rotation, color)
 
     if self._show_wheel_critical:
@@ -292,7 +302,7 @@ class HudRenderer(Widget):
     src = rl.Rectangle(0, 0, fan_tex.width, fan_tex.height)
     dest = rl.Rectangle(cx, cy, fan, fan)
     rl.draw_texture_pro(fan_tex, src, dest, rl.Vector2(fan / 2, fan / 2), heading,
-                        rl.Color(0, 255, 64, a))
+                        theme_color(a / 255.0))
     fan_r = fan / 2
     track_a = int(255 * 0.25 * (a / 229.5))
     rl.draw_ring(rl.Vector2(cx, cy), fan_r + 1, fan_r + 3, 0, 360, 36,
