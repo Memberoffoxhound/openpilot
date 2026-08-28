@@ -41,9 +41,9 @@ The footer shows which longitudinal stack is live:
 
 | | |
 |:---:|:---|
-| <img src="docs/screenshots/icon-tacc.png" height="104" alt="TACC"> | **TACC** — Tesla Traffic-Aware Cruise Control. Openpilot steers. Tesla still does gas and brake. |
-| <img src="docs/screenshots/icon-long.png" height="104" alt="LONG"> | **LONG** — openpilot longitudinal. Alpha. Openpilot does gas and brake, not Tesla ACC. |
-| <img src="docs/screenshots/icon-experimental.png" height="104" alt="Experimental"> | **Experimental** — the atom. Tap to toggle when LONG is on. Hidden on TACC; Tesla is already the longitudinal stack. |
+| <img src="docs/screenshots/icon-tacc.png" height="120" alt="TACC"> | **TACC** — Tesla Traffic-Aware Cruise Control. Openpilot steers. Tesla still does gas and brake. |
+| <img src="docs/screenshots/icon-long.png" height="120" alt="LONG"> | **LONG** — openpilot longitudinal. Alpha. Openpilot does gas and brake, not Tesla ACC. |
+| <img src="docs/screenshots/icon-experimental.png" height="120" alt="Experimental"> | **Experimental** — the atom. Tap to toggle when LONG is on. Hidden on TACC; Tesla is already the longitudinal stack. |
 
 Speaking of statistics…
 
