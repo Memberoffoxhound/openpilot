@@ -1,3 +1,30 @@
+Version 0.11.23 — S3XYPilot Highland (2026-08-28)
+========================================
+Tesla fork on openpilot 0.11.2. Reports 0.11.23 to Connect. See README.md.
+
+* Auto lane change (off by default) with Tesla stock BSM and a slide-to-enable warning — rav4kumar / Jason Wen (sunnypilot)
+* Cooperative steering — dzid26 VTB; AmyJeanes Tesla native LKAS path
+* Stalkless scroll-wheel cancel — dkiiv, via dzid26's Tesla fork
+* Optional custom HUD: Tesla Autopilot-blue theme, compass
+* Today / Week home stats (survives reboot and update). Boot uses the JSON cache; parked subprocess fills the qlog segment cache
+* 3s display-hold screenshots
+* Delorean 88mph clip (off by default)
+* Connect livestream is stock (LAN deviceweb / custom WebRTC removed)
+
+Version 0.11.12 — S3XYPilot Highland (2026-08-22)
+========================================
+Connect-compatible version. Tesla fork on 0.11.12. See README.md.
+
+Version 0.11.2.1 — DELAMAIN (2026-08-20)
+========================================
+Tesla Model 3 Highland fork on top of openpilot 0.11.2. See CHANGELOG.md.
+
+* Auto lane change (off by default) with Tesla stock BSM and a slide-to-enable warning
+* Theme: Tesla blue or comma green lane lines
+* Calibration card shows pitch, yaw, and roll
+* On-Air local Wi-Fi viewer (removed in 0.11.23)
+* White Tesla T boot mark; home wordmark DELAMAIN
+
 Version 0.11.2 (2026-08-12)
 =======================
 * New driving model

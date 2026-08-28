@@ -1,4 +1,5 @@
 import datetime
+import json
 import time
 
 from openpilot.cereal import log
@@ -8,13 +9,36 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, TextAlignment, TextAlignmentVertical
+from importlib.resources import as_file
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.common.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
+TRIP_PATH = "/data/trip_meter.json"
+WORDMARK_SIZE = 80
+LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
+
+
+def _wordmark_font() -> rl.Font:
+  """Dies/KAYOver TESLA.ttf for SEXYPILOT. Falls back to Inter DISPLAY."""
+  try:
+    chars = "SEXYPILOT"
+    cps = sorted(map(ord, chars))
+    buf = rl.ffi.new("int[]", cps)
+    with as_file(FONT_DIR) as fs:
+      font = rl.load_font_ex((fs / "TESLA.ttf").as_posix(), 200, rl.ffi.cast("int *", buf), len(cps))
+    if font.glyphCount > 0:
+      rl.gen_texture_mipmaps(font.texture)
+      rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_TRILINEAR)
+      return font
+  except Exception:
+    pass
+  return gui_app.font(FontWeight.DISPLAY)
+
 
 NetworkType = log.DeviceState.NetworkType
 
@@ -125,6 +149,41 @@ class NetworkIcon(Widget):
     rl.draw_texture_ex(draw_net_txt, rl.Vector2(draw_x, draw_y), 0.0, 1.0, rl.Color(255, 255, 255, int(255 * 0.9)))
 
 
+class LongModeBadge(Widget):
+  """Footer: Tesla T + TACC, or comma + LONG. 48px tall like experimental."""
+  H = 48
+  LOGO_W = 48
+  COL_W = 16
+
+  def __init__(self):
+    super().__init__()
+    self._comma = gui_app.texture("icons_mici/settings/comma_icon.png", 27, 48)
+    self._tesla = gui_app.texture("icons_mici/tesla_t.png", 48, 48)
+    self._font = gui_app.font(FontWeight.BOLD)
+    self._op = False
+    self.set_rect(rl.Rectangle(0, 0, float(self.LOGO_W + 4 + self.COL_W), float(self.H)))
+    self.set_enabled(False)
+
+  def _update_state(self):
+    self._op = bool(ui_state.has_longitudinal_control)
+
+  def _render(self, _) -> None:
+    x, y = self.rect.x, self.rect.y
+    tex = self._comma if self._op else self._tesla
+    tx = x + (self.LOGO_W - tex.width) / 2
+    ty = y + (self.H - tex.height) / 2
+    rl.draw_texture_ex(tex, rl.Vector2(tx, ty), 0.0, 1.0, rl.WHITE)
+    letters = "LONG" if self._op else "TACC"
+    lsz = 11
+    sizes = [measure_text_cached(self._font, ch, lsz) for ch in letters]
+    gap = max(0.0, (self.H - sum(s.y for s in sizes)) / (len(letters) + 1))
+    lx = x + self.LOGO_W + 2
+    cy = y + gap
+    for ch, sz in zip(letters, sizes):
+      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, LABEL_WHITE)
+      cy += sz.y + gap
+
+
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -137,8 +196,12 @@ class MiciHomeLayout(Widget):
     self._is_pressed_prev = False
 
     self._version_text = self._get_version_text()
+    self._wordmark_font = _wordmark_font()
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
+    self._experimental_icon.set_enabled(True)
+    self._experimental_icon.set_click_callback(self._toggle_experimental)
+    self._long_badge = LongModeBadge()
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (68, 40))
     self._chestnut_failed_icon = IconWidget("icons_mici/chestnut_orange.png", (68, 40))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
@@ -149,6 +212,7 @@ class MiciHomeLayout(Widget):
     self._status_bar_layout = HBoxLayout([
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
+      self._long_badge,
       self._experimental_icon,
       self._chestnut_icon,
       self._chestnut_failed_icon,
@@ -156,29 +220,36 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._openpilot_label = UnifiedLabel("openpilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
-    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._trip_at = 0.0
+    self._last_txt = ("Today ", "0mi 0%")
+    self._week_txt = ("Week ", "0mi 0%")
 
   def _update_state(self):
-    if self.is_pressed and not self._is_pressed_prev:
-      self._mouse_down_t = time.monotonic()
-    elif not self.is_pressed and self._is_pressed_prev:
-      self._mouse_down_t = None
-      self._did_long_press = False
-    self._is_pressed_prev = self.is_pressed
+    self._refresh_trip()
 
-    if self._mouse_down_t is not None:
-      if time.monotonic() - self._mouse_down_t > 0.5:
-        # long gating for experimental mode - only allow toggle if longitudinal control is available
-        if ui_state.has_longitudinal_control and ui_state.experimental_mode_confirmed:
-          ui_state.experimental_mode = not ui_state.experimental_mode
-          ui_state.params.put("ExperimentalMode", ui_state.experimental_mode, block=True)
-        self._mouse_down_t = None
-        self._did_long_press = True
+  def _fmt_trip(self, meters: float, eng_m: float) -> str:
+    if ui_state.is_metric:
+      dist, unit = meters / 1000.0, "km"
+    else:
+      dist, unit = meters / 1609.344, "mi"
+    pct = int(round(100.0 * eng_m / meters)) if meters > 1 else 0
+    return f"{int(round(dist))}{unit} {pct}%"
+
+  def _refresh_trip(self):
+    now = time.monotonic()
+    if now - self._trip_at < 1.0:
+      return
+    self._trip_at = now
+    try:
+      t = json.loads(open(TRIP_PATH).read())
+    except Exception:
+      t = {}
+    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_eng_m", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_eng_m", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
@@ -188,16 +259,24 @@ class MiciHomeLayout(Widget):
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, max_severity_callback)
 
+  def _toggle_experimental(self):
+    if not ui_state.has_longitudinal_control or not ui_state.experimental_mode_confirmed:
+      return
+    on = not ui_state.experimental_mode
+    ui_state.experimental_mode = on
+    ui_state.params.put_bool("ExperimentalMode", on)
+
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if not self._did_long_press:
-      relative_x = mouse_pos.x - self.rect.x
-      has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
-      if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
-        if self._on_alerts_click:
-          self._on_alerts_click()
-      elif self._on_settings_click:
-        self._on_settings_click()
-    self._did_long_press = False
+    if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
+        rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
+      return
+    relative_x = mouse_pos.x - self.rect.x
+    has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
+    if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
+      if self._on_alerts_click:
+        self._on_alerts_click()
+    elif self._on_settings_click:
+      self._on_settings_click()
 
   def _get_version_text(self) -> tuple[str, str, str, str] | None:
     version = ui_state.params.get("Version")
@@ -219,14 +298,15 @@ class MiciHomeLayout(Widget):
 
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
-    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    self._openpilot_label.set_position(text_pos.x, text_pos.y)
-    self._openpilot_label.render()
+    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 2)
+    # C4 is 536px. TESLA.ttf @ 80 is ~580px of ink.
+    wm = 60 if self.rect.width < 1000 else WORDMARK_SIZE
+    rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, wm, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       # release branch
       release_branch = self._version_text[1] in RELEASE_BRANCHES
-      version_pos = rl.Rectangle(text_pos.x, text_pos.y + self._openpilot_label.font_size + 16, 100, 44)
+      version_pos = rl.Rectangle(text_pos.x, text_pos.y + wm + 16, 100, 44)
       self._version_label.set_text(self._version_text[0])
       self._version_label.set_position(version_pos.x, version_pos.y)
       self._version_label.render()
@@ -240,14 +320,35 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+      y2 = version_pos.y + self._date_label.font_size + 7
+      f = gui_app.font(FontWeight.ROMAN)
+      ll, lv = self._last_txt
+      wl, wv = self._week_txt
+      avail = self.rect.width - HOME_PADDING * 2
+      lsz = 36
+      while lsz > 22:
+        vsz = max(18, lsz - 6)
+        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
+             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
+        if w <= avail:
+          break
+        lsz -= 1
+      vsz = max(18, lsz - 6)
+      x = version_pos.x
+      vy = y2 + (lsz - vsz)
+      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, ll, lsz).x
+      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      x += measure_text_cached(f, lv, vsz).x + 16
+      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, wl, lsz).x
+      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
 
     # ***** Center-aligned bottom section icons *****
-    self._experimental_icon.set_visible(ui_state.experimental_mode)
+    op_long = bool(ui_state.has_longitudinal_control)
+    self._experimental_icon.set_visible(op_long)
+    self._experimental_icon.set_enabled(op_long)
+    self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
     self._chestnut_icon.set_visible(ui_state.chestnut_state in (ChestnutState.READY, ChestnutState.LOADING, ChestnutState.ACTIVE))
     self._chestnut_failed_icon.set_visible(ui_state.chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
     self._mic_icon.set_visible(ui_state.recording_audio)

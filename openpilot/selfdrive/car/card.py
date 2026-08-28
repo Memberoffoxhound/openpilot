@@ -93,10 +93,14 @@ class Car:
       alpha_long_allowed = self.params.get_bool("AlphaLongitudinalEnabled")
 
       cached_params = None
-      cached_params_raw = self.params.get("CarParamsCache")
-      if cached_params_raw is not None:
+      for key in ("CarParamsCache", "CarParamsPrevRoute", "CarParamsPersistent"):
+        cached_params_raw = self.params.get(key)
+        if cached_params_raw is None:
+          continue
         with car.CarParams.from_bytes(cached_params_raw) as _cached_params:
-          cached_params = _cached_params
+          if _cached_params.brand != "mock" and len(_cached_params.carFw) > 0:
+            cached_params = _cached_params
+            break
 
       self.CI = get_car(*self.can_callbacks, obd_callback(self.params), alpha_long_allowed, is_release, cached_params)
       self.RI = interfaces[self.CI.CP.carFingerprint].RadarInterface(self.CI.CP)
@@ -143,11 +147,13 @@ class Car:
     if prev_cp is not None:
       self.params.put("CarParamsPrevRoute", prev_cp, block=True)
 
-    # Write CarParams for controls and radard
+    # Write CarParams for controls and radard. Never cache MOCK — a missed
+    # FW query would otherwise poison the next ignition.
     cp_bytes = self.CP.to_bytes()
     self.params.put("CarParams", cp_bytes, block=True)
-    self.params.put("CarParamsCache", cp_bytes)
     self.params.put("CarParamsPersistent", cp_bytes)
+    if self.CP.brand != "mock" and not self.CP.dashcamOnly and len(self.CP.carFw) > 0:
+      self.params.put("CarParamsCache", cp_bytes)
 
     self.v_cruise_helper = VCruiseHelper(self.CP)
 

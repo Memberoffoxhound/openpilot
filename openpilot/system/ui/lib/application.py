@@ -20,6 +20,7 @@ from importlib.resources import as_file, files
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.system.ui.lib.multilang import FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
+from openpilot.system.ui.lib.screenshot import ScreenShotter
 from openpilot.common.realtime import Ratekeeper
 
 _DEFAULT_FPS = int(os.getenv("FPS", {'tizi': 20}.get(HARDWARE.get_device_type(), 60)))
@@ -251,6 +252,7 @@ class GuiApplication:
     self._mouse = MouseState(self._scale)
     self._mouse_events: list[MouseEvent] = []
     self._last_mouse_event: MouseEvent = MouseEvent(MousePos(0, 0), 0, False, False, False, 0.0)
+    self._shotter = ScreenShotter()
 
     self._should_render = True
 
@@ -619,6 +621,7 @@ class GuiApplication:
         self._mouse_events = self._mouse.get_events()
         if len(self._mouse_events) > 0:
           self._last_mouse_event = self._mouse_events[-1]
+        self._shotter.held(self._mouse_events)
 
         # Skip rendering when screen is off
         if not self._should_render:
@@ -677,6 +680,10 @@ class GuiApplication:
 
         if self._grid_size > 0:
           self._draw_grid()
+
+        if self._shotter.pending:
+          self._shotter.capture(self._render_texture)
+        self._shotter.draw_flash(self._scaled_width, self._scaled_height, frame_time)
 
         rl.end_drawing()
 

@@ -63,6 +63,7 @@ class UIState:
         "selfdriveState",
         "longitudinalPlan",
         "gpsLocationExternal",
+        "deviceMotion",
         "carOutput",
         "carControl",
         "vehicleParameters",
@@ -242,6 +243,11 @@ class UIState:
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
     self.experimental_mode_confirmed = self.params.get_bool("ExperimentalModeConfirmed")
+    # Stock TACC / no OP long: experimental is not available.
+    if CP_bytes is not None and not self.has_longitudinal_control:
+      if self.experimental_mode:
+        self.params.put_bool("ExperimentalMode", False)
+      self.experimental_mode = False
     if not self.chestnut_compiled:
       self.chestnut_compiled = chestnut_compiled()
     self.chestnut_active = self.params.get("ChestnutActive")

@@ -180,6 +180,7 @@ def finalize_update() -> None:
   # Remove the update ready flag and any old updates
   cloudlog.info("creating finalized version of the overlay")
   set_consistent_flag(False)
+  Params().put("UpdaterState", "copying update...", block=True)
 
   # Copy the merged overlay view and set the update ready flag
   if os.path.exists(FINALIZED):
@@ -190,6 +191,7 @@ def finalize_update() -> None:
   run(["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"], FINALIZED)
 
   cloudlog.info("Starting git cleanup in finalized update")
+  Params().put("UpdaterState", "cleaning update...", block=True)
   t = time.monotonic()
   try:
     run(["git", "gc"], FINALIZED)
@@ -475,7 +477,12 @@ def main() -> None:
         elif wait_helper.user_request == UserRequest.CHECK:
           cloudlog.info("skipping fetch, only checking")
         else:
-          updater.fetch_update()
+          target = updater.branches.get(updater.target_branch, "")
+          here = updater.get_commit_hash(BASEDIR)
+          if target and target == here and wait_helper.user_request != UserRequest.FETCH:
+            cloudlog.info("already on %s, skip fetch/finalize", here[:7])
+          else:
+            updater.fetch_update()
           write_time_to_param(params, "UpdaterLastFetchTime")
         update_failed_count = 0
       except subprocess.CalledProcessError as e:

@@ -2,6 +2,7 @@ import math
 import pyray as rl
 from openpilot.selfdrive.ui.mici.onroad import SIDE_PANEL_WIDTH
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.layouts.settings.common import tesla_theme, THEME_TESLA_RGB
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.filter_simple import FirstOrderFilter
@@ -56,8 +57,12 @@ class ConfidenceBall(Widget):
     # confidence zones
     if ui_state.status == UIStatus.ENGAGED or self._demo:
       if self._confidence_filter.x > 0.5:
-        top_dot_color = rl.Color(0, 255, 204, 255)
-        bottom_dot_color = rl.Color(0, 255, 38, 255)
+        if tesla_theme():
+          top_dot_color = rl.Color(90, 168, 245, 255)
+          bottom_dot_color = rl.Color(*THEME_TESLA_RGB, 255)
+        else:
+          top_dot_color = rl.Color(0, 255, 204, 255)
+          bottom_dot_color = rl.Color(0, 255, 38, 255)
       elif self._confidence_filter.x > 0.2:
         top_dot_color = rl.Color(255, 200, 0, 255)
         bottom_dot_color = rl.Color(255, 115, 0, 255)
