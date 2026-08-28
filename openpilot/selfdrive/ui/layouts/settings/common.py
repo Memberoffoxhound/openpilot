@@ -10,7 +10,9 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.ui.layouts.settings.trip_seed import day_id, sunday_id, seed_week_today
+from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
+  day_id, sunday_id, seed_week_today, empty_trip, merge_snapshots, apply_seed, roll_ids,
+)
 
 
 def restart_needed_callback(_=None):
@@ -154,118 +156,130 @@ _trip: dict | None = None
 _trip_t = 0.0
 _trip_flush = 0.0
 _seed_started = False
-_seed_done = False
+_trip_lock = threading.Lock()
+_PERSIST_KEYS = (
+  "trip_m", "eng_m", "eng_s", "tot_s",
+  "last_m", "last_eng_m", "last_eng_s", "last_tot_s", "route",
+  "week_m", "week_eng_m", "week_eng_s", "week_tot_s", "week_id",
+  "today_m", "today_eng_m", "day_id", "seed",
+)
+
+
+def _params_trip() -> dict:
+  try:
+    v = Params().get("TripMeter")
+    return v if isinstance(v, dict) else {}
+  except Exception:
+    return {}
+
+
+def _persist_blob(t: dict) -> dict:
+  out: dict = {}
+  for k in _PERSIST_KEYS:
+    v = t.get(k)
+    if isinstance(v, bool) or v is None:
+      out[k] = "" if k.endswith("_id") or k in ("route", "seed") else 0.0
+    elif isinstance(v, (int, float)) and k not in ("route", "seed", "week_id", "day_id"):
+      out[k] = float(v)
+    else:
+      out[k] = "" if v is None else str(v)
+  return out
 
 
 def _run_seed() -> None:
-  global _trip, _seed_done
   s = None
   try:
     s = seed_week_today()
   except Exception:
     cloudlog.exception("trip seed")
-  if _trip is None:
-    _seed_done = True
-    return
-  did, wid = day_id(), sunday_id()
-  if s:
-    _trip["week_m"] = float(s["week_m"])
-    _trip["week_eng_m"] = float(s["week_eng_m"])
-    _trip["today_m"] = float(s["today_m"])
-    _trip["today_eng_m"] = float(s["today_eng_m"])
-    _trip["week_id"] = s["week_id"]
-    _trip["day_id"] = s["day_id"]
-    _trip["seed"] = "qlog"
-  else:
-    if _trip.get("week_id") != wid:
-      _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
-      _trip["week_id"] = wid
-    if _trip.get("day_id") != did:
-      _trip["today_m"] = _trip["today_eng_m"] = 0.0
-      _trip["day_id"] = did
-  try:
-    _save_trip(_trip)
-  except Exception:
-    pass
-  _seed_done = True
+  with _trip_lock:
+    if _trip is None:
+      return
+    merged = apply_seed(_trip, s)
+    _trip.clear()
+    _trip.update(merged)
+    if s:
+      _trip["seed"] = "qlog"
+    try:
+      _save_trip(_trip)
+    except Exception:
+      cloudlog.exception("trip seed save")
 
 
 def _load_trip() -> dict:
-  t = {"trip_m": 0.0, "eng_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
-       "last_m": 0.0, "last_eng_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
-       "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": "",
-       "today_m": 0.0, "today_eng_m": 0.0, "day_id": ""}
+  t = empty_trip()
   try:
-    t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
+    t = merge_snapshots(t, json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
     pass
-  return t
+  t = merge_snapshots(t, _params_trip())
+  return roll_ids(t)
 
 
 def _save_trip(t: dict) -> None:
+  blob = _persist_blob(t)
   tmp = TRIP_PATH + ".tmp"
   with open(tmp, "w", encoding="utf-8") as f:
-    json.dump(t, f)
+    json.dump(blob, f)
   os.replace(tmp, TRIP_PATH)
+  try:
+    Params().put("TripMeter", blob, block=False)
+  except Exception:
+    pass
 
 
 def tick_trip() -> None:
-  """Today = Chicago calendar day. Week = Sunday 00:00 Chicago. Live add after qlog seed."""
+  """Today = Chicago calendar day. Week = Sunday 00:00 Chicago.
+
+  Live file + TripMeter param are the source of truth. Qlog seed only raises
+  same-period totals (uploaded qlogs must not zero a reboot).
+  """
   global _trip, _trip_t, _trip_flush, _seed_started
   now = time.monotonic()
-  if _trip is None:
-    _trip = _load_trip()
-    _trip_t = now
-    if not _seed_started:
-      _seed_started = True
-      threading.Thread(target=_run_seed, daemon=True).start()
-    return
-  if not _seed_done:
-    _trip_t = now
-    return
+  with _trip_lock:
+    if _trip is None:
+      _trip = _load_trip()
+      _trip_t = now
+      if not _seed_started:
+        _seed_started = True
+        threading.Thread(target=_run_seed, daemon=True).start()
+      return
 
-  wid, did = sunday_id(), day_id()
-  if _trip.get("week_id") != wid:
-    _trip["week_m"] = _trip["week_eng_m"] = _trip["week_eng_s"] = _trip["week_tot_s"] = 0.0
-    _trip["week_id"] = wid
-  if _trip.get("day_id") != did:
-    _trip["today_m"] = _trip["today_eng_m"] = 0.0
-    _trip["day_id"] = did
-
-  dt = min(1.0, max(0.0, now - _trip_t))
-  _trip_t = now
-  params = ui_state.params
-  route = params.get("CurrentRoute") or ""
-  if isinstance(route, bytes):
-    route = route.decode(errors="replace")
-  if route and route != _trip.get("route"):
-    _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
-    _trip["route"] = route
-    _save_trip(_trip)
-  try:
-    offroad = params.get_bool("IsOffroad")
-    cs_ok = ui_state.sm.recv_frame["carState"] > 0
-  except Exception:
-    offroad, cs_ok = True, False
-  if (not offroad) and cs_ok:
-    v = max(0.0, float(ui_state.sm["carState"].vEgo))
-    _trip["tot_s"] += dt
-    if v > 0.15:
-      _trip["trip_m"] += v * dt
-      _trip["week_m"] += v * dt
-      _trip["today_m"] = _trip.get("today_m", 0.0) + v * dt
+    roll_ids(_trip)
+    dt = min(1.0, max(0.0, now - _trip_t))
+    _trip_t = now
+    params = ui_state.params
+    route = params.get("CurrentRoute") or ""
+    if isinstance(route, bytes):
+      route = route.decode(errors="replace")
+    if route and route != _trip.get("route"):
+      _trip["trip_m"] = _trip["eng_m"] = _trip["eng_s"] = _trip["tot_s"] = 0.0
+      _trip["route"] = route
+      _save_trip(_trip)
     try:
-      if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
-        _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
-        _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
-        _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
-        _trip["eng_s"] += dt
-        _trip["week_eng_s"] += dt
+      offroad = params.get_bool("IsOffroad")
+      cs_ok = ui_state.sm.recv_frame["carState"] > 0
     except Exception:
-      pass
-  if now - _trip_flush > 1.0:
-    _save_trip(_trip)
-    _trip_flush = now
+      offroad, cs_ok = True, False
+    if (not offroad) and cs_ok:
+      v = max(0.0, float(ui_state.sm["carState"].vEgo))
+      _trip["tot_s"] += dt
+      if v > 0.15:
+        _trip["trip_m"] += v * dt
+        _trip["week_m"] += v * dt
+        _trip["today_m"] = _trip.get("today_m", 0.0) + v * dt
+      try:
+        if ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled:
+          _trip["eng_m"] = _trip.get("eng_m", 0.0) + v * dt
+          _trip["week_eng_m"] = _trip.get("week_eng_m", 0.0) + v * dt
+          _trip["today_eng_m"] = _trip.get("today_eng_m", 0.0) + v * dt
+          _trip["eng_s"] += dt
+          _trip["week_eng_s"] += dt
+      except Exception:
+        pass
+    if now - _trip_flush > 1.0:
+      _save_trip(_trip)
+      _trip_flush = now
 
 
 def trip_pct() -> int:

@@ -1,4 +1,4 @@
-"""Rebuild Today/Week from onboard qlogs. Survives reboot, overlay, reinstall."""
+"""Today/Week trip totals. Qlogs backfill a missing week; they never zero live counters."""
 from __future__ import annotations
 
 import os
@@ -6,11 +6,82 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from openpilot.common.swaglog import cloudlog
-
 DATA_DIR = Path("/data/media/0/realdata")
 TZ = ZoneInfo("America/Chicago")
 SKIP = {"boot", "clips", "screenshots"}
+WEEK_KEYS = ("week_m", "week_eng_m", "week_eng_s", "week_tot_s")
+DAY_KEYS = ("today_m", "today_eng_m")
+TRIP_KEYS = WEEK_KEYS + DAY_KEYS + ("week_id", "day_id", "seed")
+
+
+def empty_trip() -> dict:
+  return {
+    "trip_m": 0.0, "eng_m": 0.0, "eng_s": 0.0, "tot_s": 0.0,
+    "last_m": 0.0, "last_eng_m": 0.0, "last_eng_s": 0.0, "last_tot_s": 0.0, "route": "",
+    "week_m": 0.0, "week_eng_m": 0.0, "week_eng_s": 0.0, "week_tot_s": 0.0, "week_id": "",
+    "today_m": 0.0, "today_eng_m": 0.0, "day_id": "", "seed": "",
+  }
+
+
+def _f(d: dict, k: str) -> float:
+  try:
+    return float(d.get(k) or 0)
+  except (TypeError, ValueError):
+    return 0.0
+
+
+def _merge_period(out: dict, a: dict, b: dict, id_key: str, keys: tuple[str, ...], current_id: str) -> None:
+  aid, bid = str(a.get(id_key) or ""), str(b.get(id_key) or "")
+  if aid and aid == bid:
+    out[id_key] = aid
+    for k in keys:
+      out[k] = max(_f(a, k), _f(b, k))
+    return
+  if bid == current_id and aid != current_id:
+    src = b
+  elif aid == current_id or not bid:
+    src = a
+  else:
+    src = b
+  out[id_key] = str(src.get(id_key) or "")
+  for k in keys:
+    out[k] = _f(src, k)
+
+
+def merge_snapshots(a: dict | None, b: dict | None) -> dict:
+  """Keep the higher same-period totals. Prefer the snapshot for the current Chicago day/week."""
+  a = a or {}
+  b = b or {}
+  out = empty_trip()
+  for k, v in a.items():
+    out[k] = v
+  for k, v in b.items():
+    if k not in out or out[k] in ("", None, 0, 0.0):
+      out[k] = v
+  _merge_period(out, a, b, "week_id", WEEK_KEYS, sunday_id())
+  _merge_period(out, a, b, "day_id", DAY_KEYS, day_id())
+  return out
+
+
+def apply_seed(trip: dict, seed: dict | None) -> dict:
+  """Qlog rebuild is a floor for the current period. Never drop live miles."""
+  if not seed:
+    return trip
+  return merge_snapshots(trip, seed)
+
+
+def roll_ids(trip: dict) -> dict:
+  """Zero Today at Chicago midnight, Week on Sunday. Does not touch a matching period."""
+  wid, did = sunday_id(), day_id()
+  if trip.get("week_id") != wid:
+    for k in WEEK_KEYS:
+      trip[k] = 0.0
+    trip["week_id"] = wid
+  if trip.get("day_id") != did:
+    for k in DAY_KEYS:
+      trip[k] = 0.0
+    trip["day_id"] = did
+  return trip
 
 
 def chicago_now() -> datetime:
@@ -44,6 +115,7 @@ def _qlog(seg: Path) -> Path | None:
 
 
 def seed_week_today() -> dict | None:
+  from openpilot.common.swaglog import cloudlog
   try:
     from openpilot.tools.lib.logreader import LogReader
   except Exception:

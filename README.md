@@ -28,7 +28,7 @@ Custom HUD (Theme → onroad UI): Tesla-blue lanes, compass (small left or large
 <!-- docs/screenshots/home.png -->
 Footer: **TACC** / **openpilot long** / **experimental**. Experimental is off and hidden on stock TACC. Tap the atom to toggle when OP long is on.
 
-Home stats: **Today** / **Week** miles and distance-engaged %.
+Home stats: **Today** / **Week** miles and distance-engaged %. Survives reboot and update.
 
 ### Driving
 
