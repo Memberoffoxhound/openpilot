@@ -12,7 +12,7 @@ Theme → onroad UI = **stock** (comma HUD) or **custom**. Custom: Tesla Autopil
 
 Home footer: Tesla **T + TACC** when openpilot long is off; comma **+ LONG** when it’s on; experimental atom beside LONG when experimental is on.
 
-Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday). Distance / distance-engaged, whole miles, no space before `mi`/`km`. Labels match the version row; values sit one step smaller. Both shrink if the row would clip. Totals live in `/data/trip_meter.json` and the `TripMeter` param so reboot and overlay do not zero them. Qlogs only raise a missing week; they never overwrite live miles.
+Home stats: **Today** (resets daily, Chicago local) and **Week** (resets Sunday). Distance / distance-engaged, whole miles, no space before `mi`/`km`. Labels match the version row; values sit one step smaller. Both shrink if the row would clip. Totals live in `/data/trip_meter.json` and the `TripMeter` param so reboot and overlay do not zero them. Boot reads that cache when `week_id` is this Chicago Sunday — no qlog scan on Home. After a drive, while parked, a background thread writes `/data/trip_seed_cache.json` (per-segment meters) so a later reseed (install, missing json) does not LogReader the week on the UI thread. Qlogs never overwrite live miles.
 
 ## Toggles
 

@@ -12,6 +12,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   day_id, sunday_id, seed_week_today, empty_trip, merge_snapshots, apply_seed, roll_ids,
+  week_cache_valid, cache_segments_idle,
 )
 
 
@@ -185,6 +186,7 @@ _trip: dict | None = None
 _trip_t = 0.0
 _trip_flush = 0.0
 _seed_started = False
+_was_offroad = True
 _trip_lock = threading.Lock()
 _PERSIST_KEYS = (
   "trip_m", "eng_m", "eng_s", "tot_s",
@@ -235,14 +237,15 @@ def _run_seed() -> None:
       cloudlog.exception("trip seed save")
 
 
-def _load_trip() -> dict:
+def _load_trip() -> tuple[dict, bool]:
   t = empty_trip()
   try:
     t = merge_snapshots(t, json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
     pass
   t = merge_snapshots(t, _params_trip())
-  return roll_ids(t)
+  need_seed = not week_cache_valid(t)
+  return roll_ids(t), need_seed
 
 
 def _save_trip(t: dict) -> None:
@@ -260,18 +263,23 @@ def _save_trip(t: dict) -> None:
 def tick_trip() -> None:
   """Today = Chicago calendar day. Week = Sunday 00:00 Chicago.
 
-  Live file + TripMeter param are the source of truth. Qlog seed only raises
-  same-period totals (uploaded qlogs must not zero a reboot).
+  Live JSON + TripMeter param are the cache. Boot skips qlogs when week_id
+  already matches this Sunday. Parked after a drive, a background thread
+  fills the per-segment cache for a later reseed.
   """
-  global _trip, _trip_t, _trip_flush, _seed_started
+  global _trip, _trip_t, _trip_flush, _seed_started, _was_offroad
   now = time.monotonic()
+  park_cache = False
   with _trip_lock:
     if _trip is None:
-      _trip = _load_trip()
+      _trip, need_seed = _load_trip()
       _trip_t = now
       if not _seed_started:
         _seed_started = True
-        threading.Thread(target=_run_seed, daemon=True).start()
+        if need_seed:
+          threading.Thread(target=_run_seed, daemon=True).start()
+        elif not _trip.get("seed"):
+          _trip["seed"] = "json"
       return
 
     roll_ids(_trip)
@@ -290,6 +298,9 @@ def tick_trip() -> None:
       cs_ok = ui_state.sm.recv_frame["carState"] > 0
     except Exception:
       offroad, cs_ok = True, False
+    if offroad and not _was_offroad:
+      park_cache = True
+    _was_offroad = offroad
     if (not offroad) and cs_ok:
       v = max(0.0, float(ui_state.sm["carState"].vEgo))
       _trip["tot_s"] += dt
@@ -309,6 +320,9 @@ def tick_trip() -> None:
     if now - _trip_flush > 1.0:
       _save_trip(_trip)
       _trip_flush = now
+
+  if park_cache:
+    threading.Thread(target=cache_segments_idle, daemon=True).start()
 
 
 def trip_pct() -> int:
