@@ -23,8 +23,6 @@ comma 4 UI. comma 3X may boot; UI is not tailored to it.
 
 Theme → onroad UI is **stock** or **custom**. Custom paints Tesla Autopilot-blue lanes, wheel, confidence, compass, and DM. Theme → Tesla or Openpilot. Compass is small-left or large top-right.
 
-![Custom onroad HUD](docs/screenshots/onroad-custom.jpg)
-
 Stock HUD is one tap away.
 
 - Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
