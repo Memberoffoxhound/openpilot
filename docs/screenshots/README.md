@@ -6,6 +6,5 @@ Drop PNGs here. [README.md](../../README.md) lists the same filenames under each
 |---|---|
 | `onroad-custom.png` | Custom onroad HUD (Tesla-blue lanes, compass) |
 | `home.png` | Home: TACC/LONG footer + Today/Week |
-| `theme.png` | Theme: weather & news, compass, lane color |
-| `weather-preview.png` | Weather preview playing |
+| `theme.png` | Theme: compass, lane color, Delorean |
 | `lan-console.png` | LAN console in a browser |

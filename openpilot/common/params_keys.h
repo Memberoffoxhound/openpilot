@@ -55,7 +55,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"GitRemote", {PERSISTENT, STRING}},
     {"GsmApn", {PERSISTENT, STRING}},
     {"GsmMetered", {PERSISTENT, BOOL, "1"}},
-    {"GrokVoiceEnabled", {PERSISTENT, BOOL, "0"}},
     {"GsmRoaming", {PERSISTENT, BOOL}},
     {"HardwareSerial", {PERSISTENT, STRING}},
     {"HasAcceptedTerms", {PERSISTENT, STRING, "0"}},
@@ -135,21 +134,4 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"UsbGpuLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"Version", {PERSISTENT, STRING}},
-    {"WeatherNewsMode", {PERSISTENT, INT, "1"}},  // 0=off 1=nice 2=aggressive
-    {"WeatherNewsTopics", {PERSISTENT, STRING, "npr"}},
-    {"WeatherNewsDuration", {PERSISTENT, INT, "60"}},  // 60 | 90 | 120 seconds
-    {"WeatherNewsWifiOnly", {PERSISTENT, BOOL, "0"}},
-    {"WeatherNewsEveryDrive", {PERSISTENT, BOOL, "0"}},  // 0 = 3x/day slots, 1 = start of every drive
-    {"WeatherNewsPlayback", {PERSISTENT, INT, "1"}},  // 0=standard 1=boosted (road-noise)
-    {"WeatherNewsWorldBreaking", {PERSISTENT, BOOL, "1"}},  // live world breaking before interest topics
-    {"WeatherNewsLastItems", {PERSISTENT, STRING}},  // titles from last briefing, skip repeats
-    {"GrokProvider", {PERSISTENT, STRING, "xai"}},  // xai | openai | groq | gemini
-    {"OpenaiApiKey", {PERSISTENT | DONT_LOG, STRING}},
-    {"GroqApiKey", {PERSISTENT | DONT_LOG, STRING}},
-    {"GeminiApiKey", {PERSISTENT | DONT_LOG, STRING}},
-    {"WeatherNewsOnDemand", {CLEAR_ON_MANAGER_START, BOOL, "0"}},
-    {"WeatherNewsPreview", {CLEAR_ON_MANAGER_START, STRING}},  // "nice" | "aggressive"
-    {"WeatherNewsLastRunDate", {PERSISTENT, STRING}},
-    {"WeatherNewsStatus", {CLEAR_ON_MANAGER_START, STRING}},  // button text while working
-    {"XaiApiKey", {PERSISTENT | DONT_LOG, STRING}},
 };

@@ -45,7 +45,7 @@ MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
 # Highland extras. Must not block engage if they crash.
-OPTIONAL_PROCS = {"weather_news_d", "deviceweb"}
+OPTIONAL_PROCS = {"deviceweb"}
 
 
 class SelfdriveD:

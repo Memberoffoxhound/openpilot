@@ -5,7 +5,6 @@ from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE
-from openpilot.selfdrive.weather_news import config as grok_cfg
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -14,15 +13,6 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.cereal import log
 
 EventName = log.OnroadEvent.EventName
-
-_WX_PROGRESS = {
-  "queued": 0.10,
-  "fetching weather": 0.26,
-  "getting news": 0.44,
-  "asking grok": 0.64,
-  "speaking": 0.84,
-  "playing": 1.0,
-}
 
 # Constants
 SET_SPEED_NA = 255
@@ -144,17 +134,12 @@ class HudRenderer(Widget):
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
     self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
     self._txt_compass_fan90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 78, 78)
-    self._txt_grok_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
-    self._txt_grok_mark: rl.Texture = gui_app.texture('icons_mici/grok.png', 44, 44)
-    self._txt_gemini_mark: rl.Texture = gui_app.texture('icons_mici/gemini.png', 44, 44)
     self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
     self._wheel_y_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps)
     self._heading_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps, initialized=False)
     self._compass_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
-    self._grok_fade = FirstOrderFilter(0.0, 0.08, 1 / gui_app.target_fps)
-    self._grok_fill = FirstOrderFilter(0.0, 0.18, 1 / gui_app.target_fps)
 
     self._set_speed_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
     self._egpu_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -219,7 +204,6 @@ class HudRenderer(Widget):
 
     self._draw_steering_wheel(rect)
     self._draw_compass(rect)
-    self._draw_grok_bug(rect)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
@@ -359,63 +343,6 @@ class HudRenderer(Widget):
       cy = (dm_cy + wheel_cy) / 2
       bg, fan_tex = self._txt_compass_bg, self._txt_compass_fan
     self._paint_compass(cx, cy, size, fan, a, heading, letter, bg, fan_tex, font)
-
-  def _wx_status(self) -> str:
-    try:
-      v = ui_state.params.get("WeatherNewsStatus")
-      if isinstance(v, bytes):
-        v = v.decode(errors="replace")
-      return (v or "").strip()
-    except Exception:
-      return ""
-
-  def _draw_grok_bug(self, rect: rl.Rectangle) -> None:
-    """60px round AI mark. Dark icon fills bottom-up like old iOS install."""
-    st = self._wx_status()
-    working = st in _WX_PROGRESS
-    self._grok_fade.update(1.0 if working else 0.0)
-    target = _WX_PROGRESS.get(st, self._grok_fill.x if working else 0.0)
-    if working:
-      self._grok_fill.update(target)
-    elif self._grok_fade.x < 0.02:
-      self._grok_fill.x = 0.0
-    fade = float(self._grok_fade.x)
-    a = int(255 * 0.9 * fade)
-    if a < 3:
-      return
-
-    size, mark_sz = 60, 44
-    cx = rect.x + rect.width - 16 - size / 2
-    cy = rect.y + 10 + size / 2
-    large = compass_size() == COMPASS_LARGE and custom_onroad_ui() and self._compass_fade.x > 0.15
-    if large:
-      cx -= 90 + 12
-
-    bg_c = rl.Color(255, 255, 255, a)
-    rl.draw_texture_ex(self._txt_grok_bg, rl.Vector2(cx - size / 2, cy - size / 2), 0.0, 1.0, bg_c)
-
-    mark = self._txt_gemini_mark if grok_cfg.provider() == "gemini" else self._txt_grok_mark
-    mx = cx - mark_sz / 2
-    my = cy - mark_sz / 2
-    dim = rl.Color(255, 255, 255, int(255 * 0.32 * fade))
-    rl.draw_texture_ex(mark, rl.Vector2(mx, my), 0.0, 1.0, dim)
-
-    progress = max(0.0, min(1.0, float(self._grok_fill.x)))
-    fill_h = mark_sz * progress
-    if fill_h > 0.6:
-      src = rl.Rectangle(0, mark.height - fill_h, float(mark.width), fill_h)
-      dst = rl.Rectangle(mx, my + mark_sz - fill_h, mark_sz, fill_h)
-      rl.draw_texture_pro(mark, src, dst, rl.Vector2(0, 0), 0.0,
-                          rl.Color(255, 255, 255, int(255 * 0.95 * fade)))
-
-    ring_in, ring_out = size / 2 - 4.0, size / 2 - 1.0
-    track_a = int(255 * 0.22 * fade)
-    rl.draw_ring(rl.Vector2(cx, cy), ring_in, ring_out, 0, 360, 40, rl.Color(255, 255, 255, track_a))
-    sweep = 360.0 * progress
-    if sweep > 1.0:
-      pulse = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(rl.get_time() * 3.2)) if progress < 0.999 else 1.0
-      rl.draw_ring(rl.Vector2(cx, cy), ring_in, ring_out, -90.0, -90.0 + sweep, 48,
-                   rl.Color(255, 255, 255, int(255 * 0.92 * fade * pulse)))
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

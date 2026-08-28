@@ -4,9 +4,6 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color, onroad_ui_label, next_onroad_ui, set_onroad_ui,
   compass_size_label, next_compass_size,
 )
-from openpilot.selfdrive.weather_news import config as grok_cfg
-from openpilot.selfdrive.weather_news import grok as grok_api
-from openpilot.selfdrive.weather_news import mode as wx
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -43,18 +40,6 @@ DESCRIPTIONS = {
   ),
   "CompassSize": tr_noop(
     "Theme. Custom onroad compass: small (left, hides with MAX) or large (top-right, stays engaged)."
-  ),
-  "WeatherNewsMode": tr_noop(
-    "Local forecast plus news, written by the selected AI (Grok or Gemini) and spoken by Ara. Off, Nice, or Unhinged. Unhinged is NSFW — not for kids."
-  ),
-  "WeatherNewsSchedule": tr_noop(
-    "3x a day plays once in the morning, once in the afternoon, and once after 7pm. Missed windows stay missed — never stacked. Every drive plays at the start of each onroad session."
-  ),
-  "WeatherNewsPlayback": tr_noop(
-    "Voice-only. Standard is clean. Boosted is louder for road noise, with less speaker crackle."
-  ),
-  "GrokVoice": tr_noop(
-    "Grok or Gemini writes weather and news. Nice and Unhinged. Scan the QR to paste an API key on the LAN console. Gemini uses Ara (xAI) or OpenAI tts-1 to speak."
   ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
@@ -162,56 +147,6 @@ class TogglesLayout(Widget):
       callback=self._cycle_compass_size,
     )
 
-    self._weather_mode_setting = multiple_button_item(
-      lambda: tr("Theme: Weather & News"),
-      lambda: tr(DESCRIPTIONS["WeatherNewsMode"]),
-      buttons=[lambda: tr("Off"), lambda: tr("Nice"), lambda: tr("Unhinged")],
-      button_width=220,
-      callback=self._set_weather_news_mode,
-      selected_index=wx.get(self._params),
-      icon="speed_limit.png",
-    )
-
-    self._grok_voice_setting = button_item(
-      lambda: tr("Theme: Gemini Voice") if grok_cfg.provider() == "gemini" else tr("Theme: Grok Voice"),
-      lambda: tr("On" if grok_cfg.voice_enabled() else "Off"),
-      description=lambda: tr(DESCRIPTIONS["GrokVoice"]),
-      callback=self._toggle_grok_voice,
-    )
-
-    self._grok_qr_setting = button_item(
-      lambda: tr("Theme: Gemini Setup") if grok_cfg.provider() == "gemini" else tr("Theme: Grok Setup"),
-      lambda: tr("Show QR"),
-      description=lambda: tr("Scan to open the LAN console and paste a Grok, Gemini, OpenAI, or Groq key."),
-      callback=self._show_grok_qr,
-      enabled=lambda: grok_cfg.voice_enabled(),
-    )
-
-    self._weather_preview_setting = button_item(
-      lambda: tr("Theme: Weather Preview"),
-      lambda: tr("Preview"),
-      description=lambda: tr("Plays Nice or Unhinged. Enable voice first."),
-      callback=self._preview_weather_news,
-      enabled=lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled(),
-    )
-
-    self._weather_schedule_setting = button_item(
-      lambda: tr("Theme: Briefing Schedule"),
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day"),
-      description=lambda: tr(DESCRIPTIONS["WeatherNewsSchedule"]),
-      callback=self._toggle_weather_schedule,
-    )
-
-    self._weather_playback_setting = multiple_button_item(
-      lambda: tr("Theme: Briefing Playback"),
-      lambda: tr(DESCRIPTIONS["WeatherNewsPlayback"]),
-      buttons=[lambda: tr("Standard"), lambda: tr("Boosted")],
-      button_width=255,
-      callback=self._set_weather_playback,
-      selected_index=1 if grok_cfg.playback_boosted() else 0,
-      icon="speed_limit.png",
-    )
-
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -247,12 +182,6 @@ class TogglesLayout(Widget):
         self._toggles["CustomOnroadUi"] = self._onroad_ui_setting
         self._toggles["LaneColor"] = self._lane_color_setting
         self._toggles["CompassSize"] = self._compass_size_setting
-        self._toggles["WeatherNewsMode"] = self._weather_mode_setting
-        self._toggles["GrokVoice"] = self._grok_voice_setting
-        self._toggles["GrokQr"] = self._grok_qr_setting
-        self._toggles["WeatherNewsPreview"] = self._weather_preview_setting
-        self._toggles["WeatherNewsPlayback"] = self._weather_playback_setting
-        self._toggles["WeatherNewsSchedule"] = self._weather_schedule_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -265,16 +194,6 @@ class TogglesLayout(Widget):
       if personality != ui_state.personality and ui_state.started:
         self._long_personality_setting.action_item.set_selected_button(personality)
       ui_state.personality = personality
-    st = wx.status_text(self._params)
-    grok_on = grok_cfg.voice_enabled()
-    if getattr(self, "_wx_st", None) != (st, grok_on):
-      self._wx_st = (st, grok_on)
-      self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
-      self._weather_preview_setting.action_item.set_enabled(
-        lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled() and not wx.status_text(self._params)
-      )
-      self._grok_voice_setting.action_item.set_text(lambda: tr("On" if grok_cfg.voice_enabled() else "Off"))
-      self._grok_qr_setting.action_item.set_enabled(lambda: grok_cfg.voice_enabled())
 
   def show_event(self):
     super().show_event()
@@ -337,16 +256,6 @@ class TogglesLayout(Widget):
     self._onroad_ui_setting.action_item.set_text(lambda: tr(onroad_ui_label(self._params)))
     self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
-    self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
-    self._weather_schedule_setting.action_item.set_text(
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day")
-    )
-    self._weather_playback_setting.action_item.set_selected_button(1 if grok_cfg.playback_boosted() else 0)
-    st = wx.status_text(self._params)
-    self._weather_preview_setting.action_item.set_text(lambda s=st: tr(s) if s else tr("Preview"))
-    self._weather_preview_setting.action_item.set_enabled(
-      lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled() and not wx.status_text(self._params)
-    )
 
   def _render(self, rect):
     self._scroller.render(rect)
@@ -419,52 +328,3 @@ class TogglesLayout(Widget):
     nxt = next_compass_size(self._params)
     self._params.put("CompassSize", nxt, block=True)
     self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
-
-  def _toggle_grok_voice(self):
-    grok_cfg.set_voice_enabled(not grok_cfg.voice_enabled())
-    self._grok_voice_setting.action_item.set_text(lambda: tr("On" if grok_cfg.voice_enabled() else "Off"))
-    self._grok_qr_setting.action_item.set_enabled(lambda: grok_cfg.voice_enabled())
-    self._weather_preview_setting.action_item.set_enabled(
-      lambda: wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled()
-    )
-
-  def _show_grok_qr(self):
-    who = grok_cfg.display_name()
-    dlg = ConfirmDialog(
-      f"<h1>{who} setup</h1><p>On this network open:</p><p><b>{grok_api.console_url('/grok')}</b></p>",
-      tr("OK"), rich=True,
-    )
-    gui_app.push_widget(dlg)
-
-  def _set_weather_news_mode(self, button_index: int):
-    if button_index == wx.AGGRESSIVE and wx.get(self._params) != wx.AGGRESSIVE:
-      self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
-
-      def confirm_callback(result: DialogResult):
-        if result == DialogResult.CONFIRM:
-          wx.set(wx.AGGRESSIVE, self._params)
-          self._weather_mode_setting.action_item.set_selected_button(wx.AGGRESSIVE)
-          self._weather_preview_setting.action_item.set_enabled(lambda: True)
-        else:
-          self._weather_mode_setting.action_item.set_selected_button(wx.get(self._params))
-
-      content = ("<h1>NSFW — Unhinged</h1>"
-                 "<p>Explicit language through the speaker. Not for kids. "
-                 "Not for passengers who didn't ask.</p>")
-      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
-      gui_app.push_widget(dlg)
-      return
-    wx.set(button_index, self._params)
-    self._weather_preview_setting.action_item.set_enabled(lambda: wx.get(self._params) != wx.OFF)
-
-  def _preview_weather_news(self):
-    wx.request_preview(self._params)
-
-  def _toggle_weather_schedule(self):
-    grok_cfg.set_every_drive(not grok_cfg.every_drive())
-    self._weather_schedule_setting.action_item.set_text(
-      lambda: tr("Every drive" if grok_cfg.every_drive() else "3x a day")
-    )
-
-  def _set_weather_playback(self, button_index: int):
-    grok_cfg.set_playback(grok_cfg.PLAYBACK_BOOSTED if button_index == 1 else grok_cfg.PLAYBACK_STANDARD)

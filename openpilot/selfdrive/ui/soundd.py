@@ -34,8 +34,6 @@ EIGHTY_WAVS = (
 )
 DELOREAN_MODE = "/data/delorean_sound"
 DELOREAN_PLAY = "/data/delorean_play"
-WXNEWS_PLAY = "/data/wxnews_play"
-WXNEWS_WAVS = ("/data/wxnews.wav",)
 DELOREAN_GATE = "/data/delorean_gate.json"
 DELOREAN_HOLD_S = 1.5
 DELOREAN_OFFROAD_RESET_S = 10.0
@@ -200,7 +198,6 @@ class Soundd:
     self._onroad_t0, self._eighty_played = self._load_gate()
     self._started_since = 0.0
     self._offroad_since = 0.0
-    self._wx_loading = False
 
     self.current_alert = AudibleAlert.none
     self.current_volume = MIN_VOLUME
@@ -239,15 +236,6 @@ class Soundd:
     with self._lock:
       self._queue.append([w, 0, tag])
 
-  def _push_bg(self, tag: str, paths: tuple[str, ...], *, prep: bool = True) -> None:
-    try:
-      self._push(tag, paths, prep=prep)
-    except Exception:
-      cloudlog.exception(f"soundd: bg load {tag}")
-    finally:
-      if tag == "wxnews":
-        self._wx_loading = False
-
   def _tag_busy(self, tag: str) -> bool:
     with self._lock:
       return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
@@ -261,12 +249,6 @@ class Soundd:
         self._push("eighty", EIGHTY_WAVS)
         self._play_eighty = False
         _clear(DELOREAN_PLAY)
-    if _flag(WXNEWS_PLAY):
-      if not self._tag_busy("wxnews") and not self._wx_loading:
-        self._wx_loading = True
-        threading.Thread(target=self._push_bg, args=("wxnews", WXNEWS_WAVS),
-                         kwargs={"prep": False}, daemon=True).start()
-        _clear(WXNEWS_PLAY)
 
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}

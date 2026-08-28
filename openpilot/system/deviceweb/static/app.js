@@ -1,5 +1,5 @@
 /* S3XYPilot LAN console — mobile-first */
-const PAGES = ["home", "settings", "live", "grok", "shots"];
+const PAGES = ["home", "settings", "live", "shots"];
 const CAMS = [
   { id: "wideRoad", label: "E CAM" },
   { id: "road", label: "F CAM" },
@@ -46,9 +46,7 @@ const S = {
   page: (location.hash.replace("#", "") || "home"),
   home: null,
   params: {},
-  grok: { topics: "npr", suggestions: [], duration: 60, wifi_only: false, every_drive: false, world_breaking: true, playback: 1, provider: "xai", howto: {}, gemini_masked: "" },
   routes: [],
-  topicDraft: "",
   toast: "",
   confirm: null,
   map: null,
@@ -137,7 +135,6 @@ function render() {
   if (S.page === "home") root.innerHTML = homeHTML();
   else if (S.page === "settings") root.innerHTML = settingsHTML();
   else if (S.page === "live") root.innerHTML = liveHTML();
-  else if (S.page === "grok") root.innerHTML = grokHTML();
   else root.innerHTML = shotsHTML();
   bindPage();
   if (S.page === "home") setupHome();
@@ -255,73 +252,6 @@ function stageClass() {
   return "one";
 }
 
-function grokHTML() {
-  const g = S.grok;
-  const topics = (g.topics || "npr").split(/\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 6);
-  const mode = String(S.params.WeatherNewsMode || "1");
-  const howto = g.howto || {};
-  const providers = [
-    { id: "xai", name: "xAI Grok", masked: g.masked, field: "api_key", ph: "xai-…" },
-    { id: "gemini", name: "Gemini", masked: g.gemini_masked, field: "gemini_key", ph: "Gemini API key" },
-    { id: "openai", name: "OpenAI", masked: g.openai_masked, field: "openai_key", ph: "sk-…" },
-    { id: "groq", name: "Groq", masked: g.groq_masked, field: "groq_key", ph: "gsk_…" },
-  ];
-  const sug = filterSuggest(S.topicDraft, topics);
-  return `<div class="stack">
-    <p class="h-label">Weather + news</p>
-    <div class="card">
-      <div class="set"><div class="meta"><b>Voice</b><p>Selected AI writes the briefing. Ara (or OpenAI tts-1) speaks it. Weather is always included.</p></div>
-        <button class="tog${g.voice_on ? " on" : ""}" id="voiceOn"><i></i></button></div>
-      <div class="set"><div class="meta"><b>Mode</b><p>Unhinged is NSFW through the speaker.</p></div>
-        <div class="seg">
-          <button class="btn${mode === "1" ? " on" : ""}" data-mode="1">Nice</button>
-          <button class="btn${mode === "2" ? " on" : ""}" data-mode="2">Unhinged</button>
-          <button class="btn${mode === "0" ? " on" : ""}" data-mode="0">Off</button>
-        </div></div>
-      <div class="set"><div class="meta"><b>Duration</b><p>Spoken length the device uses.</p></div>
-        <div class="seg">${[60, 90, 120].map(s => `<button class="btn${g.duration === s ? " on" : ""}" data-dur="${s}">${s}s</button>`).join("")}</div></div>
-      <div class="set"><div class="meta"><b>Wi-Fi only</b><p>Skip LTE for fetch + TTS.</p></div>
-        <button class="tog${g.wifi_only ? " on" : ""}" id="wifiOnly"><i></i></button></div>
-      <div class="set"><div class="meta"><b>Playback</b><p>Voice only. Boosted is louder for road noise, with less C4 crackle.</p></div>
-        <div class="seg">
-          <button class="btn${Number(g.playback ?? 1) === 0 ? " on" : ""}" data-play="0">Standard</button>
-          <button class="btn${Number(g.playback ?? 1) === 1 ? " on" : ""}" data-play="1">Boosted</button>
-        </div></div>
-      <div class="set"><div class="meta"><b>Every drive</b><p>Off = morning, afternoon, and after 7pm — one each, never stacked. On = start of every drive.</p></div>
-        <button class="tog${g.every_drive ? " on" : ""}" id="everyDrive"><i></i></button></div>
-      <div class="set"><div class="meta"><b>World breaking</b><p>Lead with what broke in the last few hours, then your topics. Off = topics only.</p></div>
-        <button class="tog${g.world_breaking !== false ? " on" : ""}" id="worldBreaking"><i></i></button></div>
-    </div>
-    <p class="h-label">Topics · ${topics.length}/6</p>
-    <div class="card" style="padding:12px 14px">
-      <div class="chips" id="chips">
-        <span class="chip locked">weather</span>
-        ${topics.map((t, i) => `<span class="chip">${t}<button data-rm="${i}" aria-label="remove">×</button></span>`).join("")}
-      </div>
-      <input id="topicIn" placeholder="add topic" value="${esc(S.topicDraft)}" ${topics.length >= 6 ? "disabled" : ""}
-        autocomplete="off" style="width:100%;margin-top:10px;height:40px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);padding:0 10px"/>
-      ${sug.length ? `<div class="suggest">${sug.map(s => `<button type="button" data-add="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
-    </div>
-    <p class="h-label">AI API · plug and play</p>
-    ${providers.map(p => `<div class="card">
-      <div class="set"><div class="meta"><b>${p.name}</b><p>${howto[p.id] || ""}</p>
-        <p class="tiny">${p.masked ? "saved " + p.masked : "no key"}</p></div>
-        <button class="btn${g.provider === p.id ? " primary" : ""}" data-prov="${p.id}">${g.provider === p.id ? "Active" : "Use"}</button></div>
-      <div class="field"><label>${p.name} key</label>
-        <input data-keyfield="${p.field}" placeholder="${p.ph}" autocomplete="off"/>
-        <div class="seg" style="margin-top:8px">
-          <button class="btn primary" data-savekey="${p.id}">Save</button>
-          <button class="btn" data-test="${p.id}">Test</button>
-        </div>
-      </div>
-    </div>`).join("")}
-    <div class="seg">
-      <button class="btn" id="previewNice">Preview Nice</button>
-      <button class="btn" id="previewUnh">Preview Unhinged</button>
-    </div>
-  </div>` + (S.confirm ? confirmHTML() : "");
-}
-
 function shotUrl(name) { return "/api/screenshots/raw?name=" + encodeURIComponent(name); }
 function shotDay(s) {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(s.name || "");
@@ -395,13 +325,6 @@ function lightboxHTML() {
 
 function esc(s) { return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
-function filterSuggest(q, taken) {
-  const all = S.grok.suggestions || [];
-  const have = new Set(taken.map(t => t.toLowerCase()));
-  const qq = (q || "").toLowerCase();
-  return all.filter(s => !have.has(s.toLowerCase()) && (!qq || s.toLowerCase().includes(qq))).slice(0, 6);
-}
-
 function bindPage() {
   if (S.page === "home") {
     $("page").querySelectorAll("[data-route]").forEach(b => b.onclick = () => pickRoute(b.dataset.route));
@@ -425,39 +348,6 @@ function bindPage() {
       if (b.dataset.cam) S.singleCam = b.dataset.cam;
       applyLayout();
     });
-  }
-  if (S.page === "grok") {
-    $("voiceOn").onclick = () => saveGrok({ voice_on: !S.grok.voice_on });
-    $("wifiOnly").onclick = () => saveGrok({ wifi_only: !S.grok.wifi_only });
-    $("everyDrive").onclick = () => saveGrok({ every_drive: !S.grok.every_drive });
-    $("worldBreaking").onclick = () => saveGrok({ world_breaking: S.grok.world_breaking === false });
-    $("page").querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-    $("page").querySelectorAll("[data-dur]").forEach(b => b.onclick = () => saveGrok({ duration: Number(b.dataset.dur) }));
-    $("page").querySelectorAll("[data-play]").forEach(b => b.onclick = () => saveGrok({ playback: Number(b.dataset.play) }));
-    $("page").querySelectorAll("[data-prov]").forEach(b => b.onclick = () => saveGrok({ provider: b.dataset.prov }));
-    $("page").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => rmTopic(Number(b.dataset.rm)));
-    $("page").querySelectorAll("[data-add]").forEach(b => b.onclick = () => addTopic(b.dataset.add));
-    $("page").querySelectorAll("[data-savekey]").forEach(b => b.onclick = (e) => saveProviderKey(b.dataset.savekey, e));
-    $("page").querySelectorAll("[data-test]").forEach(b => b.onclick = (e) => testProvider(b.dataset.test, e));
-    const tin = $("topicIn");
-    if (tin) {
-      tin.oninput = () => {
-        S.topicDraft = tin.value;
-        const box = tin.parentElement;
-        let sug = box.querySelector(".suggest");
-        const items = filterSuggest(S.topicDraft, topicsArr());
-        if (!items.length) { if (sug) sug.remove(); return; }
-        if (!sug) { sug = document.createElement("div"); sug.className = "suggest"; box.appendChild(sug); }
-        sug.innerHTML = items.map(s => `<button type="button" data-add="${esc(s)}">${esc(s)}</button>`).join("");
-        sug.querySelectorAll("[data-add]").forEach(b => b.onclick = () => addTopic(b.dataset.add));
-      };
-      tin.onkeydown = (e) => {
-        if (e.key === "Enter") { e.preventDefault(); addTopic(tin.value); }
-      };
-    }
-    $("previewNice").onclick = () => preview("nice");
-    $("previewUnh").onclick = () => preview("unhinged");
-    bindConfirm();
   }
   if (S.page === "shots") {
     $("shotCap").onclick = () => captureShot();
@@ -585,71 +475,6 @@ async function act(kind) {
   if (!confirm(kind + " device?")) return;
   try { await api("/api/action/" + kind, { method: "POST" }); say(kind + " sent"); }
   catch (e) { say(e.message); }
-}
-
-async function saveGrok(body) {
-  try {
-    S.grok = await api("/api/grok", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    render();
-  } catch (e) { say(e.message); }
-}
-
-function topicsArr() {
-  return (S.grok.topics || "").split(/\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 6);
-}
-function addTopic(t) {
-  t = (t || "").trim();
-  if (!t) return;
-  const cur = topicsArr();
-  if (cur.length >= 6) { say("max 6 topics"); return; }
-  if (cur.some(x => x.toLowerCase() === t.toLowerCase())) return;
-  S.topicDraft = "";
-  saveGrok({ topics: cur.concat(t).join("\n") });
-}
-function rmTopic(i) {
-  const cur = topicsArr();
-  cur.splice(i, 1);
-  saveGrok({ topics: cur.join("\n") });
-}
-
-function setMode(m) {
-  if (m === "2") {
-    S.confirm = { msg: "NSFW. Explicit language through the speaker. Not for kids.", go: () => { S.confirm = null; saveParam("WeatherNewsMode", "2"); } };
-    render();
-    return;
-  }
-  saveParam("WeatherNewsMode", m);
-}
-
-async function saveProviderKey(id, e) {
-  const card = e.target.closest(".card");
-  const inp = card.querySelector("[data-keyfield]");
-  const field = inp.dataset.keyfield;
-  const val = inp.value.trim();
-  const body = { provider: id };
-  body[field] = val;
-  await saveGrok(body);
-  say(val ? "key saved" : "key cleared");
-}
-
-async function testProvider(id, e) {
-  const card = e.target.closest(".card");
-  const inp = card.querySelector("[data-keyfield]");
-  try {
-    const r = await api("/api/grok/test", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: id, api_key: inp.value.trim() }),
-    });
-    say(r.ok ? id + " ok" : (r.status || "failed"));
-    S.grok = r;
-  } catch (e) { say(e.message); }
-}
-
-async function preview(mode) {
-  try {
-    await api("/api/weather/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
-    say("preview queued");
-  } catch (e) { say(e.message); }
 }
 
 function teardownHome() {
@@ -867,11 +692,11 @@ async function boot() {
   });
   render();
   try {
-    const [home, params, grok, routes, live] = await Promise.all([
-      api("/api/home"), api("/api/params"), api("/api/grok").catch(() => S.grok),
+    const [home, params, routes, live] = await Promise.all([
+      api("/api/home"), api("/api/params"),
       api("/api/routes").catch(() => ({ routes: [] })), api("/api/live").catch(() => ({})),
     ]);
-    S.home = home; S.params = params; S.grok = grok; S.routes = routes.routes || [];
+    S.home = home; S.params = params; S.routes = routes.routes || [];
     S.liveOn = !!live.live; S.webrtc = !!live.webrtc;
     paintHeader();
     render();

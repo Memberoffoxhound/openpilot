@@ -21,8 +21,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.weather_news import config as grok_cfg
-from openpilot.selfdrive.weather_news import grok as grok_api
 
 try:
   from openpilot.system.deviceweb import stats as drive_stats
@@ -45,28 +43,22 @@ FILE_ROOTS = (
 )
 SECRET_NAMES = {
   "AccessToken", "GithubSshKeys", "SecOCKey", "AssistNowToken", "ApiCache_Device",
-  "XaiApiKey", "OpenaiApiKey", "GroqApiKey", "GeminiApiKey",
 }
 WRITE_BOOL = {
   "OpenpilotEnabledToggle", "ExperimentalMode", "ExperimentalModeConfirmed",
   "AutoLaneChangeEnabled", "IsLdwEnabled", "AlwaysOnDM", "IsMetric",
   "DisengageOnAccelerator", "RecordFront", "RecordAudio",
   "SshEnabled", "AdbEnabled", "DisablePowerDown", "DisableUpdates",
-  "ShowDebugInfo", "JoystickDebugMode", "GrokVoiceEnabled",
-  "WeatherNewsWifiOnly", "WeatherNewsWorldBreaking", "IsLiveStreaming",
+  "ShowDebugInfo", "JoystickDebugMode", "IsLiveStreaming",
 }
-WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "WeatherNewsMode",
-             "WeatherNewsDuration", "WeatherNewsPlayback", "CustomOnroadUi"}
-WRITE_STR = {"WeatherNewsPreview"}  # preview: nice|aggressive
+WRITE_INT = {"LaneColor", "LongitudinalPersonality", "CompassSize", "CustomOnroadUi"}
 # networkd/ModemManager own these — writing the param from the PWA does not stick (sunnylink hides NetworkMetered)
 DEVICE_ONLY = {"GsmRoaming", "GsmMetered", "NetworkMetered"}
-READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | WRITE_STR | DEVICE_ONLY | {
+READ_KEYS = sorted(WRITE_BOOL | WRITE_INT | DEVICE_ONLY | {
   "DongleId", "Version", "GitBranch", "GitCommit", "GitRemote", "HardwareSerial",
   "IsOffroad", "IsEngaged", "UpdateAvailable", "UpdaterState", "UpdaterCurrentDescription",
   "UpdaterNewDescription", "UpdaterTargetBranch", "SshEnabled",
-  "WeatherNewsLastRunDate", "WeatherNewsStatus", "GrokVoiceEnabled", "WeatherNewsTopics",
-  "WeatherNewsDuration", "WeatherNewsWifiOnly", "WeatherNewsPlayback", "WeatherNewsWorldBreaking", "GrokProvider", "IsLiveStreaming",
-  "LastGPSPosition", "CustomOnroadUi",
+  "IsLiveStreaming", "LastGPSPosition", "CustomOnroadUi",
 })
 MAX_DOWNLOAD = 80 * 1024 * 1024
 DATA_DIR = Path("/data/media/0")
@@ -84,12 +76,6 @@ WEBRTC_SCHEMA = "http://127.0.0.1:5001/schema?services=deviceState"
 TRIP_PATH = Path("/data/trip_meter.json")
 GPS_CACHE = DATA_DIR / "stats"
 DELOREAN_PATH = Path("/data/delorean_sound")
-GROK_HOWTO = {
-  "xai": "console.x.ai → API keys. Paste an xAI key. Chat is grok-4-fast; spoken voice is Ara TTS.",
-  "openai": "platform.openai.com → API keys. Chat is gpt-4o-mini; spoken voice is OpenAI tts-1 (alloy).",
-  "groq": "console.groq.com → API keys. Chat is Llama 3.3 70B. Groq has no TTS — add an OpenAI key too if you want Ara-style spoken audio.",
-  "gemini": "aistudio.google.com → API keys. Chat is gemini-3.6-flash. Spoken voice is Ara if you also pasted an xAI key, otherwise OpenAI tts-1.",
-}
 
 _clip_lock = threading.Lock()
 _clip_proc: subprocess.Popen | None = None
@@ -308,7 +294,7 @@ def _read_params() -> dict[str, str]:
           if path.exists():
             out[k] = path.read_text().strip()
           else:
-            out[k] = "1" if k in ("WeatherNewsMode", "WeatherNewsPlayback") else ""
+            out[k] = ""
         else:
           out[k] = str(v)
     except Exception:
@@ -343,72 +329,8 @@ def _write_params(body: dict) -> None:
         p.put(k, str(int(v)), block=True)
       except Exception:
         (param_dir / k).write_text(str(int(v)))
-    elif k in WRITE_STR:
-      s = str(v).strip().lower()
-      if k == "WeatherNewsPreview" and s not in ("", "nice", "aggressive"):
-        continue
-      try:
-        p.put(k, s, block=True)
-      except Exception:
-        (param_dir / k).write_text(s)
-    if k == "GrokVoiceEnabled":
-      grok_cfg.set_voice_enabled(str(v) in ("1", "true", "True", "yes"))
-    elif k == "Delorean":
+    if k == "Delorean":
       DELOREAN_PATH.write_text("1" if str(v) in ("1", "true", "True", "yes") else "0")
-
-
-def _mask(k: str) -> str:
-  k = k or ""
-  return (k[:4] + "…" + k[-4:]) if len(k) >= 8 else ""
-
-
-def _grok_status() -> dict:
-  return {
-    "voice_on": grok_cfg.voice_enabled(),
-    "configured": grok_cfg.configured(),
-    "masked": grok_cfg.masked_key(),
-    "openai_masked": _mask(grok_cfg.openai_key()),
-    "groq_masked": _mask(grok_cfg.groq_key()),
-    "gemini_masked": _mask(grok_cfg.gemini_key()),
-    "url": grok_api.console_url("/grok"),
-    "topics": grok_cfg.topics_text(),
-    "suggestions": list(grok_cfg.TOPIC_SUGGESTIONS),
-    "duration": grok_cfg.duration(),
-    "wifi_only": grok_cfg.wifi_only(),
-    "every_drive": grok_cfg.every_drive(),
-    "world_breaking": grok_cfg.world_breaking(),
-    "playback": grok_cfg.playback(),
-    "provider": grok_cfg.provider(),
-    "howto": GROK_HOWTO,
-  }
-
-
-def _write_grok(body: dict) -> dict:
-  if "api_key" in body:
-    grok_cfg.set_api_key(str(body.get("api_key") or ""))
-  if "openai_key" in body:
-    grok_cfg.set_openai_key(str(body.get("openai_key") or ""))
-  if "groq_key" in body:
-    grok_cfg.set_groq_key(str(body.get("groq_key") or ""))
-  if "gemini_key" in body:
-    grok_cfg.set_gemini_key(str(body.get("gemini_key") or ""))
-  if "provider" in body:
-    grok_cfg.set_provider(str(body.get("provider") or "xai"))
-  if "voice_on" in body:
-    grok_cfg.set_voice_enabled(str(body.get("voice_on")) in ("1", "true", "True", "yes", "on"))
-  if "topics" in body:
-    grok_cfg.set_topics(str(body.get("topics") or ""))
-  if "duration" in body:
-    grok_cfg.set_duration(int(body.get("duration") or 60))
-  if "wifi_only" in body:
-    grok_cfg.set_wifi_only(str(body.get("wifi_only")) in ("1", "true", "True", "yes", "on"))
-  if "every_drive" in body:
-    grok_cfg.set_every_drive(str(body.get("every_drive")) in ("1", "true", "True", "yes", "on"))
-  if "world_breaking" in body:
-    grok_cfg.set_world_breaking(str(body.get("world_breaking")) in ("1", "true", "True", "yes", "on"))
-  if "playback" in body:
-    grok_cfg.set_playback(int(body.get("playback") or grok_cfg.PLAYBACK_BOOSTED))
-  return _grok_status()
 
 
 _update_lock = threading.Lock()
@@ -1038,8 +960,6 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, _info())
       if path in ("/api/params", "/api/device/params"):
         return self._json(200, _read_params())
-      if path in ("/api/grok", "/api/device/grok"):
-        return self._json(200, _grok_status())
       if path in ("/api/files", "/api/device/files"):
         target = (qs.get("path") or [""])[0]
         return self._json(200, {"path": target, "items": _list_dir(target)})
@@ -1147,8 +1067,6 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/params", "/api/device/params"):
         _write_params(self._read_json())
         return self._json(200, _read_params())
-      if path in ("/api/grok", "/api/device/grok"):
-        return self._json(200, _write_grok(self._read_json()))
       self._json(404, {"error": "not found"})
     except Exception:
       cloudlog.exception("deviceweb PUT")
@@ -1205,27 +1123,6 @@ class Handler(BaseHTTPRequestHandler):
       if path in ("/api/webrtc/stream", "/api/device/webrtc/stream"):
         code, payload = _webrtc_stream(self._read_json())
         return self._json(code, payload)
-      if path in ("/api/grok/test", "/api/device/grok/test"):
-        body = self._read_json()
-        key = str(body.get("api_key") or "").strip() or None
-        provider = str(body.get("provider") or "").strip() or None
-        ok, msg = grok_api.test_key(key, provider)
-        return self._json(200, {"ok": ok, "status": msg, **_grok_status()})
-      if path in ("/api/weather/preview", "/api/device/weather/preview"):
-        body = self._read_json()
-        mode = str(body.get("mode") or "").strip().lower()
-        if mode == "unhinged":
-          mode = "aggressive"
-        if mode not in ("nice", "aggressive"):
-          try:
-            cur = int(p.get("WeatherNewsMode", return_default=True) or 1)
-          except Exception:
-            cur = 1
-          if cur == 0:
-            return self._json(400, {"ok": False, "error": "weather is off"})
-          mode = "aggressive" if cur == 2 else "nice"
-        _write_params({"WeatherNewsPreview": mode})
-        return self._json(200, {"ok": True, "mode": mode})
       if path in ("/api/screenshots/capture", "/api/device/screenshots/capture"):
         return self._json(200, _request_shot())
       if path in ("/api/screenshots/delete", "/api/device/screenshots/delete"):

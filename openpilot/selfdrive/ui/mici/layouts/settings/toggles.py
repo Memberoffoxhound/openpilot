@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pyray as rl
 from openpilot.cereal import log
 from openpilot.common.params import Params
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigMultiToggle, BigToggle, GreyBigButton, BigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
@@ -15,9 +15,6 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   compass_size_label, next_compass_size,
   delorean_on, set_delorean, request_delorean_play,
 )
-from openpilot.selfdrive.weather_news import config as grok_cfg
-from openpilot.selfdrive.weather_news import mode as wx
-from openpilot.selfdrive.ui.mici.widgets.grok_qr import GrokQrPage
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -36,22 +33,6 @@ class AutoLaneChangeConfirmPage(NavScroller):
       GreyBigButton("", "to check for a vehicle in the adjacent lane prior to merging."),
       GreyBigButton("", "You are still responsible for ensuring the lane of travel is clear"),
       GreyBigButton("", "and agree to intervene as necessary."),
-      accept,
-    ])
-
-
-class UnhingedConfirmPage(NavScroller):
-  def __init__(self, on_confirm: Callable[[], None]):
-    super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
-    accept = BigConfirmationCircleButton("slide to\nenable", check,
-                                         lambda: self.dismiss(on_confirm))
-    self._scroller.add_widgets([
-      GreyBigButton("enabling\nunhinged", "scroll to continue", warn),
-      GreyBigButton("", "NSFW. Explicit language through the speaker."),
-      GreyBigButton("", "Not for kids. Not for passengers who didn't ask."),
-      GreyBigButton("", "Same voice and speed as Nice. The script swears."),
       accept,
     ])
 
@@ -102,146 +83,6 @@ class CompassSizeCycle(BigButton):
     nxt = next_compass_size(self._params)
     self._params.put("CompassSize", nxt, block=True)
     self.set_value(COMPASS_SIZE_LABELS[nxt])
-
-
-class WeatherNewsCycle(BigMultiToggle):
-  def __init__(self, on_change: Callable[[], None] | None = None):
-    super().__init__("weather & news", list(wx.LABELS), select_callback=self._on_select)
-    self._params = Params()
-    self._on_change = on_change
-    self.refresh()
-
-  def refresh(self):
-    value = wx.LABELS[wx.get(self._params)]
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _on_select(self, value: str):
-    idx = wx.LABELS.index(value)
-    if idx == wx.AGGRESSIVE and wx.get(self._params) != wx.AGGRESSIVE:
-      self.set_value(wx.LABELS[wx.get(self._params)])
-
-      def on_confirm():
-        wx.set(wx.AGGRESSIVE, self._params)
-        self.set_value(wx.LABELS[wx.AGGRESSIVE])
-        if self._on_change:
-          self._on_change()
-
-      gui_app.push_widget(UnhingedConfirmPage(on_confirm))
-      return
-    wx.set(idx, self._params)
-    if self._on_change:
-      self._on_change()
-
-
-class GrokVoiceCycle(BigButton):
-  """Master switch for Grok / Gemini (Nice / Unhinged). Enabling opens the setup QR."""
-
-  def __init__(self, on_change=None):
-    super().__init__("grok voice", "")
-    self._on_change = on_change
-    self.refresh()
-
-  def refresh(self):
-    title = "gemini voice" if grok_cfg.provider() == "gemini" else "grok voice"
-    if title != self.text:
-      self.set_text(title)
-    value = "on" if grok_cfg.voice_enabled() else "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _update_state(self):
-    super()._update_state()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    on = not grok_cfg.voice_enabled()
-    grok_cfg.set_voice_enabled(on)
-    self.set_value("on" if on else "off")
-    if on:
-      gui_app.push_widget(GrokQrPage())
-    if self._on_change:
-      self._on_change()
-
-
-class GrokQrButton(BigButton):
-  def __init__(self):
-    super().__init__("voice setup", "QR")
-    self.refresh()
-
-  def refresh(self):
-    on = grok_cfg.voice_enabled()
-    self.set_enabled(on)
-    self.set_value("QR" if on else "off")
-    title = "gemini setup" if grok_cfg.provider() == "gemini" else "grok setup"
-    if title != self.text:
-      self.set_text(title)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _update_state(self):
-    super()._update_state()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    if not grok_cfg.voice_enabled():
-      return
-    super()._handle_mouse_release(mouse_pos)
-    gui_app.push_widget(GrokQrPage())
-
-
-class WeatherNewsPreview(BigButton):
-  def __init__(self):
-    super().__init__("preview", "off")
-    self._params = Params()
-    self.refresh()
-
-  def refresh(self):
-    live = wx.get(self._params) != wx.OFF and grok_cfg.voice_enabled()
-    st = wx.status_text(self._params)
-    busy = bool(st)
-    self.set_enabled(live and not busy)
-    if not grok_cfg.voice_enabled():
-      self.set_value("enable grok")
-    elif not live:
-      self.set_value("off")
-    elif busy:
-      self.set_value(st)
-    elif not grok_cfg.configured():
-      self.set_value("scan QR")
-    else:
-      self.set_value("tap")
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _update_state(self):
-    super()._update_state()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    if wx.get(self._params) == wx.OFF or not grok_cfg.voice_enabled():
-      return
-    if wx.status_text(self._params):
-      return
-    if not grok_cfg.configured():
-      gui_app.push_widget(GrokQrPage())
-      return
-    super()._handle_mouse_release(mouse_pos)
-    wx.request_preview(self._params)
-    self.refresh()
 
 
 class LaneColorCycle(BigButton):
@@ -300,80 +141,6 @@ class DeloreanPreview(BigButton):
     request_delorean_play()
 
 
-class BriefDurationCycle(BigButton):
-  def __init__(self):
-    super().__init__("briefing length", "")
-    self.refresh()
-
-  def refresh(self):
-    self.set_value(f"{grok_cfg.duration()}s")
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    opts = grok_cfg.DURATIONS
-    cur = grok_cfg.duration()
-    grok_cfg.set_duration(opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else 60)
-    self.refresh()
-
-
-class WifiOnlyCycle(BigButton):
-  def __init__(self):
-    super().__init__("briefing on wifi only", "")
-    self.refresh()
-
-  def refresh(self):
-    self.set_value("on" if grok_cfg.wifi_only() else "off")
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    grok_cfg.set_wifi_only(not grok_cfg.wifi_only())
-    self.refresh()
-
-
-class BriefScheduleCycle(BigButton):
-  def __init__(self):
-    super().__init__("briefing schedule", "")
-    self.refresh()
-
-  def refresh(self):
-    self.set_value("every drive" if grok_cfg.every_drive() else "3x a day")
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    grok_cfg.set_every_drive(not grok_cfg.every_drive())
-    self.refresh()
-
-
-class BriefPlaybackCycle(BigButton):
-  def __init__(self):
-    super().__init__("briefing playback", "")
-    self.refresh()
-
-  def refresh(self):
-    self.set_value("boosted" if grok_cfg.playback_boosted() else "standard")
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    grok_cfg.set_playback(grok_cfg.PLAYBACK_STANDARD if grok_cfg.playback_boosted() else grok_cfg.PLAYBACK_BOOSTED)
-    self.refresh()
-
-
 class ThemeLayoutMici(NavScroller):
   """Settings → theme. Subsections live here."""
 
@@ -381,21 +148,11 @@ class ThemeLayoutMici(NavScroller):
     super().__init__()
     self._onroad_ui = OnroadUiCycle()
     self._compass_size = CompassSizeCycle()
-    self._wx_preview = WeatherNewsPreview()
-    self._wx_mode = WeatherNewsCycle(on_change=self._wx_preview.refresh)
-    self._grok = GrokVoiceCycle(on_change=self._wx_preview.refresh)
-    self._grok_qr = GrokQrButton()
     self._lane_color = LaneColorCycle()
-    self._wx_dur = BriefDurationCycle()
-    self._wx_wifi = WifiOnlyCycle()
-    self._wx_sched = BriefScheduleCycle()
-    self._wx_play = BriefPlaybackCycle()
     self._delorean = DeloreanCycle()
     self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
       self._onroad_ui, self._compass_size, self._lane_color,
-      self._grok, self._grok_qr, self._wx_mode, self._wx_preview, self._wx_dur, self._wx_wifi,
-      self._wx_play, self._wx_sched,
       self._delorean, self._delorean_preview,
     ])
 

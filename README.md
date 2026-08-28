@@ -1,6 +1,6 @@
 # S3XYPilot
 
-Tesla-first fork for **stalkless Model 3 / Y**. Hobby project. No support. Install at your own risk.
+Tesla-first fork built for simplicity. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
 
 Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.12. This branch versions as **0.11.12**.
 
@@ -40,15 +40,6 @@ Home stats: **Today** / **Week** miles and distance-engaged %.
 
 <!-- docs/screenshots/theme.png -->
 Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ignition settles).
-
-<!-- docs/screenshots/weather-preview.png -->
-**Grok voice** — Theme → grok voice On, then scan the QR (or open `http://<c4-ip>:8088/grok`) and paste an [xAI API key](https://console.x.ai). Ara speaks. A 50px Grok mark sits after the Wi-Fi/LTE icon on home while it is on. Tap the mark for a full on-demand briefing (test hook; does not consume the window).
-
-**Weather & news** — morning, afternoon, and after 7pm (GPS local time). One briefing per window, never stacked. Off / Nice / Unhinged. Unhinged is NSFW (confirm on enable). Weather is current to that time and GPS location. Default news is **NPR world**. Add topics on the Grok tab (one per line): `npr`, `cnn`, `comma`, `reddit:commaai`, `x:ApteraMotors`, or any Google News query such as `Aptera Motors`. Theme → playback is Standard or Boosted (default). Theme → preview is a short Ara sample.
-
-On LTE a briefing is about **3–4 MB** (almost all of it is the Ara WAV). RSS + Grok chat are tens of KB. A preview is about **0.3 MB**. Three briefings a day is roughly **270–360 MB/month**.
-
-Setup and free-TTS notes: [`openpilot/selfdrive/weather_news/README.md`](openpilot/selfdrive/weather_news/README.md).
 
 ### Device
 
