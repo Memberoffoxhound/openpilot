@@ -10,7 +10,6 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 
 - **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot) mirror.
 - **`Highland`** — S3XYPilot. Install this.
-- **`K5`** — comma master + Auto Lane Change (confirm slider). For the Kia.
 
 ## Highland
 
@@ -28,8 +27,6 @@ Theme → onroad UI is **stock** or **custom**. Custom paints Tesla Autopilot-bl
 
 Stock HUD is one tap away.
 
-![Stock onroad HUD](docs/screenshots/onroad-stock.jpg)
-
 - Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
 - Cooperative steering — on.
 - Scroll-wheel disengage — stalkless cancel.
@@ -37,8 +34,6 @@ Stock HUD is one tap away.
 ### Home
 
 Home is the parked comma 4. Version, date, and branch sit under the wordmark. Under that: **engagement stats**.
-
-![Home with Tesla TACC](docs/screenshots/home-tacc.jpg)
 
 ![Home with openpilot longitudinal](docs/screenshots/home-long.jpg)
 
