@@ -4,6 +4,7 @@ from enum import IntEnum
 from collections.abc import Callable
 from openpilot.selfdrive.ui.layouts.settings.developer import DeveloperLayout
 from openpilot.selfdrive.ui.layouts.settings.device import DeviceLayout
+from openpilot.selfdrive.ui.layouts.settings.driving_model import DrivingModelLayout
 from openpilot.selfdrive.ui.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.layouts.settings.software import SoftwareLayout
 from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
@@ -31,12 +32,13 @@ TEXT_SELECTED = rl.WHITE
 
 
 class PanelType(IntEnum):
-  DEVICE = 0
-  NETWORK = 1
-  TOGGLES = 2
-  SOFTWARE = 3
-  FIREHOSE = 4
-  DEVELOPER = 5
+  DRIVING_MODEL = 0
+  DEVICE = 1
+  NETWORK = 2
+  TOGGLES = 3
+  SOFTWARE = 4
+  FIREHOSE = 5
+  DEVELOPER = 6
 
 
 @dataclass
@@ -49,13 +51,14 @@ class PanelInfo:
 class SettingsLayout(Widget):
   def __init__(self):
     super().__init__()
-    self._current_panel = PanelType.DEVICE
+    self._current_panel = PanelType.DRIVING_MODEL
 
     # Panel configuration
     wifi_manager = WifiManager()
     wifi_manager.set_active(False)
 
     self._panels = {
+      PanelType.DRIVING_MODEL: PanelInfo(tr_noop("Driving Model"), DrivingModelLayout()),
       PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
       PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
       PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
@@ -114,10 +117,11 @@ class SettingsLayout(Widget):
     # Store close button rect for click detection
     self._close_btn_rect = close_btn_rect
 
-    # Navigation buttons
-    y = rect.y + 300
+    # Navigation buttons — slightly tighter so the extra Driving Model tab fits
+    y = rect.y + 280
+    nav_h = 100
     for panel_type, panel_info in self._panels.items():
-      button_rect = rl.Rectangle(rect.x + 50, y, rect.width - 150, NAV_BTN_HEIGHT)
+      button_rect = rl.Rectangle(rect.x + 50, y, rect.width - 150, nav_h)
 
       # Button styling
       is_selected = panel_type == self._current_panel
@@ -133,7 +137,7 @@ class SettingsLayout(Widget):
       # Store button rect for click detection
       panel_info.button_rect = button_rect
 
-      y += NAV_BTN_HEIGHT
+      y += nav_h
 
   def _draw_current_panel(self, rect: rl.Rectangle):
     rl.draw_rectangle_rounded(
