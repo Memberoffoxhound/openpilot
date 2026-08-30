@@ -14,6 +14,19 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
+| `DrivingModelSelected` | `release` | Active driving model id. `release` / `release-egpu` use the bundled pkl. Master/favorite ids live under `/data/sexypilot/models/{id}/`. |
+| `DrivingModelInstallStatus` | `{}` | On-demand download/compile progress. Cleared on manager start. |
+
+## Driving model selector
+
+Settings → **driving model** (first C4 widget). Home branch label shows the selected model name.
+
+- Openpilot Release is always available (bundled). No prefetch of master ONNX.
+- Model updater pulls the last 3 comma master bumps of `driving_supercombo.onnx`.
+- Star a master model to keep it (5 regular + 5 eGPU). Unstarred masters rotate out of the last-3 window and their files are pruned.
+- eGPU / Chestnut models only appear when Chestnut is present, with an eGPU badge. Separate 3+5 pools.
+- Select or star starts download + on-device compile. Progress is shown in the widget. Switch requests an onroad cycle.
+- Compile uses stock `compile_modeld.py`. Shape mismatch falls back to the bundled model.
 
 ## Trip files
 
