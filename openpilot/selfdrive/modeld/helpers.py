@@ -65,5 +65,13 @@ def chestnut_present() -> bool:
   return False
 
 def chestnut_compiled() -> bool:
+  # A regular (non-eGPU) selection must not load the big model just because
+  # Chestnut hardware and a bundled big pkl are present.
+  try:
+    from openpilot.selfdrive.modeld.model_manager import want_big_model
+    if not want_big_model():
+      return False
+  except Exception:
+    pass
   p = modeld_pkl_path(chestnut=True)
   return Path(get_manifest_path(p)).is_file() or Path(p).is_file()
