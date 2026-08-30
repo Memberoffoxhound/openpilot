@@ -3,13 +3,79 @@ from collections.abc import Callable
 from openpilot.cereal import log
 
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.system.ui.lib.application import gui_app
-from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+from openpilot.system.ui.lib.application import gui_app, MousePos
+from openpilot.common.params import Params
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  restart_needed_callback,
+  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS,
+  lane_color_label, next_lane_color,
+  onroad_ui_label, next_onroad_ui, set_onroad_ui,
+  compass_size_label, next_compass_size,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+class OnroadUiCycle(BigButton):
+  def __init__(self):
+    super().__init__("onroad UI", "")
+    self._params = Params()
+    self.refresh()
+  def refresh(self):
+    value = onroad_ui_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_onroad_ui(self._params)
+    set_onroad_ui(nxt, self._params)
+    self.set_value(ONROAD_UI_LABELS[nxt])
+
+class CompassSizeCycle(BigButton):
+  def __init__(self):
+    super().__init__("compass size", "")
+    self._params = Params()
+    self.refresh()
+  def refresh(self):
+    value = compass_size_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_compass_size(self._params)
+    self._params.put("CompassSize", nxt, block=True)
+    self.set_value(COMPASS_SIZE_LABELS[nxt])
+
+class LaneColorCycle(BigButton):
+  def __init__(self):
+    super().__init__("theme", "")
+    self._params = Params()
+    self.refresh()
+  def refresh(self):
+    value = lane_color_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self.set_value(LANE_COLOR_LABELS[nxt])
+
+class ThemeLayoutMici(NavScroller):
+  def __init__(self):
+    super().__init__()
+    self._scroller.add_widgets([OnroadUiCycle(), CompassSizeCycle(), LaneColorCycle()])
 
 
 class AutoLaneChangeConfirmPage(NavScroller):
@@ -82,7 +148,6 @@ class TogglesLayoutMici(NavScroller):
       enable_openpilot,
     ])
 
-    # Toggle lists
     self._refresh_toggles = (
       ("ExperimentalMode", self._experimental_btn),
       ("AutoLaneChangeEnabled", self._alc_btn),
@@ -120,7 +185,6 @@ class TogglesLayoutMici(NavScroller):
   def _update_toggles(self):
     ui_state.update_params()
 
-    # CP gating for experimental mode
     if ui_state.CP is not None:
       if ui_state.has_longitudinal_control:
         self._experimental_btn.set_visible(True)
@@ -131,7 +195,6 @@ class TogglesLayoutMici(NavScroller):
         self._personality_toggle.set_visible(False)
         ui_state.params.remove("ExperimentalMode")
 
-    # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
 
@@ -149,7 +212,6 @@ class TogglesLayoutMici(NavScroller):
 
   def _on_experimental_mode(self, state: bool):
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):
-      # Don't show enabled state until confirm
       self._experimental_btn.set_checked(False)
 
       def on_confirm():
