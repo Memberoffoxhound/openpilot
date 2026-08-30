@@ -229,5 +229,16 @@ class HomeLayout(Widget):
 
   def _get_version_text(self) -> str:
     brand = "S3XYPILOT"
-    description = self.params.get("UpdaterCurrentDescription")
+    try:
+      from openpilot.selfdrive.modeld.model_manager import selected_display_name
+      model = selected_display_name()
+    except Exception:
+      model = ""
+    description = self.params.get("UpdaterCurrentDescription") or ""
+    # Replace the Highland / channel suffix with the selected driving model.
+    if description and " / " in description:
+      head, _, _chan = description.rpartition(" / ")
+      description = f"{head} / {model}" if model else head
+    elif model:
+      description = model
     return f"{brand} {description}" if description else brand
