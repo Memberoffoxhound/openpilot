@@ -18,6 +18,8 @@ SEG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})--")
 TZ = ZoneInfo("America/Chicago")
 SKIP = {"clips", "screenshots"}
 TRIP_PATH = "/data/trip_meter.json"
+CACHE_KEEP_SEC = 200 * 86400
+HOT_SEC = 120.0
 
 _trip: dict | None = None
 _trip_t = 0.0
@@ -34,6 +36,63 @@ def _sunday_id() -> str:
   now = datetime.now(TZ)
   sun = now - timedelta(days=(now.weekday() + 1) % 7)
   return f"{sun.year:04d}-{sun.month:02d}-{sun.day:02d}"
+
+
+def day_id() -> str:
+  return _day_id()
+
+
+def sunday_id() -> str:
+  return _sunday_id()
+
+
+def chicago_now() -> datetime:
+  return datetime.now(TZ)
+
+
+def _f(d: dict, k: str) -> float:
+  try:
+    return float(d.get(k) or 0)
+  except (TypeError, ValueError):
+    return 0.0
+
+
+def _undouble(live: float, seed: float) -> float:
+  live = float(live or 0)
+  seed = float(seed or 0)
+  if seed <= 0:
+    return live
+  if live <= 0:
+    return seed
+  hi, lo = (live, seed) if live >= seed else (seed, live)
+  if lo > 50 and hi > lo * 1.55 and hi < lo * 2.55:
+    return lo
+  return max(live, seed)
+
+
+def _iter_qlogs(min_mtime: float):
+  return
+  yield
+
+
+def _load_seg_cache() -> dict:
+  return {}
+
+
+def _save_seg_cache(seg: dict) -> None:
+  return
+
+
+def _cache_hit(cache, name, sz, mt):
+  return None
+
+
+def _read_qlog(path: Path):
+  return None
+
+
+def _seg_tuple(hit: dict):
+  return 0.0, 0.0, 0.0, 0.0
 
 
 def _qlog(seg: Path) -> Path | None:
@@ -91,17 +150,18 @@ def seed_week_today() -> dict | None:
         wt = float(msg.wallTimeNanos) / 1e9
       except Exception:
         continue
-      if wt < week0.timestamp() or wt > now.timestamp() + 60:
-        continue
-      dt = min(1.0, max(0.0, wt - last_t)) if last_t else 0.0
-      last_t = wt
       which = msg.which()
       if which == "carState":
         v = max(0.0, float(msg.carState.vEgo))
       elif which == "selfdriveState":
         en = bool(msg.selfdriveState.enabled)
+        continue
       else:
         continue
+      if wt < week0.timestamp() or wt > now.timestamp() + 60:
+        continue
+      dt = min(1.0, max(0.0, wt - last_t)) if last_t else 0.0
+      last_t = wt
       if dt <= 0 or v <= 0.15:
         continue
       d = v * dt
@@ -152,17 +212,22 @@ def _run_seed() -> None:
     return
   if not s or _trip is None:
     return
-  # Seed is a floor only. Never replace a higher live total.
-  _trip["week_m"] = max(float(_trip.get("week_m") or 0), float(s["week_m"]))
-  _trip["week_eng_m"] = max(float(_trip.get("week_eng_m") or 0), float(s["week_eng_m"]))
-  _trip["today_m"] = max(float(_trip.get("today_m") or 0), float(s["today_m"]))
-  _trip["today_eng_m"] = max(float(_trip.get("today_eng_m") or 0), float(s["today_eng_m"]))
+  _trip["week_m"] = _undouble(float(_trip.get("week_m") or 0), float(s["week_m"]))
+  _trip["week_eng_m"] = _undouble(float(_trip.get("week_eng_m") or 0), float(s["week_eng_m"]))
+  _trip["today_m"] = _undouble(float(_trip.get("today_m") or 0), float(s["today_m"]))
+  _trip["today_eng_m"] = _undouble(float(_trip.get("today_eng_m") or 0), float(s["today_eng_m"]))
   _trip["week_id"] = s["week_id"]
   _trip["day_id"] = s["day_id"]
   try:
     _save_trip(_trip)
   except Exception:
     pass
+
+
+def trip_snapshot() -> dict:
+  if _trip is not None:
+    return dict(_trip)
+  return _load_trip()
 
 
 def tick_trip() -> None:
