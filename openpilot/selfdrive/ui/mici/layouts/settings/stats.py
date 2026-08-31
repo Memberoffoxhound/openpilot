@@ -6,7 +6,7 @@ import time
 
 import pyray as rl
 
-from openpilot.selfdrive.ui.layouts.settings.common import trip_snapshot, spawn_trip_job, theme_color
+from openpilot.selfdrive.ui.layouts.settings.common import spawn_trip_job, theme_color
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import chicago_now
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -151,7 +151,7 @@ class _StatsPage(Widget):
     if now - self._at < 1.0:
       return
     self._at = now
-    self._view = stats_view(trip_snapshot())
+    self._view = stats_view()
 
 
 class StatsEngageWidget(_StatsPage):

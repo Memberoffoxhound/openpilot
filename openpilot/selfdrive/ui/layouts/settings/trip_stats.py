@@ -1,29 +1,40 @@
-"""Lifetime engagement history.
+"""One trip cache. Qlogs are source of truth.
 
-/data/trip_stats.json is folded parked (and when the widget opens).
-Lifetime miles, all-time day streak, longest stretch, and monthly totals
-survive qlog purge. Never LogReader on the UI thread.
+/data/trip_stats.json is the only store Home and the statistics
+widgets read. Completed miles come from qlogs (via the segment
+cache). The current drive is a live overlay that is never written
+into days[]. Fold rebuilds days[] from the segment cache, so a
+segment cannot be counted twice.
 """
 from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   CACHE_KEEP_SEC, TZ, _f, _iter_qlogs, _load_seg_cache, _save_seg_cache,
   _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, sunday_id, HOT_SEC,
 )
 
 STATS_PATH = Path("/data/trip_stats.json")
-STATS_VER = 1
+STATS_VER = 4
 DAY_KEEP = 400
 STATS_LOCK = Path("/data/trip_stats.lock")
 
 _cache: dict | None = None
 _cache_mt = -1.0
+_lock = threading.Lock()
+_live_mem: dict | None = None
+_live_dirty = False
+
+
+def empty_live() -> dict:
+  return {"route": "", "m": 0.0, "e": 0.0, "streak_m": 0.0}
 
 
 def empty_stats() -> dict:
@@ -36,21 +47,69 @@ def empty_stats() -> dict:
     "life_e": 0.0,
     "max_streak_m": 0.0,
     "max_day_streak": 0,
+    "live": empty_live(),
   }
 
 
+def _current_route() -> str:
+  try:
+    r = Params().get("CurrentRoute") or ""
+    if isinstance(r, bytes):
+      r = r.decode(errors="replace")
+    return str(r)
+  except Exception:
+    return ""
+
+
+def _is_offroad() -> bool:
+  try:
+    return bool(Params().get_bool("IsOffroad"))
+  except Exception:
+    return True
+
+
+def _normalize_live(raw) -> dict:
+  live = empty_live()
+  if not isinstance(raw, dict):
+    return live
+  live["route"] = str(raw.get("route") or "")
+  live["m"] = _f(raw, "m")
+  live["e"] = _f(raw, "e")
+  live["streak_m"] = _f(raw, "streak_m")
+  return live
+
+
+def _migrate_poison(st: dict) -> dict:
+  """Drop this week's live+qlog mix. Fold rebuilds from qlogs."""
+  week0 = sunday_id()
+  cur_month = chicago_now().strftime("%Y-%m")
+  days_in = st.get("days") or {}
+  kept = {str(k): v for k, v in days_in.items() if str(k) < week0}
+  months_in = st.get("months") or {}
+  st["days"] = kept
+  st["live"] = empty_live()
+  st["months"] = {str(k): v for k, v in months_in.items() if str(k) < cur_month}
+  st["folded"] = []
+  st["life_m"] = sum(_f(v, "m") for v in kept.values())
+  st["life_e"] = sum(_f(v, "e") for v in kept.values())
+  st["v"] = STATS_VER
+  return st
+
+
 def load_stats() -> dict:
-  global _cache, _cache_mt
+  global _cache, _cache_mt, _live_mem
   try:
     mt = STATS_PATH.stat().st_mtime
   except OSError:
     mt = 0.0
-  if _cache is not None and mt == _cache_mt:
-    return _cache
+  with _lock:
+    if _cache is not None and mt == _cache_mt:
+      return _cache
   st = empty_stats()
+  migrated = False
   try:
     raw = json.loads(STATS_PATH.read_text(encoding="utf-8"))
-    if int(raw.get("v", 0)) == STATS_VER and isinstance(raw.get("days"), dict):
+    if isinstance(raw.get("days"), dict):
       st.update(raw)
       if not isinstance(st.get("folded"), list):
         st["folded"] = []
@@ -59,23 +118,52 @@ def load_stats() -> dict:
       if not isinstance(st.get("months"), dict):
         st["months"] = {}
       st["max_day_streak"] = int(st.get("max_day_streak") or 0)
+      st["live"] = _normalize_live(st.get("live"))
+      try:
+        ver = int(st.get("v") or 0)
+      except (TypeError, ValueError):
+        ver = 0
+      if ver != STATS_VER:
+        st = _migrate_poison(st)
+        migrated = True
   except Exception:
     pass
-  _cache, _cache_mt = st, mt
+  with _lock:
+    disk_live = _normalize_live(st.get("live"))
+    if _live_mem is not None:
+      st = dict(st)
+      # Fold subprocess zeros disk live when parked. Drop the UI overlay
+      # so this drive is not added on top of days[] that now include it.
+      if _is_offroad() and _f(disk_live, "m") <= 0 and _f(disk_live, "e") <= 0:
+        _live_mem = empty_live()
+        st["live"] = empty_live()
+      else:
+        st["live"] = dict(_live_mem)
+    _cache, _cache_mt = st, mt
+  if migrated:
+    try:
+      save_stats(st)
+    except Exception:
+      pass
   return st
 
 
 def save_stats(st: dict) -> None:
-  global _cache, _cache_mt
+  global _cache, _cache_mt, _live_mem
+  st = dict(st)
+  st["v"] = STATS_VER
+  st["live"] = _normalize_live(st.get("live"))
   tmp = str(STATS_PATH) + ".tmp"
   with open(tmp, "w", encoding="utf-8") as f:
     json.dump(st, f)
   os.replace(tmp, STATS_PATH)
   try:
-    _cache_mt = STATS_PATH.stat().st_mtime
+    mt = STATS_PATH.stat().st_mtime
   except OSError:
-    _cache_mt = 0.0
-  _cache = st
+    mt = 0.0
+  with _lock:
+    _cache, _cache_mt = st, mt
+    _live_mem = dict(st["live"])
 
 
 def _day_bucket(days: dict, key: str) -> dict:
@@ -87,7 +175,6 @@ def _day_bucket(days: dict, key: str) -> dict:
 
 
 def _streaks(days: dict) -> tuple[int, int]:
-  """Current consecutive days (ending today/yesterday) and longest run in `days`."""
   engaged = []
   for k, v in days.items():
     if _f(v, "e") > 1:
@@ -122,28 +209,54 @@ def _streaks(days: dict) -> tuple[int, int]:
 
 def _remember_streak(st: dict, days: dict) -> int:
   current, window = _streaks(days)
-  best = max(int(st.get("max_day_streak") or 0), current, window)
-  st["max_day_streak"] = best
-  return best
+  st["max_day_streak"] = max(int(st.get("max_day_streak") or 0), current, window)
+  return st["max_day_streak"]
 
 
-def touch_live_stats(today_m: float, today_e: float, live_streak: float) -> None:
-  """Bump today + all-time streaks. Called from the 5s trip flush."""
-  try:
-    st = load_stats()
-    did = day_id()
-    b = _day_bucket(st["days"], did)
-    b["m"] = max(_f(b, "m"), float(today_m or 0))
-    b["e"] = max(_f(b, "e"), float(today_e or 0))
-    st["max_streak_m"] = max(_f(st, "max_streak_m"), float(live_streak or 0))
-    _remember_streak(st, st["days"])
-    save_stats(st)
-  except Exception:
-    pass
+def add_live(meters: float, eng: float, route: str, dt_streak: float) -> None:
+  """Current-drive overlay only. Never touches days[]. Memory first, disk on flush."""
+  global _live_mem, _live_dirty
+  if _cache is None:
+    load_stats()
+  with _lock:
+    live = dict(_live_mem) if _live_mem is not None else empty_live()
+    route = str(route or "")
+    if route and route != live.get("route"):
+      live = empty_live()
+      live["route"] = route
+    elif not live.get("route"):
+      live["route"] = route
+    live["m"] = _f(live, "m") + float(meters or 0)
+    live["e"] = _f(live, "e") + float(eng or 0)
+    if eng > 0:
+      live["streak_m"] = _f(live, "streak_m") + float(dt_streak or 0)
+    else:
+      live["streak_m"] = 0.0
+    _live_mem = live
+    _live_dirty = True
+    if _cache is not None:
+      _cache["live"] = live
+      _cache["max_streak_m"] = max(_f(_cache, "max_streak_m"), _f(live, "streak_m"))
+
+
+def flush_live() -> None:
+  """Persist this-drive overlay. Skip while parked so a fold cannot be overwritten."""
+  global _live_dirty
+  if _is_offroad():
+    return
+  with _lock:
+    dirty = _live_dirty
+    live = dict(_live_mem) if _live_mem is not None else None
+    _live_dirty = False
+  if not dirty or live is None:
+    return
+  st = load_stats()
+  st["live"] = live
+  st["max_streak_m"] = max(_f(st, "max_streak_m"), _f(live, "streak_m"))
+  save_stats(st)
 
 
 def fold_stats_history() -> None:
-  """Sum cached qlogs into per-day buckets. Subprocess only."""
   try:
     fd = os.open(STATS_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     os.close(fd)
@@ -161,39 +274,67 @@ def fold_stats_history() -> None:
       pass
 
 
+def _skip_name(name: str, route: str, offroad: bool, mt: float) -> bool:
+  if (time.time() - mt) < HOT_SEC:
+    return True
+  if (not offroad) and route and route in str(name):
+    return True
+  return False
+
+
 def _fold_stats_history() -> None:
+  """Rebuild days[] from the qlog segment cache. Idempotent."""
   st = load_stats()
-  folded = set(str(x) for x in (st.get("folded") or []))
-  days: dict = dict(st.get("days") or {})
-  months: dict = dict(st.get("months") or {})
-  life_m, life_e = _f(st, "life_m"), _f(st, "life_e")
-  max_s = _f(st, "max_streak_m")
+  offroad = _is_offroad()
+  route = _current_route()
   min_mt = chicago_now().timestamp() - CACHE_KEEP_SEC
+  lookback = (chicago_now().date() - timedelta(days=int(CACHE_KEEP_SEC / 86400) + 2)).isoformat()
+  keep_after = (chicago_now().date() - timedelta(days=DAY_KEEP)).isoformat()
+  old_days = {str(k): {"m": _f(v, "m"), "e": _f(v, "e")}
+              for k, v in (st.get("days") or {}).items()
+              if isinstance(v, dict) and keep_after <= str(k) < lookback}
+
   cache = _load_seg_cache()
   dirty_cache = False
   n_new = 0
   for name, q, sz, mt in _iter_qlogs(min_mt):
-    if name in folded:
+    if _skip_name(name, route, offroad, mt):
       continue
-    if (time.time() - mt) < HOT_SEC:
+    if _cache_hit(cache, name, sz, mt) is not None:
       continue
-    hit = _cache_hit(cache, name, sz, mt)
-    if hit is None:
-      got = _read_qlog(q)
-      if got is None:
-        continue
-      t0, meters, eng, streak = got
-      cache[name] = {
-        "sz": int(sz), "mt": float(mt), "t0": float(t0),
-        "m": float(meters), "e": float(eng), "s": float(streak),
-      }
-      dirty_cache = True
-    else:
-      t0, meters, eng, streak = _seg_tuple(hit)
+    got = _read_qlog(q)
+    if got is None:
+      continue
+    t0, meters, eng, streak = got
+    cache[name] = {
+      "sz": int(sz), "mt": float(mt), "t0": float(t0),
+      "m": float(meters), "e": float(eng), "s": float(streak),
+    }
+    dirty_cache = True
+    n_new += 1
+  if dirty_cache:
+    try:
+      _save_seg_cache(cache)
+    except Exception:
+      pass
+
+  days: dict = {}
+  months: dict = {}
+  folded: list[str] = []
+  life_m = life_e = 0.0
+  max_s = _f(st, "max_streak_m")
+  for name, hit in cache.items():
+    if not isinstance(hit, dict):
+      continue
+    mt = float(hit.get("mt") or 0)
+    if _skip_name(name, route, offroad, mt):
+      continue
+    t0, meters, eng, streak = _seg_tuple(hit)
     if t0 < 1e9 or meters <= 0:
-      folded.add(name)
       continue
     key = datetime.fromtimestamp(t0, TZ).date().isoformat()
+    if key < keep_after:
+      continue
     b = _day_bucket(days, key)
     b["m"] = _f(b, "m") + meters
     b["e"] = _f(b, "e") + eng
@@ -204,48 +345,35 @@ def _fold_stats_history() -> None:
     life_e += eng
     if streak > max_s:
       max_s = streak
-    folded.add(name)
-    n_new += 1
-  if dirty_cache:
-    try:
-      _save_seg_cache(cache)
-    except Exception:
-      pass
-  keep_after = (chicago_now().date() - timedelta(days=DAY_KEEP)).isoformat()
-  days = {k: v for k, v in days.items() if str(k) >= keep_after}
-  keep_month = (chicago_now().replace(day=1) - timedelta(days=36 * 31)).strftime("%Y-%m")
-  months = {k: v for k, v in months.items() if str(k) >= keep_month}
+    folded.append(name)
+
+  # Days older than the segment cache, not already rebuilt above.
+  for k, v in old_days.items():
+    if k in days:
+      continue
+    days[k] = v
+    life_m += _f(v, "m")
+    life_e += _f(v, "e")
+
+  live = _normalize_live(st.get("live"))
+  if offroad:
+    live = empty_live()
+
   st = {
     "v": STATS_VER,
     "days": days,
     "months": months,
-    "folded": list(folded)[-8000:],
+    "folded": folded[-8000:],
     "life_m": life_m,
     "life_e": life_e,
     "max_streak_m": max_s,
     "max_day_streak": int(st.get("max_day_streak") or 0),
+    "live": live,
   }
   _remember_streak(st, days)
   save_stats(st)
-  try:
-    from openpilot.selfdrive.ui.layouts.settings.trip_seed import write_seed_out
-    view = stats_view()
-    write_seed_out({
-      "week_m": view["week_m"],
-      "week_eng_m": view["week_e"],
-      "today_m": view["today_m"],
-      "today_eng_m": view["today_e"],
-      "life_m": view["life_m"],
-      "life_e": view["life_e"],
-      "max_streak_m": view["longest_m"],
-      "week_id": sunday_id(),
-      "day_id": day_id(),
-      "seed": "qlog",
-    })
-  except Exception:
-    pass
   from openpilot.common.swaglog import cloudlog
-  cloudlog.info(f"trip_stats folded={n_new} days={len(days)} life_m={life_m:.1f}")
+  cloudlog.info(f"trip_stats rebuilt segs={len(folded)} new={n_new} days={len(days)} life_m={life_m:.1f}")
 
 
 def _pct(eng: float, meters: float) -> int:
@@ -271,17 +399,20 @@ def _month_keys(n: int = 6) -> list[str]:
 
 
 def stats_view(trip: dict | None = None) -> dict:
-  """Layout snapshot. Overlay live today/week on folded history."""
+  """Home + stats widgets. Qlog days plus this-drive live overlay.
+
+  `trip` is ignored. Kept so old call sites still compile.
+  """
   st = load_stats()
-  trip = trip or {}
   days = {str(k): {"m": _f(v, "m"), "e": _f(v, "e")}
           for k, v in (st.get("days") or {}).items() if isinstance(v, dict)}
+  live = _normalize_live(st.get("live"))
+  lm, le = _f(live, "m"), _f(live, "e")
   today = day_id()
-  tm, te = _f(trip, "today_m"), _f(trip, "today_eng_m")
   b = _day_bucket(days, today)
-  b["m"] = max(_f(b, "m"), tm)
-  b["e"] = max(_f(b, "e"), te)
-  today_m, today_e = _f(b, "m"), _f(b, "e")
+  today_m = _f(b, "m") + lm
+  today_e = _f(b, "e") + le
+  b["m"], b["e"] = today_m, today_e
 
   week_ids = _week_dates()
   week_days = []
@@ -292,28 +423,24 @@ def stats_view(trip: dict | None = None) -> dict:
     week_days.append({"id": key, "m": m, "e": e})
     week_m += m
     week_e += e
-  week_m = max(week_m, _f(trip, "week_m"))
-  week_e = max(week_e, _f(trip, "week_eng_m"))
 
-  life_m = max(_f(st, "life_m"), sum(_f(d, "m") for d in days.values()), week_m)
-  life_e = max(_f(st, "life_e"), sum(_f(d, "e") for d in days.values()), week_e)
-  life_m = max(life_m, _f(trip, "life_m"))
-  life_e = max(life_e, _f(trip, "life_e"))
+  life_m = max(_f(st, "life_m") + lm, sum(_f(d, "m") for d in days.values()))
+  life_e = max(_f(st, "life_e") + le, sum(_f(d, "e") for d in days.values()))
 
   current, window = _streaks(days)
-  streak_days = max(int(st.get("max_day_streak") or 0), current, window,
-                    int(trip.get("max_day_streak") or 0))
+  streak_days = max(int(st.get("max_day_streak") or 0), current, window)
 
   months = []
-  month_keys = _month_keys(6)
   cur_month = chicago_now().strftime("%Y-%m")
   stored_months = st.get("months") or {}
-  for mk in month_keys:
+  for mk in _month_keys(6):
     sm = stored_months.get(mk) if isinstance(stored_months.get(mk), dict) else {}
     from_days_m = sum(_f(d, "m") for k, d in days.items() if str(k).startswith(mk))
     from_days_e = sum(_f(d, "e") for k, d in days.items() if str(k).startswith(mk))
-    mm = max(_f(sm, "m"), from_days_m)
-    ee = max(_f(sm, "e"), from_days_e)
+    if mk == cur_month:
+      mm, ee = from_days_m, from_days_e
+    else:
+      mm, ee = max(_f(sm, "m"), from_days_m), max(_f(sm, "e"), from_days_e)
     months.append({"id": mk, "m": mm, "e": ee, "current": mk == cur_month})
 
   return {
@@ -323,7 +450,7 @@ def stats_view(trip: dict | None = None) -> dict:
     "streak_days": streak_days,
     "week_days": week_days,
     "months": months,
-    "longest_m": max(_f(st, "max_streak_m"), _f(trip, "max_streak_m")),
+    "longest_m": max(_f(st, "max_streak_m"), _f(live, "streak_m")),
     "life_m": life_m,
     "life_e": life_e,
     "week_m": week_m,
@@ -331,21 +458,3 @@ def stats_view(trip: dict | None = None) -> dict:
     "today_m": today_m,
     "today_e": today_e,
   }
-
-
-def apply_stats_to_trip(trip: dict) -> dict:
-  """Floor live Today/Week from folded history. Does not LogReader."""
-  v = stats_view(trip)
-  trip["today_m"] = max(_f(trip, "today_m"), float(v["today_m"]))
-  trip["today_eng_m"] = max(_f(trip, "today_eng_m"), float(v["today_e"]))
-  trip["week_m"] = max(_f(trip, "week_m"), float(v["week_m"]))
-  trip["week_eng_m"] = max(_f(trip, "week_eng_m"), float(v["week_e"]))
-  trip["life_m"] = max(_f(trip, "life_m"), float(v["life_m"]))
-  trip["life_e"] = max(_f(trip, "life_e"), float(v["life_e"]))
-  trip["max_streak_m"] = max(_f(trip, "max_streak_m"), float(v["longest_m"]))
-  trip["max_day_streak"] = max(int(trip.get("max_day_streak") or 0), int(v["streak_days"] or 0))
-  if float(v["week_m"]) > 0:
-    trip["week_id"] = sunday_id()
-  if float(v["today_m"]) > 0:
-    trip["day_id"] = day_id()
-  return trip
