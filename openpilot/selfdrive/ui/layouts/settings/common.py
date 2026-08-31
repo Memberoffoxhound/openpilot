@@ -25,18 +25,13 @@ def restart_needed_callback(_=None):
 LANE_COLOR_GREEN = 0
 LANE_COLOR_TESLA = 1
 LANE_COLOR_LABELS = ("openpilot", "tesla")
-
-# Tesla Autopilot viz blue / stock openpilot green.
 THEME_TESLA_RGB = (62, 140, 235)
 THEME_OPENPILOT_RGB = (0, 255, 64)
-# Lane lines clip alpha at 0.7 so the HUD does not burn an OLED. Tesla wheel uses the same cap.
 THEME_LANE_ALPHA = 0.7
-
 ONROAD_UI_STOCK = 0
 ONROAD_UI_CUSTOM = 1
 ONROAD_UI_LABELS = ("stock UI", "custom UI")
 _CUSTOM_ONROAD_PATH = "/data/params/d/CustomOnroadUi"
-
 COMPASS_SMALL = 0
 COMPASS_LARGE = 1
 COMPASS_SIZE_LABELS = ("small", "large")
@@ -198,7 +193,12 @@ _PERSIST_KEYS = (
   "last_m", "last_eng_m", "last_eng_s", "last_tot_s", "route",
   "week_m", "week_eng_m", "week_eng_s", "week_tot_s", "week_id",
   "today_m", "today_eng_m", "day_id", "seed",
-  "life_m", "life_e", "max_streak_m", "max_day_streak",
+  "life_m", "life_e", "max_streak_m", "max_day_streak", "v",
+)
+TRIP_VER = 5
+RESET_KEYS = (
+  "today_m", "today_eng_m", "week_m", "week_eng_m", "week_eng_s", "week_tot_s",
+  "life_m", "life_e",
 )
 
 
@@ -223,10 +223,13 @@ def _persist_blob(t: dict) -> dict:
     v = t.get(k)
     if isinstance(v, bool) or v is None:
       out[k] = "" if k.endswith("_id") or k in ("route", "seed") else 0.0
+    elif k == "v":
+      out[k] = TRIP_VER
     elif isinstance(v, (int, float)) and k not in ("route", "seed", "week_id", "day_id"):
       out[k] = float(v)
     else:
       out[k] = "" if v is None else str(v)
+  out["v"] = TRIP_VER
   return out
 
 
@@ -283,25 +286,24 @@ def _load_trip() -> tuple[dict, bool]:
     pass
   t = merge_snapshots(t, _params_trip())
   try:
-    from openpilot.selfdrive.ui.layouts.settings.trip_stats import apply_stats_to_trip
-    apply_stats_to_trip(t)
-  except Exception:
-    pass
-  need_seed = not week_cache_valid(t)
-  if need_seed:
-    # Keep live miles. Stamp missing ids so Home has a period, but do not
-    # treat a missing id as a Sunday rollover (that zeros the JSON on overlay).
-    if not str(t.get("week_id") or ""):
-      t["week_id"] = sunday_id()
-    if not str(t.get("day_id") or ""):
-      t["day_id"] = day_id()
-  else:
-    roll_ids(t)
-  return t, need_seed
+    ver = int(t.get("v") or 0)
+  except (TypeError, ValueError):
+    ver = 0
+  if ver != TRIP_VER:
+    for k in RESET_KEYS:
+      t[k] = 0.0
+    t["v"] = TRIP_VER
+    t["seed"] = "live"
+  if not str(t.get("week_id") or ""):
+    t["week_id"] = sunday_id()
+  if not str(t.get("day_id") or ""):
+    t["day_id"] = day_id()
+  roll_ids(t)
+  t["v"] = TRIP_VER
+  return t, False
 
 
 def trip_snapshot() -> dict:
-  """Home Today/Week. Prefer live tick state, then JSON/param."""
   with _trip_lock:
     if _trip is not None:
       return dict(_trip)
@@ -314,14 +316,9 @@ def trip_snapshot() -> dict:
 
 
 def tick_trip() -> None:
-  """Today = Chicago calendar day. Week = Sunday 00:00 Chicago.
-
-  Live JSON is the cache (1s). TripMeter param is a slower dual-write (5s).
-  Boot skips qlogs when week_id matches. Parked cache/seed run in a subprocess.
-  """
   global _trip, _trip_t, _trip_flush, _trip_param, _seed_started, _awaiting_seed, _was_offroad, _live_streak
   now = time.monotonic()
-  seed_blob = _read_seed_out()
+  _read_seed_out()
   park_cache = False
   file_blob = None
   param_blob = None
@@ -330,40 +327,14 @@ def tick_trip() -> None:
     if _trip is None:
       _trip, need_seed = _load_trip()
       _trip_t = now
-      _awaiting_seed = need_seed
+      _awaiting_seed = False
+      _seed_started = True
+      _trip["seed"] = "live"
       file_blob = _persist_blob(_trip)
       param_blob = file_blob
       param_block = True
-      if not _seed_started:
-        _seed_started = True
-        if need_seed:
-          _spawn_trip_job("seed")
-        elif not _trip.get("seed"):
-          _trip["seed"] = "json"
-          file_blob = _persist_blob(_trip)
-          param_blob = file_blob
     else:
-      if seed_blob:
-        merged = apply_seed(_trip, seed_blob)
-        _trip.clear()
-        _trip.update(merged)
-        _trip["seed"] = "qlog"
-        _awaiting_seed = False
-        file_blob = _persist_blob(_trip)
-        param_blob = file_blob
-      elif _awaiting_seed:
-        try:
-          from openpilot.selfdrive.ui.layouts.settings.trip_stats import apply_stats_to_trip
-          apply_stats_to_trip(_trip)
-          if week_cache_valid(_trip):
-            _awaiting_seed = False
-            file_blob = _persist_blob(_trip)
-            param_blob = file_blob
-        except Exception:
-          pass
-
-      if not _awaiting_seed:
-        roll_ids(_trip)
+      roll_ids(_trip)
       dt = min(1.0, max(0.0, now - _trip_t))
       _trip_t = now
       params = ui_state.params
@@ -425,12 +396,6 @@ def tick_trip() -> None:
       cloudlog.exception("trip save")
   if param_blob is not None:
     _write_trip_param(param_blob, block=param_block or park_cache)
-    try:
-      from openpilot.selfdrive.ui.layouts.settings.trip_stats import touch_live_stats
-      t = _trip or {}
-      touch_live_stats(t.get("today_m", 0), t.get("today_eng_m", 0), _live_streak)
-    except Exception:
-      pass
   if park_cache:
     _spawn_trip_job("cache")
 
@@ -445,8 +410,6 @@ def trip_pct() -> int:
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
-  # rpyCalib is device-frame Euler: roll, pitch, yaw.
-  # Pitch/yaw words match stock. +roll is clockwise looking forward (right side down).
   pitch_s = f"P {abs(pitch):.1f}° {'down' if pitch > 0 else 'up'}"
   yaw_s = f"Y {abs(yaw):.1f}° {'left' if yaw > 0 else 'right'}"
   roll_s = f"R {abs(roll):.1f}° {'cw' if roll > 0 else 'ccw'}"
@@ -454,12 +417,10 @@ def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:
 
 
 def calib_button_value(params: Params | None = None, compact: bool = False) -> str:
-  """Live roll/pitch/yaw for Reset Calibration. compact=True is three lines for C4."""
   params = params or Params()
   calib_bytes = params.get("CalibrationParams")
   if not calib_bytes:
     return "uncalibrated"
-
   try:
     calib = messaging.log_from_bytes(calib_bytes, log.Event).extrinsicsCalibration
     if calib.calStatus == log.ExtrinsicsCalibration.Status.uncalibrated:
@@ -470,7 +431,6 @@ def calib_button_value(params: Params | None = None, compact: bool = False) -> s
   except Exception:
     cloudlog.exception("invalid CalibrationParams")
     return "uncalibrated"
-
   pitch_s, yaw_s, roll_s = _rpy_lines(roll, pitch, yaw)
   if compact:
     return f"{pitch_s}\n{yaw_s}\n{roll_s}"
