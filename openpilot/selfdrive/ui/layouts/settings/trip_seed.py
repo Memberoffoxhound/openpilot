@@ -152,10 +152,11 @@ def _run_seed() -> None:
     return
   if not s or _trip is None:
     return
-  _trip["week_m"] = float(s["week_m"])
-  _trip["week_eng_m"] = float(s["week_eng_m"])
-  _trip["today_m"] = float(s["today_m"])
-  _trip["today_eng_m"] = float(s["today_eng_m"])
+  # Seed is a floor only. Never replace a higher live total.
+  _trip["week_m"] = max(float(_trip.get("week_m") or 0), float(s["week_m"]))
+  _trip["week_eng_m"] = max(float(_trip.get("week_eng_m") or 0), float(s["week_eng_m"]))
+  _trip["today_m"] = max(float(_trip.get("today_m") or 0), float(s["today_m"]))
+  _trip["today_eng_m"] = max(float(_trip.get("today_eng_m") or 0), float(s["today_eng_m"]))
   _trip["week_id"] = s["week_id"]
   _trip["day_id"] = s["day_id"]
   try:
