@@ -87,7 +87,6 @@ def _day_bucket(days: dict, key: str) -> dict:
 
 
 def _streaks(days: dict) -> tuple[int, int]:
-  """Current consecutive days (ending today/yesterday) and longest run in `days`."""
   engaged = []
   for k, v in days.items():
     if _f(v, "e") > 1:
@@ -128,22 +127,19 @@ def _remember_streak(st: dict, days: dict) -> int:
 
 
 def touch_live_stats(today_m: float, today_e: float, live_streak: float) -> None:
-  """Bump today + all-time streaks. Called from the 5s trip flush."""
+  """Streak only. Do not write today into days[] — fold adds qlog miles
+  into the same bucket, and max()+add was doubling today's drive (5.7 → 11).
+  stats_view overlays live trip meters on top of folded days.
+  """
   try:
     st = load_stats()
-    did = day_id()
-    b = _day_bucket(st["days"], did)
-    b["m"] = max(_f(b, "m"), float(today_m or 0))
-    b["e"] = max(_f(b, "e"), float(today_e or 0))
     st["max_streak_m"] = max(_f(st, "max_streak_m"), float(live_streak or 0))
-    _remember_streak(st, st["days"])
     save_stats(st)
   except Exception:
     pass
 
 
 def fold_stats_history() -> None:
-  """Sum cached qlogs into per-day buckets. Subprocess only."""
   try:
     fd = os.open(STATS_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     os.close(fd)
@@ -279,8 +275,15 @@ def stats_view(trip: dict | None = None) -> dict:
   today = day_id()
   tm, te = _f(trip, "today_m"), _f(trip, "today_eng_m")
   b = _day_bucket(days, today)
-  b["m"] = max(_f(b, "m"), tm)
-  b["e"] = max(_f(b, "e"), te)
+  folded_m, folded_e = _f(b, "m"), _f(b, "e")
+  # Live trip owns today. days[today] was previously written by live *and*
+  # incremented by qlog fold, so a 5.7 mi drive showed up as ~11.
+  if tm > 1 and folded_m > tm * 1.2:
+    folded_m = tm
+  if te > 1 and folded_e > te * 1.2:
+    folded_e = te
+  b["m"] = max(folded_m, tm)
+  b["e"] = max(folded_e, te)
   today_m, today_e = _f(b, "m"), _f(b, "e")
 
   week_ids = _week_dates()
@@ -334,7 +337,6 @@ def stats_view(trip: dict | None = None) -> dict:
 
 
 def apply_stats_to_trip(trip: dict) -> dict:
-  """Floor live Today/Week from folded history. Does not LogReader."""
   v = stats_view(trip)
   trip["today_m"] = max(_f(trip, "today_m"), float(v["today_m"]))
   trip["today_eng_m"] = max(_f(trip, "today_eng_m"), float(v["today_e"]))
