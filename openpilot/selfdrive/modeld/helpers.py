@@ -18,14 +18,6 @@ def get_tg_input_devices(process_name: str, chestnut: bool):
     return json.load(f)[process_name]['default' if not chestnut else 'chestnut']
 
 def modeld_pkl_path(chestnut: bool):
-  # Custom selected master/favorite compiled artifact, else the bundled stock pkl.
-  try:
-    from openpilot.selfdrive.modeld.model_manager import selected_pkl_path
-    custom = selected_pkl_path(chestnut)
-    if custom is not None:
-      return custom
-  except Exception:
-    pass
   prefix = 'big_' if chestnut else ''
   return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
 
@@ -65,13 +57,5 @@ def chestnut_present() -> bool:
   return False
 
 def chestnut_compiled() -> bool:
-  # A regular (non-eGPU) selection must not load the big model just because
-  # Chestnut hardware and a bundled big pkl are present.
-  try:
-    from openpilot.selfdrive.modeld.model_manager import want_big_model
-    if not want_big_model():
-      return False
-  except Exception:
-    pass
   p = modeld_pkl_path(chestnut=True)
   return Path(get_manifest_path(p)).is_file() or Path(p).is_file()
