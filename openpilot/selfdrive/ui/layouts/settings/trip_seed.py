@@ -1,30 +1,23 @@
-"""Today/Week meters. Seed from onboard qlogs; tick from the UI thread."""
+"""Today/Week meters. Live vEgo only. Never merge qlogs into the meter."""
 from __future__ import annotations
 
 import json
 import os
-import re
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
 
-DATA_DIR = Path("/data/media/0")
-SEG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})--")
 TZ = ZoneInfo("America/Chicago")
-SKIP = {"clips", "screenshots"}
 TRIP_PATH = "/data/trip_meter.json"
-CACHE_KEEP_SEC = 200 * 86400
-HOT_SEC = 120.0
+TRIP_VER = 5
+RESET_KEYS = ("today_m", "today_eng_m", "week_m", "week_eng_m")
 
 _trip: dict | None = None
 _trip_t = 0.0
 _trip_flush = 0.0
-_seed_started = False
 
 
 def _day_id() -> str:
@@ -57,142 +50,27 @@ def _f(d: dict, k: str) -> float:
     return 0.0
 
 
-def _undouble(live: float, seed: float) -> float:
-  live = float(live or 0)
-  seed = float(seed or 0)
-  if seed <= 0:
-    return live
-  if live <= 0:
-    return seed
-  hi, lo = (live, seed) if live >= seed else (seed, live)
-  if lo > 50 and hi > lo * 1.55 and hi < lo * 2.55:
-    return lo
-  return max(live, seed)
-
-
-def _iter_qlogs(min_mtime: float):
-  return
-  yield
-
-
-def _load_seg_cache() -> dict:
-  return {}
-
-
-def _save_seg_cache(seg: dict) -> None:
-  return
-
-
-def _cache_hit(cache, name, sz, mt):
-  return None
-
-
-def _read_qlog(path: Path):
-  return None
-
-
-def _seg_tuple(hit: dict):
-  return 0.0, 0.0, 0.0, 0.0
-
-
-def _qlog(seg: Path) -> Path | None:
-  for name in ("qlog", "qlog.zst", "qlog.bz2"):
-    p = seg / name
-    if p.is_file() and p.stat().st_size > 64:
-      return p
-  return None
-
-
-def seed_week_today() -> dict | None:
-  try:
-    from openpilot.tools.lib.logreader import LogReader
-  except Exception:
-    cloudlog.exception("trip_seed import")
-    return None
-
-  now = datetime.now(TZ)
-  day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
-  sun = now - timedelta(days=(now.weekday() + 1) % 7)
-  week0 = sun.replace(hour=0, minute=0, second=0, microsecond=0)
-  week_cut = week0.timestamp() - 12 * 3600
-  week_m = week_e = today_m = today_e = 0.0
-  n_seg = 0
-  try:
-    entries = list(os.scandir(DATA_DIR))
-  except OSError:
-    return None
-
-  for ent in entries:
-    if not ent.is_dir(follow_symlinks=False) or ent.name in SKIP:
-      continue
-    m = SEG_RE.match(ent.name)
-    if not m:
-      continue
-    try:
-      folder_day = datetime.strptime(m.group(1), "%Y-%m-%d").timestamp()
-    except ValueError:
-      continue
-    if folder_day < week_cut:
-      continue
-    q = _qlog(Path(ent.path))
-    if q is None:
-      continue
-    try:
-      lr = LogReader(str(q))
-    except Exception:
-      continue
-    n_seg += 1
-    last_t = 0.0
-    v = 0.0
-    en = False
-    for msg in lr:
-      try:
-        wt = float(msg.wallTimeNanos) / 1e9
-      except Exception:
-        continue
-      which = msg.which()
-      if which == "carState":
-        v = max(0.0, float(msg.carState.vEgo))
-      elif which == "selfdriveState":
-        en = bool(msg.selfdriveState.enabled)
-        continue
-      else:
-        continue
-      if wt < week0.timestamp() or wt > now.timestamp() + 60:
-        continue
-      dt = min(1.0, max(0.0, wt - last_t)) if last_t else 0.0
-      last_t = wt
-      if dt <= 0 or v <= 0.15:
-        continue
-      d = v * dt
-      week_m += d
-      if en:
-        week_e += d
-      if wt >= day0.timestamp():
-        today_m += d
-        if en:
-          today_e += d
-
-  if n_seg == 0 and week_m <= 0:
-    return None
-  return {
-    "week_m": week_m,
-    "week_eng_m": week_e,
-    "today_m": today_m,
-    "today_eng_m": today_e,
-    "week_id": _sunday_id(),
-    "day_id": _day_id(),
-    "seed": "qlog",
-  }
-
-
 def _load_trip() -> dict:
   t = {"week_m": 0.0, "week_eng_m": 0.0, "week_id": "",
-       "today_m": 0.0, "today_eng_m": 0.0, "day_id": ""}
+       "today_m": 0.0, "today_eng_m": 0.0, "day_id": "", "v": TRIP_VER}
   try:
     t.update(json.loads(open(TRIP_PATH, encoding="utf-8").read()))
   except Exception:
     pass
+  try:
+    ver = int(t.get("v") or 0)
+  except (TypeError, ValueError):
+    ver = 0
+  if ver != TRIP_VER:
+    for k in RESET_KEYS:
+      t[k] = 0.0
+    t["v"] = TRIP_VER
+  if t.get("day_id") != _day_id():
+    t["today_m"] = t["today_eng_m"] = 0.0
+    t["day_id"] = _day_id()
+  if t.get("week_id") != _sunday_id():
+    t["week_m"] = t["week_eng_m"] = 0.0
+    t["week_id"] = _sunday_id()
   return t
 
 
@@ -203,27 +81,6 @@ def _save_trip(t: dict) -> None:
   os.replace(tmp, TRIP_PATH)
 
 
-def _run_seed() -> None:
-  global _trip
-  try:
-    s = seed_week_today()
-  except Exception:
-    cloudlog.exception("trip seed")
-    return
-  if not s or _trip is None:
-    return
-  _trip["week_m"] = _undouble(float(_trip.get("week_m") or 0), float(s["week_m"]))
-  _trip["week_eng_m"] = _undouble(float(_trip.get("week_eng_m") or 0), float(s["week_eng_m"]))
-  _trip["today_m"] = _undouble(float(_trip.get("today_m") or 0), float(s["today_m"]))
-  _trip["today_eng_m"] = _undouble(float(_trip.get("today_eng_m") or 0), float(s["today_eng_m"]))
-  _trip["week_id"] = s["week_id"]
-  _trip["day_id"] = s["day_id"]
-  try:
-    _save_trip(_trip)
-  except Exception:
-    pass
-
-
 def trip_snapshot() -> dict:
   if _trip is not None:
     return dict(_trip)
@@ -231,14 +88,13 @@ def trip_snapshot() -> dict:
 
 
 def tick_trip() -> None:
-  global _trip, _trip_t, _trip_flush, _seed_started
+  global _trip, _trip_t, _trip_flush
   now = time.monotonic()
   if _trip is None:
     _trip = _load_trip()
     _trip_t = now
-    if not _seed_started:
-      _seed_started = True
-      threading.Thread(target=_run_seed, daemon=True).start()
+    _save_trip(_trip)
+    return
   dt = min(1.0, max(0.0, now - _trip_t))
   _trip_t = now
   day, week = _day_id(), _sunday_id()
