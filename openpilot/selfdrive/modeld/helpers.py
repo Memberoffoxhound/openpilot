@@ -18,13 +18,6 @@ def get_tg_input_devices(process_name: str, usbgpu: bool):
     return json.load(f)[process_name]['default' if not usbgpu else 'usbgpu']
 
 def modeld_pkl_path(usbgpu: bool):
-  try:
-    from openpilot.selfdrive.modeld.model_manager import selected_pkl_path
-    custom = selected_pkl_path(usbgpu)
-    if custom is not None:
-      return custom
-  except Exception:
-    pass
   prefix = 'big_' if usbgpu else ''
   return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
 
@@ -64,12 +57,6 @@ def usbgpu_present() -> bool:
   return False
 
 def usbgpu_compiled() -> bool:
-  try:
-    from openpilot.selfdrive.modeld.model_manager import want_big_model
-    if not want_big_model():
-      return False
-  except Exception:
-    pass
   p = modeld_pkl_path(usbgpu=True)
   return Path(get_manifest_path(p)).is_file() or Path(p).is_file()
 
