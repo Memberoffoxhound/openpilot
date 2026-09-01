@@ -8,6 +8,8 @@ ROOT = Path("/data/vslam")
 EVENTS_PATH = ROOT / "events.jsonl"
 TRACE_DIR = ROOT / "traces"
 ALERT_UNTIL_PATH = ROOT / "alert_until"
+ENABLED_PATH = ROOT / "enabled"
+ENABLED_PARAM = "VSlamEnabled"
 ALERT_S = 3.0
 MAX_EVENTS = 400
 
@@ -23,6 +25,34 @@ def fire_logged_alert(duration_s: float = ALERT_S) -> None:
     ALERT_UNTIL_PATH.write_text(f"{time.time() + duration_s:.3f}\n", encoding="utf-8")
   except OSError:
     pass
+
+
+def is_enabled(params=None) -> bool:
+  """Default on. File wins so the toggle works before a params rebuild."""
+  try:
+    if ENABLED_PATH.is_file():
+      return ENABLED_PATH.read_text(encoding="utf-8").strip() != "0"
+  except OSError:
+    pass
+  if params is not None:
+    try:
+      return bool(params.get_bool(ENABLED_PARAM))
+    except Exception:
+      pass
+  return True
+
+
+def set_enabled(on: bool, params=None) -> None:
+  ensure()
+  try:
+    ENABLED_PATH.write_text("1\n" if on else "0\n", encoding="utf-8")
+  except OSError:
+    pass
+  if params is not None:
+    try:
+      params.put_bool(ENABLED_PARAM, bool(on), block=True)
+    except Exception:
+      pass
 
 
 _alert_cache: tuple[float, float] = (0.0, 0.0)  # mtime, until
