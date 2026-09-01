@@ -16,6 +16,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.vslam.store import is_enabled, set_enabled
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -192,6 +193,8 @@ class TogglesLayoutMici(NavScroller):
     # Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
     self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
                              toggle_callback=self._on_alc)
+    self._vslam_btn = BigToggle("vSlam logger", initial_state=is_enabled(ui_state.params),
+                               toggle_callback=self._on_vslam)
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -201,6 +204,7 @@ class TogglesLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       self._alc_btn,
+      self._vslam_btn,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -264,6 +268,10 @@ class TogglesLayoutMici(NavScroller):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+    self._vslam_btn.set_checked(is_enabled(ui_state.params))
+
+  def _on_vslam(self, state: bool):
+    set_enabled(state, ui_state.params)
 
   def _on_alc(self, state: bool):
     if state:
