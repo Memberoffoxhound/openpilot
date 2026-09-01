@@ -1,12 +1,18 @@
 from collections.abc import Callable
 
 from openpilot.cereal import log
+from openpilot.common.params import Params
 
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.system.ui.lib.application import gui_app
-from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+from openpilot.system.ui.lib.application import gui_app, MousePos
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  restart_needed_callback,
+  LANE_COLOR_LABELS, COMPASS_SIZE_LABELS,
+  lane_color_label, next_lane_color,
+  compass_size_label, next_compass_size,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -27,6 +33,54 @@ class AutoLaneChangeConfirmPage(NavScroller):
       GreyBigButton("", "and agree to intervene as necessary."),
       accept,
     ])
+
+
+class CompassSizeCycle(BigButton):
+  """Small left between DM and wheel, or large top-right."""
+
+  def __init__(self):
+    super().__init__("compass size", "")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = compass_size_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_compass_size(self._params)
+    self._params.put("CompassSize", nxt, block=True)
+    self.set_value(COMPASS_SIZE_LABELS[nxt])
+
+
+class LaneColorCycle(BigButton):
+  """Tap to cycle openpilot green / tesla Autopilot blue. Default is comma green."""
+
+  def __init__(self):
+    super().__init__("theme", "")
+    self._params = Params()
+    self.refresh()
+
+  def refresh(self):
+    value = lane_color_label(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self.set_value(LANE_COLOR_LABELS[nxt])
 
 
 class ExperimentalModeConfirmPage(NavScroller):
@@ -63,6 +117,8 @@ class TogglesLayoutMici(NavScroller):
                                        toggle_callback=self._on_experimental_mode)
     self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
                              toggle_callback=self._on_alc)
+    self._compass_size = CompassSizeCycle()
+    self._lane_color = LaneColorCycle()
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
@@ -71,6 +127,8 @@ class TogglesLayoutMici(NavScroller):
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
 
     self._scroller.add_widgets([
+      self._compass_size,
+      self._lane_color,
       self._alc_btn,
       self._personality_toggle,
       self._experimental_btn,
@@ -116,6 +174,8 @@ class TogglesLayoutMici(NavScroller):
   def show_event(self):
     super().show_event()
     self._update_toggles()
+    self._compass_size.refresh()
+    self._lane_color.refresh()
 
   def _update_toggles(self):
     ui_state.update_params()

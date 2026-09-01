@@ -1,7 +1,11 @@
 from openpilot.cereal import log
 from openpilot.common.params import Params, UnknownKeyName
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  lane_color_label, next_lane_color,
+  compass_size_label, next_compass_size,
+)
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item
+from openpilot.system.ui.widgets.list_view import multiple_button_item, toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.lib.application import gui_app
@@ -31,6 +35,12 @@ DESCRIPTIONS = {
     "Auto Lane Change uses the car's stock blind spot monitoring to check for a vehicle in the adjacent lane prior to merging. " +
     "You are still responsible for ensuring the lane of travel is clear and agree to intervene as necessary. " +
     "When off, a steering-wheel nudge is required (stock openpilot)."
+  ),
+  "LaneColor": tr_noop(
+    "Theme. Tesla paints lanes, steering wheel, confidence, compass, and DM Autopilot blue. Openpilot is stock comma green. Default is green."
+  ),
+  "CompassSize": tr_noop(
+    "Onroad compass: small (left, hides with MAX) or large (top-right, stays engaged). Default is small."
   ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
@@ -113,6 +123,20 @@ class TogglesLayout(Widget):
       icon="speed_limit.png"
     )
 
+    self._lane_color_setting = button_item(
+      lambda: tr("Theme"),
+      lambda: tr(lane_color_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["LaneColor"]),
+      callback=self._cycle_lane_color,
+    )
+
+    self._compass_size_setting = button_item(
+      lambda: tr("Compass Size"),
+      lambda: tr(compass_size_label(self._params)),
+      description=lambda: tr(DESCRIPTIONS["CompassSize"]),
+      callback=self._cycle_compass_size,
+    )
+
     self._toggles = {}
     self._locked_toggles = set()
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
@@ -142,9 +166,11 @@ class TogglesLayout(Widget):
 
       self._toggles[param] = toggle
 
-      # insert longitudinal personality after NDOG toggle
+      # insert longitudinal personality + theme after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+        self._toggles["LaneColor"] = self._lane_color_setting
+        self._toggles["CompassSize"] = self._compass_size_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -216,6 +242,9 @@ class TogglesLayout(Widget):
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
 
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
+    self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
+
   def _render(self, rect):
     self._scroller.render(rect)
 
@@ -272,3 +301,13 @@ class TogglesLayout(Widget):
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
+
+  def _cycle_lane_color(self):
+    nxt = next_lane_color(self._params)
+    self._params.put("LaneColor", nxt, block=True)
+    self._lane_color_setting.action_item.set_text(lambda: tr(lane_color_label(self._params)))
+
+  def _cycle_compass_size(self):
+    nxt = next_compass_size(self._params)
+    self._params.put("CompassSize", nxt, block=True)
+    self._compass_size_setting.action_item.set_text(lambda: tr(compass_size_label(self._params)))
