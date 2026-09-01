@@ -14,7 +14,7 @@ from collections import deque
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from cereal import messaging
+import openpilot.cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
@@ -27,7 +27,10 @@ MAX_EVENT_S = 20.0
 WINDOW_S = 60.0
 PRE_S = 20.0
 HZ = 20
-CHI = ZoneInfo("America/Chicago")
+try:
+  CHI = ZoneInfo("America/Chicago")
+except Exception:
+  CHI = timezone.utc
 
 
 def _mph(ms: float) -> float:
@@ -125,9 +128,11 @@ def _reverse(lat: float, lon: float) -> dict:
 class VSlamD:
   def __init__(self):
     self.params = Params()
+    # liveLocationKalman is gone on this cereal — unknown sockets crash SubMaster
+    # and manager then blocks engage with processNotRunning.
     self.sm = messaging.SubMaster([
       "carState", "longitudinalPlan", "gpsLocation", "gpsLocationExternal",
-      "liveLocationKalman", "deviceState",
+      "deviceState",
     ])
     self.buf: deque[dict] = deque(maxlen=HZ * int(WINDOW_S) + 40)
     self.active: dict | None = None
@@ -135,13 +140,6 @@ class VSlamD:
     self._geo_lock = threading.Lock()
 
   def _gps(self) -> tuple[float, float]:
-    if self.sm.valid.get("liveLocationKalman"):
-      try:
-        geo = self.sm["liveLocationKalman"].positionGeodetic
-        if getattr(geo, "valid", False):
-          return float(geo.value[0]), float(geo.value[1])
-      except Exception:
-        pass
     for name in ("gpsLocationExternal", "gpsLocation"):
       if not self.sm.valid.get(name):
         continue
@@ -292,13 +290,21 @@ class VSlamD:
     rk = Ratekeeper(HZ)
     cloudlog.warning("vslam_d started")
     while True:
-      self.sm.update(0)
-      self.tick(time.time())
+      try:
+        self.sm.update(0)
+        self.tick(time.time())
+      except Exception:
+        cloudlog.exception("vslam_d tick")
       rk.keep_time()
 
 
 def main() -> None:
-  VSlamD().run()
+  while True:
+    try:
+      VSlamD().run()
+    except Exception:
+      cloudlog.exception("vslam_d died; restarting")
+      time.sleep(1.0)
 
 
 if __name__ == "__main__":
