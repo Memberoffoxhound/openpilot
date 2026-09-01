@@ -13,6 +13,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
+| `VSlamEnabled` | on | Green-pill toggle. Off stops detect + log + toast. File `/data/vslam/enabled`. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
 
 ## Trip files
@@ -44,7 +45,7 @@ Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 | `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time) |
 | `/data/vslam/traces/<id>.json` | 60s vCruise vs planner vPlan + GPS + G (lon/lat/|g|) |
 
-C4: Settings → vSlam (list + sparkline). LAN: deviceweb `:8088` → **vSlam tracker**. Map is green when nominal, yellow→red during the slam (yellow = slowest slam speed, red = highest in the window).
+C4: Settings → vSlam (green-pill logger toggle + list + sparkline) and Settings → toggles. LAN: deviceweb `:8088` → **vSlam tracker**. Map is green when nominal, yellow→red during the slam (yellow = slowest slam speed, red = highest in the window).
 
 On detect, C4 throws a 3s orange `userPrompt` toast: **vSlam logged**. Observe-only — stamped via `/data/vslam/alert_until`, not selfdrived / panda.
 
