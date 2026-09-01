@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detect vCruise slams >= 6 mph and persist 60s traces + place names.
+"""Detect vCruise slams >= 6 mph and persist traces + place names.
 
 Does not touch panda safety or actuation. Observe-only.
 """
@@ -18,14 +18,15 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, fire_logged_alert, is_enabled, write_trace
+from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, compact_spark, fire_logged_alert, is_enabled, write_trace
 
 MPH = 2.2369362920544
 SLAM_MPH = 6.0
 RECOVER_MPH = 2.0
 MAX_EVENT_S = 20.0
 WINDOW_S = 60.0
-PRE_S = 20.0
+PRE_S = 5.0
+POST_S = 5.0
 HZ = 20
 try:
   CHI = ZoneInfo("America/Chicago")
@@ -136,6 +137,7 @@ class VSlamD:
     ])
     self.buf: deque[dict] = deque(maxlen=HZ * int(WINDOW_S) + 40)
     self.active: dict | None = None
+    self.pending: dict | None = None
     self.prev_v = None
     self._geo_lock = threading.Lock()
 
@@ -174,10 +176,7 @@ class VSlamD:
 
   def _window(self, t0: float, t1: float) -> list[dict]:
     lo = t0 - PRE_S
-    hi = lo + WINDOW_S
-    if t1 > hi:
-      hi = t1 + 2.0
-      lo = hi - WINDOW_S
+    hi = t1 + POST_S
     samples = [dict(s) for s in self.buf if lo <= s["t"] <= hi]
     for s in samples:
       s["in_slam"] = t0 <= s["t"] <= t1
@@ -188,8 +187,9 @@ class VSlamD:
     ev["duration_s"] = round(ev["t_end"] - ev["t0"], 3)
     ev["local_end"] = _local(ev["t_end"])
     samples = self._window(ev["t0"], ev["t_end"])
+    ev["spark"] = compact_spark(samples)
     write_trace(ev["id"], samples)
-    append_event({k: v for k, v in ev.items() if k != "_peak"})
+    append_event({k: v for k, v in ev.items() if not str(k).startswith("_")})
     cloudlog.warning(
       f"vslam {ev['pre_mph']:.0f}->{ev['slam_mph']:.0f} mph "
       f"{ev['duration_s']:.1f}s {ev.get('place') or ''} {ev.get('route') or ''}"
@@ -223,6 +223,8 @@ class VSlamD:
     if not is_enabled(self.params):
       if self.active is not None:
         self.active = None
+      if self.pending is not None:
+        self.pending = None
       self.prev_v = None
       return
     s = self.sample(now)
@@ -232,6 +234,13 @@ class VSlamD:
     v = s["v_cruise_mph"]
     prev = self.prev_v
     self.prev_v = v
+
+    if self.pending is not None:
+      if now >= float(self.pending.get("_hold_until") or 0):
+        ev = self.pending
+        self.pending = None
+        self._finish(ev, recovered=bool(ev.get("recovered")))
+      return
 
     if self.active is not None:
       ev = self.active
@@ -245,7 +254,10 @@ class VSlamD:
       dropped_enable = not s["enabled"]
       if recovered or timed_out or dropped_enable:
         ev["recover_mph"] = round(v, 2)
-        self._finish(ev, recovered=recovered and not dropped_enable)
+        ev["recovered"] = recovered and not dropped_enable
+        ev["t_end"] = now
+        ev["_hold_until"] = now + POST_S
+        self.pending = ev
         self.active = None
       return
 
