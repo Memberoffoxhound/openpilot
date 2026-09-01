@@ -80,19 +80,19 @@ def _normalize_live(raw) -> dict:
 
 
 def _migrate_poison(st: dict) -> dict:
-  """Drop this week's live+qlog mix. Fold rebuilds from qlogs."""
-  week0 = sunday_id()
-  cur_month = chicago_now().strftime("%Y-%m")
-  days_in = st.get("days") or {}
-  kept = {str(k): v for k, v in days_in.items() if str(k) < week0}
-  months_in = st.get("months") or {}
-  st["days"] = kept
-  st["live"] = empty_live()
-  st["months"] = {str(k): v for k, v in months_in.items() if str(k) < cur_month}
-  st["folded"] = []
-  st["life_m"] = sum(_f(v, "m") for v in kept.values())
-  st["life_e"] = sum(_f(v, "e") for v in kept.values())
+  """Stamp current schema version. Never drop days or lifetime totals."""
   st["v"] = STATS_VER
+  if not isinstance(st.get("days"), dict):
+    st["days"] = {}
+  if not isinstance(st.get("months"), dict):
+    st["months"] = {}
+  if not isinstance(st.get("folded"), list):
+    st["folded"] = []
+  st["live"] = _normalize_live(st.get("live"))
+  st["life_m"] = _f(st, "life_m")
+  st["life_e"] = _f(st, "life_e")
+  st["max_streak_m"] = _f(st, "max_streak_m")
+  st["max_day_streak"] = int(st.get("max_day_streak") or 0)
   return st
 
 
@@ -172,6 +172,18 @@ def _day_bucket(days: dict, key: str) -> dict:
     b = {"m": 0.0, "e": 0.0}
     days[key] = b
   return b
+
+
+def _merge_buckets(dst: dict, src) -> None:
+  """Union day/month buckets. Max per key so a partial fold cannot shrink a day."""
+  if not isinstance(src, dict):
+    return
+  for k, v in src.items():
+    if not isinstance(v, dict):
+      continue
+    b = _day_bucket(dst, str(k))
+    b["m"] = max(_f(b, "m"), _f(v, "m"))
+    b["e"] = max(_f(b, "e"), _f(v, "e"))
 
 
 def _streaks(days: dict) -> tuple[int, int]:
@@ -285,13 +297,17 @@ def _skip_name(name: str, route: str, offroad: bool, mt: float) -> bool:
 def _fold_stats_history() -> None:
   """Rebuild days[] from the qlog segment cache. Idempotent."""
   st = load_stats()
+  prev_life_m = _f(st, "life_m")
+  prev_life_e = _f(st, "life_e")
+  prev_days = st.get("days") or {}
+  prev_months = st.get("months") or {}
   offroad = _is_offroad()
   route = _current_route()
   min_mt = chicago_now().timestamp() - CACHE_KEEP_SEC
   lookback = (chicago_now().date() - timedelta(days=int(CACHE_KEEP_SEC / 86400) + 2)).isoformat()
   keep_after = (chicago_now().date() - timedelta(days=DAY_KEEP)).isoformat()
   old_days = {str(k): {"m": _f(v, "m"), "e": _f(v, "e")}
-              for k, v in (st.get("days") or {}).items()
+              for k, v in prev_days.items()
               if isinstance(v, dict) and keep_after <= str(k) < lookback}
 
   cache = _load_seg_cache()
@@ -354,6 +370,12 @@ def _fold_stats_history() -> None:
     days[k] = v
     life_m += _f(v, "m")
     life_e += _f(v, "e")
+
+  # Partial cache after an update must not shrink existing buckets or lifetime.
+  _merge_buckets(days, prev_days)
+  _merge_buckets(months, prev_months)
+  life_m = max(life_m, prev_life_m, sum(_f(v, "m") for v in days.values()))
+  life_e = max(life_e, prev_life_e, sum(_f(v, "e") for v in days.values()))
 
   live = _normalize_live(st.get("live"))
   if offroad:
