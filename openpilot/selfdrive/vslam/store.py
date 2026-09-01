@@ -133,3 +133,24 @@ def load_trace(eid: str) -> dict:
   obj.setdefault("id", eid)
   obj.setdefault("samples", [])
   return obj
+
+
+def compact_spark(samples: list[dict], n: int = 48) -> list[dict]:
+  """Downsampled vCruise + in_slam flags for the event-list mini spark."""
+  if not samples:
+    return []
+  step = max(1, len(samples) // n)
+  pts: list[dict] = []
+  for s in samples[::step]:
+    pts.append({
+      "v": round(float(s.get("v_cruise_mph") or 0), 1),
+      "s": 1 if s.get("in_slam") else 0,
+    })
+  last = samples[-1]
+  last_pt = {
+    "v": round(float(last.get("v_cruise_mph") or 0), 1),
+    "s": 1 if last.get("in_slam") else 0,
+  }
+  if not pts or pts[-1] != last_pt:
+    pts.append(last_pt)
+  return pts
