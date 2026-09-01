@@ -1,8 +1,10 @@
-"""C4 vSlam tracker. Two snap pages: list + 60s trace."""
+"""C4 vSlam tracker. Snap pages: enable toggle + list + 60s trace."""
 from __future__ import annotations
 
 from openpilot.selfdrive.ui.layouts.settings.common import theme_color
-from openpilot.selfdrive.vslam.store import load_events, load_trace
+from openpilot.common.params import Params
+from openpilot.selfdrive.ui.mici.widgets.button import BigToggle
+from openpilot.selfdrive.vslam.store import is_enabled, load_events, load_trace, set_enabled
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
@@ -133,13 +135,28 @@ class VSlamTraceWidget(_Page):
     rl.draw_text_ex(font, "planner", rl.Vector2(r.x + 90, r.y + r.height - 16), 14, 0, PLAN)
 
 
+class VSlamEnableToggle(BigToggle):
+  """Same green-pill widget as Toggles. On = detect + log."""
+
+  def __init__(self):
+    super().__init__("vSlam logger", initial_state=is_enabled(), toggle_callback=self._on)
+
+  def _on(self, state: bool):
+    set_enabled(state, Params())
+
+  def show_event(self):
+    super().show_event()
+    self.set_checked(is_enabled())
+
+
 class VSlamLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
     self._scroller._snap_items = True
     self._scroller._spacing = 0
     self._scroller._pad = 0
-    self._items = (VSlamListWidget(), VSlamTraceWidget())
+    self._enable = VSlamEnableToggle()
+    self._items = (self._enable, VSlamListWidget(), VSlamTraceWidget())
     self._scroller.add_widgets(list(self._items))
 
   def show_event(self):
