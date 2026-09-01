@@ -9,7 +9,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 ## Params
 
 | Param | Default | Meaning |
-|---|---|
+|---|---|---|
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
@@ -18,7 +18,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 ## Trip files
 
 | Path | Role |
-|---|---|
+|---|---|---|
 | `/data/trip_meter.json` + `TripMeter` param | Live Today/Week. Boot reads this. |
 | `/data/trip_seed_cache.json` | Per-segment meters, filled parked after a drive. |
 | `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
@@ -40,11 +40,13 @@ Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 `vslam_d` (onroad only) logs every cruise-set drop ≥ 6 mph. Observe-only — no panda / actuation change.
 
 | Path | Role |
-|---|---|
+|---|---|---|
 | `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time) |
-| `/data/vslam/traces/<id>.json` | 60s vCruise vs planner vPlan + GPS |
+| `/data/vslam/traces/<id>.json` | 60s vCruise vs planner vPlan + GPS + G (lon/lat/|g|) |
 
 C4: Settings → vSlam (list + sparkline). LAN: deviceweb `:8088` → **vSlam tracker**. Map is green when nominal, yellow→red during the slam (yellow = slowest slam speed, red = highest in the window).
+
+On detect, C4 throws a 3s orange `userPrompt` toast: **vSlam logged**. Observe-only — stamped via `/data/vslam/alert_until`, not selfdrived / panda.
 
 ## Screenshots / LAN
 
