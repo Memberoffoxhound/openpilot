@@ -128,7 +128,7 @@ class VSlamTraceWidget(_Page):
       else:
         den = max(0.1, pre - slam)
         frac = (vs[i] - slam) / den
-        col = _lerp_c(YELLOW, RED, frac)
+        col = _lerp_c(RED, YELLOW, frac)
       rl.draw_line_ex(xy(i - 1, vs[i - 1]), xy(i, vs[i]), 3.0, col)
 
     rl.draw_text_ex(font, "vCruise", rl.Vector2(r.x + 16, r.y + r.height - 16), 14, 0, theme_color())

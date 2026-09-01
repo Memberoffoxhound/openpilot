@@ -19,7 +19,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 ## Trip files
 
 | Path | Role |
-|---|---|---|
+|---|---|
 | `/data/trip_meter.json` + `TripMeter` param | Live Today/Week. Boot reads this. |
 | `/data/trip_seed_cache.json` | Per-segment meters, filled parked after a drive. |
 | `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
@@ -40,12 +40,14 @@ Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 
 `vslam_d` (onroad only) logs every cruise-set drop ≥ 6 mph. Observe-only — no panda / actuation change.
 
-| Path | Role |
-|---|---|---|
-| `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time) |
-| `/data/vslam/traces/<id>.json` | 60s vCruise vs planner vPlan + GPS + G (lon/lat/|g|) |
+Each event keeps **5 s before detect and 5 s after recovery** (or timeout / cruise-off). `vslam_d` holds the write until the post-recovery window is in the ring buffer.
 
-C4: Settings → vSlam (green-pill logger toggle + list + sparkline) and Settings → toggles. LAN: deviceweb `:8088` → **vSlam tracker**. Map is green when nominal, yellow→red during the slam (yellow = slowest slam speed, red = highest in the window).
+| Path | Role |
+|---|---|
+| `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time, compact spark) |
+| `/data/vslam/traces/<id>.json` | 5s+event+5s vCruise vs planner vPlan + GPS + G (lon/lat/|g|) |
+
+C4: Settings → vSlam (green-pill logger toggle + list + sparkline) and Settings → toggles. LAN: deviceweb `:8088` → **vSlam tracker**. Event list shows the mph drop up top-right with a mini spark under it. Map / spark is green when nominal, red→yellow during the slam (red = slowest slam speed, yellow = highest in the window).
 
 On detect, C4 throws a 3s orange `userPrompt` toast: **vSlam logged**. Observe-only — stamped via `/data/vslam/alert_until`, not selfdrived / panda.
 
