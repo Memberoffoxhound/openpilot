@@ -1,0 +1,12 @@
+.readout {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
+}
+.readout .ro-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.readout .ro-head b { font-size: 16px; }
+.readout .ro-filt {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+}
+.readout.straight .ro-filt { color: #ff3b30; }
+.readout.corner .ro-filt { color: #50e696; }
+.readout p { margin: 8px 0 0; font-size: 14px; line-height: 1.45; color: var(--fg); }
+.readout p.tiny { margin-top: 8px; }
