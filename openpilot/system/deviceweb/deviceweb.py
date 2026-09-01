@@ -173,7 +173,7 @@ def _list_shots() -> list[dict]:
       st = f.stat()
     except OSError:
       continue
-    items.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+    items.append({"name": f.name, "size": st.st_size, "mtime": int(st.mtime)})
   return items[:250]
 
 
@@ -211,15 +211,30 @@ def _request_shot() -> dict:
   return {"ok": True}
 
 
+def _decorate_vslam(ev: dict, samples=None) -> dict:
+  try:
+    from openpilot.selfdrive.vslam.classify import annotate
+    annotate(ev, samples or [])
+  except Exception:
+    ev.setdefault("path", ev.get("kind") or "unknown")
+    ev.setdefault("filter", "hold")
+    ev.setdefault("headline", "Not enough path \u2014 hold")
+    ev.setdefault("summary", "Classifier unavailable on this build.")
+  return ev
+
+
 def _vslam_list() -> dict:
   from openpilot.selfdrive.vslam.store import compact_spark, is_enabled, load_events, load_trace
   p = _params()
   events = list(reversed(load_events(200)))
   for ev in events[:50]:
-    if ev.get("spark"):
-      continue
-    samples = (load_trace(str(ev.get("id") or "")).get("samples") or [])
-    ev["spark"] = compact_spark(samples)
+    samples = []
+    need = (not ev.get("spark")) or (not ev.get("headline"))
+    if need:
+      samples = (load_trace(str(ev.get("id") or "")).get("samples") or [])
+    if not ev.get("spark"):
+      ev["spark"] = compact_spark(samples)
+    _decorate_vslam(ev, samples)
   return {"enabled": is_enabled(p), "events": events, "count": len(events)}
 
 
@@ -231,7 +246,9 @@ def _vslam_event(eid: str) -> dict:
   ev = next((e for e in load_events(400) if e.get("id") == eid), None)
   if ev is None:
     return {"error": "not found", "id": eid}
-  return {"event": ev, "trace": load_trace(eid)}
+  trace = load_trace(eid)
+  _decorate_vslam(ev, trace.get("samples") or [])
+  return {"event": ev, "trace": trace}
 
 
 def _vslam_set(on: bool) -> dict:
