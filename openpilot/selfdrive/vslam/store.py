@@ -1,16 +1,47 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 ROOT = Path("/data/vslam")
 EVENTS_PATH = ROOT / "events.jsonl"
 TRACE_DIR = ROOT / "traces"
+ALERT_UNTIL_PATH = ROOT / "alert_until"
+ALERT_S = 3.0
 MAX_EVENTS = 400
 
 
 def ensure() -> None:
   TRACE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def fire_logged_alert(duration_s: float = ALERT_S) -> None:
+  """Stamp a 3s onroad toast. UI reads this; no panda / selfdrived change."""
+  ensure()
+  try:
+    ALERT_UNTIL_PATH.write_text(f"{time.time() + duration_s:.3f}\n", encoding="utf-8")
+  except OSError:
+    pass
+
+
+_alert_cache: tuple[float, float] = (0.0, 0.0)  # mtime, until
+
+
+def alert_until() -> float:
+  global _alert_cache
+  try:
+    mtime = ALERT_UNTIL_PATH.stat().st_mtime
+  except OSError:
+    return 0.0
+  if _alert_cache[0] == mtime:
+    return _alert_cache[1]
+  try:
+    until = float(ALERT_UNTIL_PATH.read_text(encoding="utf-8").strip())
+  except (OSError, ValueError):
+    until = 0.0
+  _alert_cache = (mtime, until)
+  return until
 
 
 def load_events(limit: int = 200) -> list[dict]:
