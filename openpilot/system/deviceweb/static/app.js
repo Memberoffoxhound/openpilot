@@ -523,9 +523,14 @@ function paintMap() {
   }
   const rng = slamRange(samples);
   _map = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
+  // Carto Positron is a clean vector-styled basemap. Grayscale is applied to
+  // the tile pane only so the vSlam color line stays saturated.
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20,
+    subdomains: "abcd",
   }).addTo(_map);
+  const tilePane = _map.getPane("tilePane");
+  if (tilePane) tilePane.style.filter = "grayscale(1) contrast(1.18) brightness(1.04)";
   const latlngs = [];
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1], b = samples[i];
