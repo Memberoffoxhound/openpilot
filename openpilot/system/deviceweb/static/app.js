@@ -4,8 +4,8 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2l3.1 3.2L13 4.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const COL_NOM = [80, 230, 150];
-const COL_LO = [255, 204, 0];
-const COL_HI = [255, 59, 48];
+const COL_SLOW = [255, 59, 48];   // red = slowest slam
+const COL_FAST = [255, 204, 0];   // yellow = highest in slam
 
 const S = {
   page: "home",
@@ -394,12 +394,34 @@ function slamRange(samples) {
 }
 function slamColor(v, lo, hi, inSlam) {
   if (!inSlam) return rgb(COL_NOM);
-  if (hi <= lo) return rgb(COL_LO);
-  return rgb(lerpColor(COL_LO, COL_HI, (v - lo) / (hi - lo)));
+  if (hi <= lo) return rgb(COL_SLOW);
+  return rgb(lerpColor(COL_SLOW, COL_FAST, (v - lo) / (hi - lo)));
 }
 function mph(n) {
   if (n == null || n === "") return "\u2014";
   return Math.round(Number(n)) + " mph";
+}
+
+function sparkMini(pts) {
+  const w = 88, h = 22, pad = 1.5;
+  const raw = pts || [];
+  if (raw.length < 2) {
+    return `<svg class="spark-mini" viewBox="0 0 ${w} ${h}" aria-hidden="true"></svg>`;
+  }
+  const vs = raw.map(s => Number(s.v != null ? s.v : s.v_cruise_mph) || 0);
+  const slam = raw.map(s => !!(s.s || s.in_slam));
+  let mn = Math.min(...vs), mx = Math.max(...vs);
+  if (mx - mn < 4) { mx += 2; mn -= 2; }
+  const lo = Math.min(...vs.filter((_, i) => slam[i]).concat([mn]));
+  const hi = Math.max(...vs.filter((_, i) => slam[i]).concat([mx]));
+  const x = i => pad + (i / (raw.length - 1)) * (w - pad * 2);
+  const y = v => pad + (1 - (v - mn) / (mx - mn || 1)) * (h - pad * 2);
+  let segs = "";
+  for (let i = 1; i < raw.length; i++) {
+    const c = slamColor(vs[i], lo, hi, !!(slam[i] || slam[i - 1]));
+    segs += `<line x1="${x(i - 1).toFixed(1)}" y1="${y(vs[i - 1]).toFixed(1)}" x2="${x(i).toFixed(1)}" y2="${y(vs[i]).toFixed(1)}" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`;
+  }
+  return `<svg class="spark-mini" viewBox="0 0 ${w} ${h}" aria-hidden="true">${segs}</svg>`;
 }
 
 function sparkSVG(samples) {
@@ -445,7 +467,10 @@ function vslamListHTML() {
       const sub = [ev.local_time, `${mph(ev.pre_mph)} \u2192 ${mph(ev.slam_mph)}`, ev.recovered ? "recovered" : "open"].filter(Boolean).join(" \u00b7 ");
       return `<button class="vslam-row" type="button" data-vslam="${esc(ev.id)}">
         <div class="vr-text"><b>${esc(title)}</b><em>${esc(sub)}</em></div>
-        <span class="vr-delta">${Math.round(Number(ev.delta_mph) || 0)} mph</span>
+        <div class="vr-side">
+          <span class="vr-delta">${Math.round(Number(ev.delta_mph) || 0)} mph</span>
+          ${sparkMini(ev.spark)}
+        </div>
       </button>`;
     }).join("")}</div>` :
       `<div class="card"><b>No slams logged</b><p class="tiny">Drive onroad with the logger on. Events land in /data/vslam.</p></div>`}
