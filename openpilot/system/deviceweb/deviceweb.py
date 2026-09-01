@@ -212,9 +212,14 @@ def _request_shot() -> dict:
 
 
 def _vslam_list() -> dict:
-  from openpilot.selfdrive.vslam.store import is_enabled, load_events
+  from openpilot.selfdrive.vslam.store import compact_spark, is_enabled, load_events, load_trace
   p = _params()
   events = list(reversed(load_events(200)))
+  for ev in events[:50]:
+    if ev.get("spark"):
+      continue
+    samples = (load_trace(str(ev.get("id") or "")).get("samples") or [])
+    ev["spark"] = compact_spark(samples)
   return {"enabled": is_enabled(p), "events": events, "count": len(events)}
 
 
