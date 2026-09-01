@@ -1,13 +1,10 @@
-"""Label vSlam events as ramp vs mid-interstate.
+"""Label vSlam events as cornering vs straight road.
 
 Observe-only. Does not touch panda, actuators, or the planner.
-Used to decide a *future* vCruise filter:
 
-  ramp        → honor Tesla's set-speed drop (exits). OP long is not
-                good enough on ramps yet.
-  interstate  → candidate to ignore as a cruise ceiling. Tesla dumping
-                speed in a live freeway lane is what rear-ends you.
-  unknown     → hold current behavior (honor) until more traces vote.
+  cornering  → honor Tesla's set-speed drop (ramp / real curve)
+  straight   → ignore candidate (slam on a lane that is not turning)
+  unknown    → hold current behavior until the trace has enough path
 """
 from __future__ import annotations
 
@@ -20,6 +17,8 @@ R_EARTH_M = 6371000.0
 
 def _f(v: Any, default: float = 0.0) -> float:
   try:
+    if v is None or v == "":
+      return default
     return float(v)
   except (TypeError, ValueError):
     return default
@@ -95,78 +94,124 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
   heading = geo["heading_delta_deg"]
   ratio = geo["path_ratio"]
 
-  ramp = 0
-  hw = 0
-  why: list[str] = []
+  model_yaw = event.get("model_yaw_4s")
+  if model_yaw is None and slam:
+    model_yaw = slam[0].get("model_yaw_4s")
+  model_y = event.get("model_y_3s")
+  if model_y is None and slam:
+    model_y = slam[0].get("model_y_3s")
+  model_yaw_f = None if model_yaw is None else abs(_f(model_yaw))
+  model_y_f = None if model_y is None else abs(_f(model_y))
+
+  corner = 0
+  straight = 0
+  facts: list[str] = []
+
+  if model_yaw_f is not None:
+    if model_yaw_f >= 12:
+      corner += 3
+      facts.append(f"model yaw {model_yaw_f:.0f} deg at 4s")
+    elif model_yaw_f < 8:
+      straight += 2
+      facts.append(f"model yaw {model_yaw_f:.0f} deg at 4s")
+  if model_y_f is not None:
+    if model_y_f >= 2.0:
+      corner += 2
+      facts.append(f"model path y {model_y_f:.1f} m at 3s")
+    elif model_y_f < 1.2:
+      straight += 1
+      facts.append(f"model path y {model_y_f:.1f} m at 3s")
+  if model_yaw_f is None and model_y_f is None:
+    facts.append("model path not on this trace")
 
   if heading is not None:
     if heading >= 25:
-      ramp += 3
-      why.append(f"turn {heading:.0f}°")
+      corner += 3
+      facts.append(f"GPS heading {heading:.0f} deg")
     elif heading >= 15:
-      ramp += 2
-      why.append(f"bend {heading:.0f}°")
+      corner += 2
+      facts.append(f"GPS heading {heading:.0f} deg")
     elif heading < 8:
-      hw += 2
-      why.append(f"straight {heading:.0f}°")
+      straight += 2
+      facts.append(f"GPS heading {heading:.0f} deg")
 
   if ratio is not None:
     if ratio >= 1.06:
-      ramp += 2
+      corner += 2
+      facts.append(f"path/chord {ratio:.2f}")
     elif ratio <= 1.02:
-      hw += 1
+      straight += 1
+      facts.append(f"path/chord {ratio:.2f}")
 
   if blinker:
-    ramp += 2
-    why.append("blinker")
-
-  if pre >= 62:
-    hw += 1
-  elif pre < 55:
-    ramp += 1
+    corner += 2
+    facts.append("blinker")
 
   if pre >= 62 and v_ego_med >= pre - 8:
-    hw += 2
-    why.append(f"vEgo {v_ego_med:.0f}")
+    straight += 1
+    facts.append(f"still {v_ego_med:.0f} mph")
   elif slam_mph and v_ego_med <= slam_mph + 6 and delta <= -10:
-    ramp += 1
+    corner += 1
 
   if a_min <= -2.0:
-    hw += 2
-    why.append(f"aEgo {a_min:.1f}")
+    facts.append(f"aEgo {a_min:.1f}")
   elif a_min <= -1.2:
-    hw += 1
-    why.append(f"aEgo {a_min:.1f}")
+    facts.append(f"aEgo {a_min:.1f}")
 
   if recovered and 0 < dur <= 8:
-    hw += 1
-    why.append("quick recover")
+    straight += 1
+    facts.append("quick recover")
 
   if v_plan_pre and pre and v_plan_pre <= pre - 6:
-    ramp += 1
-    why.append("vPlan already down")
+    corner += 1
+    facts.append(f"vPlan already {v_plan_pre:.0f}")
 
-  if ramp >= hw + 2 and ramp >= 3:
-    kind = "ramp"
+  if corner >= straight + 2 and corner >= 3:
+    path = "cornering"
     hint = "honor"
-  elif hw >= ramp + 2 and hw >= 3:
-    kind = "interstate"
+  elif straight >= corner + 2 and straight >= 3:
+    path = "straight"
     hint = "ignore"
   else:
-    kind = "unknown"
+    path = "unknown"
     hint = "hold"
 
+  if path == "cornering":
+    headline = "Cornering \u2014 honor"
+    summary = (
+      "Path is bending (ramp or real curve). Honor this slam. "
+      "openpilot long is not ready to invent that slowdown."
+    )
+  elif path == "straight":
+    headline = "Straight road \u2014 ignore"
+    summary = (
+      "Path stayed a lane. Tesla dumped set speed on a straight road. "
+      "Ignore candidate \u2014 same class as Ferguson, on any road."
+    )
+  else:
+    headline = "Not enough path \u2014 hold"
+    summary = (
+      "Trace is thin or mixed. Hold current behavior (honor) until "
+      "more events vote. Logger is observe-only."
+    )
+
   return {
-    "kind": kind,
+    "kind": path,
+    "path": path,
     "filter": hint,
+    "headline": headline,
+    "summary": summary,
     "heading_delta_deg": geo["heading_delta_deg"],
     "path_ratio": geo["path_ratio"],
     "path_m": geo["path_m"],
     "a_ego_min": round(a_min, 3),
     "v_ego_med": round(v_ego_med, 2),
-    "class_why": " · ".join(why) if why else "thin trace",
-    "ramp_score": ramp,
-    "interstate_score": hw,
+    "class_why": " \u00b7 ".join(facts) if facts else "thin trace",
+    "facts": facts,
+    "corner_score": corner,
+    "straight_score": straight,
+    "model_yaw_4s": None if model_yaw_f is None else round(model_yaw_f, 1),
+    "model_y_3s": None if model_y_f is None else round(model_y_f, 2),
   }
 
 
