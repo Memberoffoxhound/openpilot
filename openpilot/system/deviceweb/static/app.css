@@ -316,16 +316,22 @@ main {
 
 .vslam-list { display: flex; flex-direction: column; gap: 8px; }
 .vslam-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: grid; grid-template-columns: 1fr 88px; align-items: start; gap: 10px;
   width: 100%; text-align: left; padding: 12px 14px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
 }
-.vslam-row .vr-text { min-width: 0; }
+.vslam-row .vr-text { min-width: 0; padding-top: 1px; }
 .vslam-row b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vslam-row em { display: block; margin-top: 3px; font-style: normal; font-size: 12px; color: var(--dim); }
-.vslam-row .vr-delta {
-  flex: none; font-variant-numeric: tabular-nums; font-weight: 700; color: #ffcc00;
+.vslam-row .vr-side {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  width: 88px;
 }
+.vslam-row .vr-delta {
+  font-variant-numeric: tabular-nums; font-weight: 700; color: #ff3b30;
+  font-size: 15px; line-height: 1.1;
+}
+.spark-mini { width: 88px; height: 22px; display: block; }
 .spark { width: 100%; height: 56px; display: block; }
 .spark-key { display: flex; flex-wrap: wrap; gap: 10px 14px; font-size: 11px; color: var(--dim); }
 .spark-key .k::before {
@@ -333,8 +339,8 @@ main {
   margin-right: 6px; vertical-align: -1px;
 }
 .spark-key .nom::before { background: rgb(80,230,150); }
-.spark-key .lo::before { background: rgb(255,204,0); }
-.spark-key .hi::before { background: rgb(255,59,48); }
+.spark-key .lo::before { background: rgb(255,59,48); }
+.spark-key .hi::before { background: rgb(255,204,0); }
 .spark-key .plan::before { background: rgba(255,255,255,.35); }
 .vslam-map {
   width: 100%; height: 280px; border-radius: 8px; overflow: hidden;
