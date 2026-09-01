@@ -18,7 +18,7 @@ from cereal import messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, write_trace
+from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, fire_logged_alert, write_trace
 
 MPH = 2.2369362920544
 SLAM_MPH = 6.0
@@ -280,6 +280,7 @@ class VSlamD:
       "place": "",
     }
     self.active = ev
+    fire_logged_alert()
     cloudlog.info(f"vslam start {ev['pre_mph']:.0f}->{ev['slam_mph']:.0f}")
 
   def run(self) -> None:
