@@ -1,19 +1,37 @@
-/* S3XYPilot LAN UI — statistics + screenshots */
-const PAGES = ["home", "shots"];
+/* S3XYPilot LAN UI — statistics + vSlam tracker + screenshots */
+const PAGES = ["home", "vslam", "shots"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2l3.1 3.2L13 4.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const COL_NOM = [80, 230, 150];
+const COL_LO = [255, 204, 0];
+const COL_HI = [255, 59, 48];
 
 const S = {
-  page: (location.hash.replace("#", "") || "home"),
+  page: "home",
+  vslamId: null,
   home: null,
   shots: [],
   shotView: null,
   shotPick: false,
   shotSel: {},
   confirm: null,
+  vslam: { enabled: true, events: [], count: 0 },
+  vslamDetail: null,
 };
-if (!PAGES.includes(S.page)) S.page = "home";
+let _map = null;
+
+function parseHash() {
+  const raw = (location.hash || "#home").replace(/^#/, "");
+  const [page, ...rest] = raw.split("/");
+  const id = rest.filter(Boolean).join("/") || null;
+  return { page: PAGES.includes(page) ? page : "home", id: page === "vslam" ? id : null };
+}
+{
+  const h = parseHash();
+  S.page = h.page;
+  S.vslamId = h.id;
+}
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
@@ -37,7 +55,7 @@ function say(m) {
   clearTimeout(say._t);
   say._t = setTimeout(() => { el.hidden = true; }, 2800);
 }
-function hdrVal(v, s) { return (v == null || v === "") ? "—" : v + s; }
+function hdrVal(v, s) { return (v == null || v === "") ? "\u2014" : v + s; }
 
 function fmtDist(meters, unit, tenths) {
   const v = unit === "km" ? (meters || 0) / 1000 : (meters || 0) / 1609.344;
@@ -53,7 +71,7 @@ function tickClock() {
   let h = d.getHours(), ap = h >= 12 ? "PM" : "AM";
   h = h % 12 || 12;
   const mm = String(d.getMinutes()).padStart(2, "0");
-  $("clock").textContent = `${days[d.getDay()]} ${mons[d.getMonth()]} ${d.getDate()}  ·  ${h}:${mm} ${ap}`;
+  $("clock").textContent = `${days[d.getDay()]} ${mons[d.getMonth()]} ${d.getDate()}  \u00b7  ${h}:${mm} ${ap}`;
 }
 
 function applyTheme(info) {
@@ -71,9 +89,9 @@ function paintHeader() {
   const st = (h && h.stats) || {};
   applyTheme(i);
   $("hdrStats").innerHTML = `
-    <span><em>TODAY</em>${h ? fmtDist(st.today_m, unit) : "—"} ${unit}</span>
-    <span><em>WEEK</em>${h ? fmtDist(st.week_m, unit) : "—"} ${unit}</span>
-    <span><em>CPU</em>${hdrVal(i.tempC, "°")} · ${hdrVal(i.cpuPct, "%")}</span>
+    <span><em>TODAY</em>${h ? fmtDist(st.today_m, unit) : "\u2014"} ${unit}</span>
+    <span><em>WEEK</em>${h ? fmtDist(st.week_m, unit) : "\u2014"} ${unit}</span>
+    <span><em>CPU</em>${hdrVal(i.tempC, "\u00b0")} \u00b7 ${hdrVal(i.cpuPct, "%")}</span>
     <span><em>MEM</em>${hdrVal(i.memPct, "%")}</span>`;
   $("drawerFoot").textContent = i.branch ? `${i.branch}  ${i.version || ""}` : "";
 }
@@ -90,15 +108,18 @@ function closeMenu() {
   $("menuBtn").setAttribute("aria-expanded", "false");
 }
 
-function setPage(p) {
+function setPage(p, id) {
   if (!PAGES.includes(p)) p = "home";
   if (p !== "shots") { S.shotView = null; S.shotPick = false; document.onkeydown = null; }
+  if (p !== "vslam") { S.vslamId = null; S.vslamDetail = null; killMap(); }
   S.page = p;
-  location.hash = p;
+  S.vslamId = p === "vslam" ? (id || null) : null;
+  location.hash = S.vslamId ? `vslam/${S.vslamId}` : p;
   document.querySelectorAll("#drawer nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
   closeMenu();
   render();
   if (p === "shots") loadShots();
+  if (p === "vslam") loadVslam(S.vslamId);
 }
 
 function ringSVG(pct) {
@@ -228,8 +249,8 @@ function lightboxHTML() {
     <div class="lb-bar">
       <button class="btn" id="lbClose" type="button">Close</button>
       <b>${esc(s.name)}</b>
-      <button class="btn" id="lbPrev" type="button" ${i <= 0 ? "disabled" : ""} aria-label="Previous">◀</button>
-      <button class="btn" id="lbNext" type="button" ${i >= S.shots.length - 1 ? "disabled" : ""} aria-label="Next">▶</button>
+      <button class="btn" id="lbPrev" type="button" ${i <= 0 ? "disabled" : ""} aria-label="Previous">\u25c0</button>
+      <button class="btn" id="lbNext" type="button" ${i >= S.shots.length - 1 ? "disabled" : ""} aria-label="Next">\u25b6</button>
       <a class="btn" id="lbDl" href="${shotUrl(s.name)}" download="${esc(s.name)}">Download</a>
       <button class="btn live" id="lbDel" type="button">Delete</button>
     </div>
@@ -255,7 +276,7 @@ function shotsHTML() {
   const groups = shotGroups();
   return `<div class="stack">
     <div class="h-row"><p class="h-label">Screenshots</p>
-      <span class="badge">${n} · ${bytes(bytesTotal)}</span></div>
+      <span class="badge">${n} \u00b7 ${bytes(bytesTotal)}</span></div>
     <div class="live-tools">
       <button class="btn primary" id="shotCap" type="button">Capture</button>
       <button class="btn" id="shotRefresh" type="button">Refresh</button>
@@ -329,7 +350,7 @@ async function loadShots() {
 async function captureShot() {
   try {
     await api("/api/screenshots/capture", { method: "POST" });
-    say("capturing…");
+    say("capturing\u2026");
     const before = new Set(S.shots.map(s => s.name));
     for (let i = 0; i < 8; i++) {
       await new Promise(r => setTimeout(r, 400));
@@ -337,7 +358,7 @@ async function captureShot() {
       const neu = S.shots.find(s => !before.has(s.name));
       if (neu) { say("captured"); return; }
     }
-    say("no new shot yet — try again");
+    say("no new shot yet \u2014 try again");
   } catch (e) { say(e.message || "capture failed"); }
 }
 
@@ -360,6 +381,178 @@ async function deleteShots(names) {
   render();
 }
 
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function lerpColor(a, b, t) {
+  t = Math.max(0, Math.min(1, t));
+  return [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t));
+}
+function slamRange(samples) {
+  const slam = (samples || []).filter(s => s.in_slam);
+  if (!slam.length) return { lo: 0, hi: 0 };
+  const vs = slam.map(s => Number(s.v_cruise_mph) || 0);
+  return { lo: Math.min(...vs), hi: Math.max(...vs) };
+}
+function slamColor(v, lo, hi, inSlam) {
+  if (!inSlam) return rgb(COL_NOM);
+  if (hi <= lo) return rgb(COL_LO);
+  return rgb(lerpColor(COL_LO, COL_HI, (v - lo) / (hi - lo)));
+}
+function mph(n) {
+  if (n == null || n === "") return "\u2014";
+  return Math.round(Number(n)) + " mph";
+}
+
+function sparkSVG(samples) {
+  const pts = samples || [];
+  const w = 280, h = 56, pad = 3;
+  if (pts.length < 2) {
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"></svg>`;
+  }
+  const vs = pts.map(s => Number(s.v_cruise_mph) || 0);
+  const ps = pts.map(s => Number(s.v_plan_mph) || 0);
+  const all = vs.concat(ps);
+  let mn = Math.min(...all), mx = Math.max(...all);
+  if (mx - mn < 4) { mx += 2; mn -= 2; }
+  const rng = { lo: slamRange(pts).lo, hi: slamRange(pts).hi };
+  const x = i => pad + (i / (pts.length - 1)) * (w - pad * 2);
+  const y = v => pad + (1 - (v - mn) / (mx - mn || 1)) * (h - pad * 2);
+  const plan = pts.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(ps[i]).toFixed(1)}`).join(" ");
+  let segs = "";
+  for (let i = 1; i < pts.length; i++) {
+    const c = slamColor(vs[i], rng.lo, rng.hi, !!(pts[i].in_slam || pts[i - 1].in_slam));
+    segs += `<line x1="${x(i - 1).toFixed(1)}" y1="${y(vs[i - 1]).toFixed(1)}" x2="${x(i).toFixed(1)}" y2="${y(vs[i]).toFixed(1)}" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`;
+  }
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <path d="${plan}" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.2" stroke-dasharray="3 3"/>
+    ${segs}
+  </svg>`;
+}
+
+function vslamListHTML() {
+  const on = !!S.vslam.enabled;
+  const evs = S.vslam.events || [];
+  return `<div class="stack">
+    <div class="h-row"><p class="h-label">vSlam tracker</p>
+      <span class="badge">${evs.length} event${evs.length === 1 ? "" : "s"}</span></div>
+    <div class="live-tools">
+      <button class="btn${on ? " primary" : ""}" id="vslamToggle" type="button">${on ? "Logger on" : "Logger off"}</button>
+      <button class="btn" id="vslamRefresh" type="button">Refresh</button>
+    </div>
+    <p class="tiny">Observe-only. Logs cruise-set drops \u2265 6 mph. Same store as Settings \u2192 vSlam.</p>
+    <div class="spark-key"><span class="k nom">nominal</span><span class="k lo">slowest slam</span><span class="k hi">highest in slam</span></div>
+    ${evs.length ? `<div class="vslam-list">${evs.map(ev => {
+      const title = ev.place || ev.road || ev.local_time || ev.id;
+      const sub = [ev.local_time, `${mph(ev.pre_mph)} \u2192 ${mph(ev.slam_mph)}`, ev.recovered ? "recovered" : "open"].filter(Boolean).join(" \u00b7 ");
+      return `<button class="vslam-row" type="button" data-vslam="${esc(ev.id)}">
+        <div class="vr-text"><b>${esc(title)}</b><em>${esc(sub)}</em></div>
+        <span class="vr-delta">${Math.round(Number(ev.delta_mph) || 0)} mph</span>
+      </button>`;
+    }).join("")}</div>` :
+      `<div class="card"><b>No slams logged</b><p class="tiny">Drive onroad with the logger on. Events land in /data/vslam.</p></div>`}
+  </div>`;
+}
+
+function vslamDetailHTML() {
+  const d = S.vslamDetail;
+  if (!d || d.error) {
+    return `<div class="stack">
+      <div class="live-tools"><button class="btn" id="vslamBack" type="button">Back</button></div>
+      <div class="card"><b>${esc((d && d.error) || "missing event")}</b></div>
+    </div>`;
+  }
+  const ev = d.event || {};
+  const samples = (d.trace && d.trace.samples) || [];
+  const title = ev.place || ev.road || ev.local_time || ev.id;
+  const gps = samples.some(s => Math.abs(s.lat || 0) > 1e-4);
+  return `<div class="stack">
+    <div class="h-row"><p class="h-label">vSlam</p>
+      <button class="btn" id="vslamBack" type="button">Back</button></div>
+    <div class="card">
+      <b>${esc(title)}</b>
+      <p class="tiny">${esc(ev.local_time || "")} \u00b7 ${mph(ev.pre_mph)} \u2192 ${mph(ev.slam_mph)} \u00b7 ${ev.duration_s || 0}s${ev.recovered ? " \u00b7 recovered" : ""}</p>
+      <p class="tiny">${esc(ev.route || "")}</p>
+    </div>
+    ${sparkSVG(samples)}
+    <div class="spark-key"><span class="k nom">vCruise nominal</span><span class="k lo">slowest</span><span class="k hi">highest</span><span class="k plan">vPlan</span></div>
+    ${gps ? `<div id="vslamMap" class="vslam-map" role="img" aria-label="slam map"></div>` :
+      `<p class="tiny">No GPS on this trace \u2014 map skipped.</p>`}
+  </div>`;
+}
+
+function killMap() {
+  if (_map) {
+    try { _map.remove(); } catch (e) { /* ignore */ }
+    _map = null;
+  }
+}
+
+function paintMap() {
+  const el = $("vslamMap");
+  if (!el || typeof L === "undefined") return;
+  killMap();
+  const samples = ((S.vslamDetail && S.vslamDetail.trace && S.vslamDetail.trace.samples) || [])
+    .filter(s => Math.abs(s.lat || 0) > 1e-4 && Math.abs(s.lon || 0) > 1e-4);
+  if (samples.length < 2) {
+    el.innerHTML = `<p class="tiny" style="padding:12px">Not enough GPS points.</p>`;
+    return;
+  }
+  const rng = slamRange(samples);
+  _map = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+  }).addTo(_map);
+  const latlngs = [];
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1], b = samples[i];
+    const pair = [[a.lat, a.lon], [b.lat, b.lon]];
+    latlngs.push(pair[0], pair[1]);
+    L.polyline(pair, {
+      color: slamColor(b.v_cruise_mph, rng.lo, rng.hi, !!(a.in_slam || b.in_slam)),
+      weight: 5,
+      opacity: 0.95,
+      lineCap: "round",
+    }).addTo(_map);
+  }
+  try { _map.fitBounds(L.latLngBounds(latlngs), { padding: [16, 16] }); }
+  catch (e) { _map.setView(latlngs[0], 16); }
+}
+
+async function loadVslam(id) {
+  try {
+    const list = await api("/api/vslam");
+    S.vslam = { enabled: !!list.enabled, events: list.events || [], count: list.count || 0 };
+  } catch (e) {
+    say(e.message || "vslam list failed");
+  }
+  if (id) {
+    try {
+      S.vslamDetail = await api("/api/vslam/event?id=" + encodeURIComponent(id));
+    } catch (e) {
+      S.vslamDetail = { error: e.message || "event failed" };
+    }
+  } else {
+    S.vslamDetail = null;
+  }
+  if (S.page === "vslam") {
+    render();
+    if (S.vslamId) requestAnimationFrame(paintMap);
+  }
+}
+
+async function toggleVslam() {
+  const next = !S.vslam.enabled;
+  try {
+    const r = await api("/api/vslam/enabled", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    });
+    S.vslam.enabled = !!r.enabled;
+    say(S.vslam.enabled ? "vSlam logger on" : "vSlam logger off");
+    render();
+  } catch (e) { say(e.message || "toggle failed"); }
+}
+
 function bindPage() {
   if (S.page === "shots") {
     $("shotCap").onclick = () => captureShot();
@@ -371,11 +564,27 @@ function bindPage() {
     bindLightbox();
     bindConfirm();
   }
+  if (S.page === "vslam") {
+    const tog = $("vslamToggle");
+    if (tog) tog.onclick = () => toggleVslam();
+    const ref = $("vslamRefresh");
+    if (ref) ref.onclick = () => loadVslam(S.vslamId);
+    const back = $("vslamBack");
+    if (back) back.onclick = () => setPage("vslam");
+    $("page").querySelectorAll("[data-vslam]").forEach(b => b.onclick = () => setPage("vslam", b.dataset.vslam));
+  }
+}
+
+function pageHTML() {
+  if (S.page === "vslam") return S.vslamId ? vslamDetailHTML() : vslamListHTML();
+  if (S.page === "shots") return shotsHTML();
+  return homeHTML();
 }
 
 function render() {
   const root = $("page");
-  root.innerHTML = S.page === "home" ? homeHTML() : shotsHTML();
+  killMap();
+  root.innerHTML = pageHTML();
   bindPage();
 }
 
@@ -396,8 +605,8 @@ function boot() {
   document.querySelectorAll("#drawer nav button").forEach(b => b.onclick = () => setPage(b.dataset.page));
   document.querySelectorAll("#drawer nav button").forEach(b => b.classList.toggle("on", b.dataset.page === S.page));
   window.addEventListener("hashchange", () => {
-    const p = location.hash.replace("#", "");
-    if (PAGES.includes(p) && p !== S.page) setPage(p);
+    const h = parseHash();
+    if (h.page !== S.page || h.id !== S.vslamId) setPage(h.page, h.id);
   });
   render();
   api("/api/home").then(home => {
@@ -405,6 +614,7 @@ function boot() {
     paintHeader();
     render();
     if (S.page === "shots") loadShots();
+    if (S.page === "vslam") loadVslam(S.vslamId);
   }).catch(() => say("device unreachable"));
   setInterval(refreshHome, 4000);
 }
