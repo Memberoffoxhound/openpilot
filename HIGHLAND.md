@@ -9,7 +9,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 ## Params
 
 | Param | Default | Meaning |
-|---|---|---|
+|---|---|
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
@@ -34,6 +34,17 @@ A 2026 Model 3 Highland fingerprints as `TESLA_MODEL_3`. Stock master sets `alph
 - Change requests an onroad cycle (`OnroadCycleRequested`) so panda safety reinits.
 
 Tesla stock ACC until this is on. Experimental is gated on openpilot long.
+
+## vSlam tracker
+
+`vslam_d` (onroad only) logs every cruise-set drop ≥ 6 mph. Observe-only — no panda / actuation change.
+
+| Path | Role |
+|---|---|
+| `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time) |
+| `/data/vslam/traces/<id>.json` | 60s vCruise vs planner vPlan + GPS |
+
+C4: Settings → vSlam (list + sparkline). LAN: deviceweb `:8088` → **vSlam tracker**. Map is green when nominal, yellow→red during the slam (yellow = slowest slam speed, red = highest in the window).
 
 ## Screenshots / LAN
 

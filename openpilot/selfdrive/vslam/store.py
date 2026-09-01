@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path("/data/vslam")
+EVENTS_PATH = ROOT / "events.jsonl"
+TRACE_DIR = ROOT / "traces"
+MAX_EVENTS = 400
+
+
+def ensure() -> None:
+  TRACE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_events(limit: int = 200) -> list[dict]:
+  if not EVENTS_PATH.is_file():
+    return []
+  out: list[dict] = []
+  try:
+    with EVENTS_PATH.open("r", encoding="utf-8") as f:
+      for line in f:
+        line = line.strip()
+        if not line:
+          continue
+        try:
+          ev = json.loads(line)
+        except json.JSONDecodeError:
+          continue
+        if isinstance(ev, dict) and ev.get("id"):
+          out.append(ev)
+  except OSError:
+    return []
+  return out[-limit:]
+
+
+def append_event(ev: dict) -> None:
+  ensure()
+  with EVENTS_PATH.open("a", encoding="utf-8") as f:
+    f.write(json.dumps(ev, separators=(",", ":")) + "\n")
+  events = load_events(MAX_EVENTS + 80)
+  if len(events) > MAX_EVENTS:
+    keep = events[-MAX_EVENTS:]
+    with EVENTS_PATH.open("w", encoding="utf-8") as f:
+      for e in keep:
+        f.write(json.dumps(e, separators=(",", ":")) + "\n")
+    keep_ids = {e["id"] for e in keep}
+    for p in TRACE_DIR.glob("*.json"):
+      if p.stem not in keep_ids:
+        try:
+          p.unlink()
+        except OSError:
+          pass
+
+
+def write_trace(eid: str, samples: list[dict]) -> None:
+  ensure()
+  path = TRACE_DIR / f"{eid}.json"
+  path.write_text(json.dumps({"id": eid, "samples": samples}, separators=(",", ":")), encoding="utf-8")
+
+
+def load_trace(eid: str) -> dict:
+  path = TRACE_DIR / f"{eid}.json"
+  if not path.is_file():
+    return {"id": eid, "samples": []}
+  try:
+    obj = json.loads(path.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError):
+    return {"id": eid, "samples": []}
+  if not isinstance(obj, dict):
+    return {"id": eid, "samples": []}
+  obj.setdefault("id", eid)
+  obj.setdefault("samples", [])
+  return obj
