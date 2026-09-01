@@ -18,7 +18,7 @@ from cereal import messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, fire_logged_alert, write_trace
+from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, fire_logged_alert, is_enabled, write_trace
 
 MPH = 2.2369362920544
 SLAM_MPH = 6.0
@@ -222,6 +222,11 @@ class VSlamD:
       EVENTS_PATH.write_text("\n".join(out) + "\n", encoding="utf-8")
 
   def tick(self, now: float) -> None:
+    if not is_enabled(self.params):
+      if self.active is not None:
+        self.active = None
+      self.prev_v = None
+      return
     s = self.sample(now)
     if s is None:
       return
