@@ -190,7 +190,6 @@ class TogglesLayoutMici(NavScroller):
     self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"])
     self._experimental_btn = BigToggle("experimental mode", initial_state=ui_state.params.get_bool("ExperimentalMode"),
                                        toggle_callback=self._on_experimental_mode)
-    self._soft_landing_btn = BigParamControl("soft landing", "SoftCruiseReturn")
     # Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
     self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
                              toggle_callback=self._on_alc)
@@ -208,7 +207,6 @@ class TogglesLayoutMici(NavScroller):
       self._vslam_btn,
       self._personality_toggle,
       self._experimental_btn,
-      self._soft_landing_btn,
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
@@ -220,7 +218,6 @@ class TogglesLayoutMici(NavScroller):
     # Toggle lists
     self._refresh_toggles = (
       ("ExperimentalMode", self._experimental_btn),
-      ("SoftCruiseReturn", self._soft_landing_btn),
       ("AutoLaneChangeEnabled", self._alc_btn),
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
@@ -261,13 +258,11 @@ class TogglesLayoutMici(NavScroller):
       if ui_state.has_longitudinal_control:
         self._experimental_btn.set_visible(True)
         self._personality_toggle.set_visible(True)
-        self._soft_landing_btn.set_visible(True)
       else:
         # no long for now
         self._experimental_btn.set_visible(False)
         self._experimental_btn.set_checked(False)
         self._personality_toggle.set_visible(False)
-        self._soft_landing_btn.set_visible(False)
         ui_state.params.remove("ExperimentalMode")
 
     # Refresh toggles from params to mirror external changes
