@@ -19,6 +19,7 @@ SKIP = {"boot", "clips", "screenshots"}
 CACHE_VER = 1
 HOT_SEC = 120.0
 CACHE_KEEP_SEC = 200 * 86400
+STATS_LOOKBACK_SEC = 3 * 86400
 CACHE_LOCK = Path("/data/trip_cache.lock")
 
 
@@ -49,6 +50,14 @@ def _bounds() -> tuple[datetime, datetime, datetime]:
   sun = now - timedelta(days=(now.weekday() + 1) % 7)
   week0 = sun.replace(hour=0, minute=0, second=0, microsecond=0)
   return now, day0, week0
+
+
+def _offroad() -> bool:
+  try:
+    from openpilot.common.params import Params
+    return bool(Params().get_bool("IsOffroad"))
+  except Exception:
+    return True
 
 
 def _qlog(seg: Path) -> Path | None:
@@ -132,7 +141,7 @@ def _read_qlog(path: Path) -> tuple[float, float, float, float] | None:
   for msg in lr:
     n += 1
     if n % 400 == 0:
-      time.sleep(0)
+      time.sleep(0.002)
     which = msg.which()
     mono = msg.logMonoTime / 1e9
     if origin_wall is None:
@@ -200,7 +209,7 @@ def _fill_seg_cache(lookback_sec: float | None = None) -> int:
     if _cache_hit(cache, name, sz, mt) is not None:
       continue
     got = _read_qlog(q)
-    time.sleep(0.01)
+    time.sleep(0.05)
     if got is None:
       continue
     t0, meters, eng, streak = got
@@ -218,12 +227,30 @@ def _fill_seg_cache(lookback_sec: float | None = None) -> int:
   return wrote
 
 
-def cache_segments_idle() -> None:
-  """Parked, after a drive. Fill the qlog segment cache, then rebuild the one stats cache."""
+def _fold() -> None:
+  from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
+  fold_stats_history()
+
+
+def _with_cache_lock() -> bool:
   try:
     fd = os.open(CACHE_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     os.close(fd)
+    return True
   except FileExistsError:
+    return False
+
+
+def _unlock() -> None:
+  try:
+    CACHE_LOCK.unlink()
+  except FileNotFoundError:
+    pass
+
+
+def cache_segments_idle() -> None:
+  """Parked, after a drive. Fill the qlog segment cache, then rebuild the one stats cache."""
+  if not _with_cache_lock():
     return
   try:
     n = _fill_seg_cache()
@@ -232,28 +259,45 @@ def cache_segments_idle() -> None:
     time.sleep(HOT_SEC + 5.0)
     n += _fill_seg_cache()
     n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
-    from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
-    fold_stats_history()
+    _fold()
     from openpilot.common.swaglog import cloudlog
     cloudlog.info(f"trip_cache wrote={n}")
   except Exception:
     from openpilot.common.swaglog import cloudlog
     cloudlog.exception("trip cache")
   finally:
-    try:
-      CACHE_LOCK.unlink()
-    except FileNotFoundError:
-      pass
+    _unlock()
 
 
 def _rebuild() -> None:
-  _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
-  from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
-  fold_stats_history()
+  """Statistics / boot. Recent qlogs first, fold, then the long scan only if parked."""
+  from openpilot.common.swaglog import cloudlog
+  if not _with_cache_lock():
+    # Park cache already reading qlogs. Fold whatever is on disk.
+    try:
+      _fold()
+    except Exception:
+      cloudlog.exception("trip rebuild fold-only")
+    return
+  try:
+    n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
+    _fold()
+    if _offroad():
+      n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
+      _fold()
+    cloudlog.info(f"trip_rebuild wrote={n} offroad={_offroad()}")
+  except Exception:
+    cloudlog.exception("trip rebuild")
+  finally:
+    _unlock()
 
 
 if __name__ == "__main__":
   import sys
+  try:
+    os.nice(15)
+  except OSError:
+    pass
   kind = sys.argv[1] if len(sys.argv) > 1 else "cache"
   try:
     if kind in ("seed", "stats"):
