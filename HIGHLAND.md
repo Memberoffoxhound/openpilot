@@ -25,6 +25,7 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 | `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
 
 Chicago local for day/week. UI thread never LogReader.
+Today keeps a `pending` overlay across park and new routes until the qlog fold absorbs those miles. Park cache waits `HOT_SEC+5` (125s) so the drive that just ended is readable.
 
 ## Alpha longitudinal (stock)
 
