@@ -227,7 +227,9 @@ def cache_segments_idle() -> None:
     return
   try:
     n = _fill_seg_cache()
-    time.sleep(45.0)
+    # HOT_SEC skips qlogs written in the last 2 minutes. Wait past that
+    # so the drive that just ended is in the cache before fold zeros live.
+    time.sleep(HOT_SEC + 5.0)
     n += _fill_seg_cache()
     n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
     from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
