@@ -84,9 +84,9 @@ class TogglesLayout(Widget):
         False,
       ),
       "SoftCruiseReturn": (
-        lambda: tr("Soft Return to Set Speed"),
+        lambda: tr("Soft Landing"),
         DESCRIPTIONS["SoftCruiseReturn"],
-        "speed_limit.png",
+        "disengage_on_accelerator.png",
         False,
       ),
       "AutoLaneChangeEnabled": (
