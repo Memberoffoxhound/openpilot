@@ -5,6 +5,9 @@ widgets read. Completed miles come from qlogs (via the segment
 cache). The current drive is a live overlay that is never written
 into days[]. Fold rebuilds days[] from the segment cache, so a
 segment cannot be counted twice.
+
+Pending holds completed-route miles that days[] does not have yet
+(new route, or a fold that ran before hot qlogs were readable).
 """
 from __future__ import annotations
 
@@ -37,6 +40,10 @@ def empty_live() -> dict:
   return {"route": "", "m": 0.0, "e": 0.0, "streak_m": 0.0}
 
 
+def empty_pending() -> dict:
+  return {"m": 0.0, "e": 0.0}
+
+
 def empty_stats() -> dict:
   return {
     "v": STATS_VER,
@@ -48,6 +55,7 @@ def empty_stats() -> dict:
     "max_streak_m": 0.0,
     "max_day_streak": 0,
     "live": empty_live(),
+    "pending": empty_pending(),
   }
 
 
@@ -79,6 +87,22 @@ def _normalize_live(raw) -> dict:
   return live
 
 
+def _normalize_pending(raw) -> dict:
+  pending = empty_pending()
+  if not isinstance(raw, dict):
+    return pending
+  pending["m"] = max(0.0, _f(raw, "m"))
+  pending["e"] = max(0.0, _f(raw, "e"))
+  return pending
+
+
+def _add_pending(dst: dict, meters: float, eng: float) -> dict:
+  pending = _normalize_pending(dst)
+  pending["m"] = _f(pending, "m") + max(0.0, float(meters or 0))
+  pending["e"] = _f(pending, "e") + max(0.0, float(eng or 0))
+  return pending
+
+
 def _migrate_poison(st: dict) -> dict:
   """Stamp current schema version. Never drop days or lifetime totals."""
   st["v"] = STATS_VER
@@ -89,6 +113,7 @@ def _migrate_poison(st: dict) -> dict:
   if not isinstance(st.get("folded"), list):
     st["folded"] = []
   st["live"] = _normalize_live(st.get("live"))
+  st["pending"] = _normalize_pending(st.get("pending"))
   st["life_m"] = _f(st, "life_m")
   st["life_e"] = _f(st, "life_e")
   st["max_streak_m"] = _f(st, "max_streak_m")
@@ -119,6 +144,7 @@ def load_stats() -> dict:
         st["months"] = {}
       st["max_day_streak"] = int(st.get("max_day_streak") or 0)
       st["live"] = _normalize_live(st.get("live"))
+      st["pending"] = _normalize_pending(st.get("pending"))
       try:
         ver = int(st.get("v") or 0)
       except (TypeError, ValueError):
@@ -130,6 +156,7 @@ def load_stats() -> dict:
     pass
   with _lock:
     disk_live = _normalize_live(st.get("live"))
+    st["pending"] = _normalize_pending(st.get("pending"))
     if _live_mem is not None:
       st = dict(st)
       # Fold subprocess zeros disk live when parked. Drop the UI overlay
@@ -153,6 +180,7 @@ def save_stats(st: dict) -> None:
   st = dict(st)
   st["v"] = STATS_VER
   st["live"] = _normalize_live(st.get("live"))
+  st["pending"] = _normalize_pending(st.get("pending"))
   tmp = str(STATS_PATH) + ".tmp"
   with open(tmp, "w", encoding="utf-8") as f:
     json.dump(st, f)
@@ -232,8 +260,11 @@ def add_live(meters: float, eng: float, route: str, dt_streak: float) -> None:
     load_stats()
   with _lock:
     live = dict(_live_mem) if _live_mem is not None else empty_live()
+    pending = _normalize_pending((_cache or {}).get("pending"))
     route = str(route or "")
     if route and route != live.get("route"):
+      # Keep the finished route on screen until fold lands it in days[].
+      pending = _add_pending(pending, _f(live, "m"), _f(live, "e"))
       live = empty_live()
       live["route"] = route
     elif not live.get("route"):
@@ -248,23 +279,25 @@ def add_live(meters: float, eng: float, route: str, dt_streak: float) -> None:
     _live_dirty = True
     if _cache is not None:
       _cache["live"] = live
+      _cache["pending"] = pending
       _cache["max_streak_m"] = max(_f(_cache, "max_streak_m"), _f(live, "streak_m"))
 
 
 def flush_live() -> None:
-  """Persist this-drive overlay. Skip while parked so a fold cannot be overwritten."""
+  """Persist this-drive overlay and pending. Skip live write while parked so a fold cannot be overwritten."""
   global _live_dirty
-  if _is_offroad():
-    return
   with _lock:
     dirty = _live_dirty
     live = dict(_live_mem) if _live_mem is not None else None
+    pending = _normalize_pending((_cache or {}).get("pending"))
     _live_dirty = False
-  if not dirty or live is None:
+  if not dirty:
     return
   st = load_stats()
-  st["live"] = live
-  st["max_streak_m"] = max(_f(st, "max_streak_m"), _f(live, "streak_m"))
+  if not _is_offroad() and live is not None:
+    st["live"] = live
+    st["max_streak_m"] = max(_f(st, "max_streak_m"), _f(live, "streak_m"))
+  st["pending"] = pending
   save_stats(st)
 
 
@@ -303,6 +336,11 @@ def _fold_stats_history() -> None:
   prev_months = st.get("months") or {}
   offroad = _is_offroad()
   route = _current_route()
+  today = day_id()
+  prev_today_m = _f(prev_days.get(today) or {}, "m")
+  prev_today_e = _f(prev_days.get(today) or {}, "e")
+  prev_live = _normalize_live(st.get("live"))
+  prev_pending = _normalize_pending(st.get("pending"))
   min_mt = chicago_now().timestamp() - CACHE_KEEP_SEC
   lookback = (chicago_now().date() - timedelta(days=int(CACHE_KEEP_SEC / 86400) + 2)).isoformat()
   keep_after = (chicago_now().date() - timedelta(days=DAY_KEEP)).isoformat()
@@ -377,9 +415,20 @@ def _fold_stats_history() -> None:
   life_m = max(life_m, prev_life_m, sum(_f(v, "m") for v in days.values()))
   life_e = max(life_e, prev_life_e, sum(_f(v, "e") for v in days.values()))
 
-  live = _normalize_live(st.get("live"))
+  live = prev_live
+  # Miles the UI was already showing for today. Keep any the cache missed.
+  held_m = prev_today_m + _f(prev_pending, "m")
+  held_e = prev_today_e + _f(prev_pending, "e")
   if offroad:
+    held_m += _f(live, "m")
+    held_e += _f(live, "e")
     live = empty_live()
+  new_today_m = _f(days.get(today) or {}, "m")
+  new_today_e = _f(days.get(today) or {}, "e")
+  pending = {
+    "m": max(0.0, held_m - new_today_m),
+    "e": max(0.0, held_e - new_today_e),
+  }
 
   st = {
     "v": STATS_VER,
@@ -391,11 +440,12 @@ def _fold_stats_history() -> None:
     "max_streak_m": max_s,
     "max_day_streak": int(st.get("max_day_streak") or 0),
     "live": live,
+    "pending": pending,
   }
   _remember_streak(st, days)
   save_stats(st)
   from openpilot.common.swaglog import cloudlog
-  cloudlog.info(f"trip_stats rebuilt segs={len(folded)} new={n_new} days={len(days)} life_m={life_m:.1f}")
+  cloudlog.info(f"trip_stats rebuilt segs={len(folded)} new={n_new} days={len(days)} life_m={life_m:.1f} pending_m={pending['m']:.1f}")
 
 
 def _pct(eng: float, meters: float) -> int:
@@ -429,11 +479,13 @@ def stats_view(trip: dict | None = None) -> dict:
   days = {str(k): {"m": _f(v, "m"), "e": _f(v, "e")}
           for k, v in (st.get("days") or {}).items() if isinstance(v, dict)}
   live = _normalize_live(st.get("live"))
+  pending = _normalize_pending(st.get("pending"))
   lm, le = _f(live, "m"), _f(live, "e")
+  pm, pe = _f(pending, "m"), _f(pending, "e")
   today = day_id()
   b = _day_bucket(days, today)
-  today_m = _f(b, "m") + lm
-  today_e = _f(b, "e") + le
+  today_m = _f(b, "m") + lm + pm
+  today_e = _f(b, "e") + le + pe
   b["m"], b["e"] = today_m, today_e
 
   week_ids = _week_dates()
@@ -446,8 +498,8 @@ def stats_view(trip: dict | None = None) -> dict:
     week_m += m
     week_e += e
 
-  life_m = max(_f(st, "life_m") + lm, sum(_f(d, "m") for d in days.values()))
-  life_e = max(_f(st, "life_e") + le, sum(_f(d, "e") for d in days.values()))
+  life_m = max(_f(st, "life_m") + lm + pm, sum(_f(d, "m") for d in days.values()))
+  life_e = max(_f(st, "life_e") + le + pe, sum(_f(d, "e") for d in days.values()))
 
   current, window = _streaks(days)
   streak_days = max(int(st.get("max_day_streak") or 0), current, window)
