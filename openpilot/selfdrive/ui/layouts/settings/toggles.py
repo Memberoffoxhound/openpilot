@@ -23,8 +23,9 @@ DESCRIPTIONS = {
   ),
   "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage openpilot."),
   "SoftCruiseReturn": tr_noop(
-    "After you accelerate past set speed and lift, ease back down instead of biting regen. " +
-    "Raising set speed while coming down is used immediately. " +
+    "After you accelerate past set speed and lift, keep that speed as the cruise target " +
+    "instead of biting regen back to the old set speed. Rolling the wheel changes Tesla's set speed and wins. " +
+    "If you later sit above the live set speed, the return is a slow coast, not a slam. " +
     "Lead braking is unchanged. Openpilot longitudinal only — Tesla TACC still slams on its own."
   ),
   "LongitudinalPersonality": tr_noop(
@@ -260,6 +261,10 @@ class TogglesLayout(Widget):
     # refresh toggles from params to mirror external changes
     for param in self._toggle_defs:
       self._toggles[param].action_item.set_state(self._params.get_bool(param))
+
+    # TACC / no OP long: Soft Landing cannot act. Keep the row visible but inert.
+    if ui_state.CP is not None and not ui_state.has_longitudinal_control:
+      self._toggles["SoftCruiseReturn"].action_item.set_enabled(False)
 
     # these toggles need restart, block while engaged
     for toggle_def in self._toggle_defs:
