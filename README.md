@@ -26,7 +26,6 @@ Theme → onroad UI is **stock** or **custom**. Custom paints Tesla Autopilot-bl
 Stock HUD is one tap away.
 
 - Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
-- Soft Landing — on by default; after a pedal overshoot on openpilot long, ease back to set speed instead of a regen bite. Live set-speed increases are honored mid-return. Hidden on TACC.
 - Cooperative steering — on.
 - Scroll-wheel disengage — stalkless cancel.
 
