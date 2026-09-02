@@ -11,9 +11,10 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 | Param | Default | Meaning |
 |---|---|---|
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph after Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
+| `SoftCruiseReturn` | on | Soft Landing. After a pedal overshoot, ease back to set speed instead of a regen bite. Live set-speed increases are honored mid-return. OP long only. |
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
-| `VSlamEnabled` | on | Green-pill toggle. Off stops detect + log + toast. File `/data/vslam/enabled`. |
+| `VSlamEnabled` | on | Green-pill logger toggle. Off stops detect + log + toast. File `/data/vslam/enabled`. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
 
 ## Trip files
