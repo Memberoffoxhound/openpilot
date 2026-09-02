@@ -3,6 +3,7 @@ import numpy as np
 
 from opendbc.car.structs import car
 from openpilot.common.constants import CV
+from openpilot.common.params import Params
 
 
 # WARNING: this value was determined based on the model's training distribution,
@@ -27,6 +28,9 @@ CRUISE_INTERVAL_SIGN = {
   ButtonType.decelCruise: -1,
 }
 
+# Lift-off adopt: take current speed as the cruise target after a pedal overshoot.
+ADOPT_DEADZONE_MS = 0.45  # ~1 mph
+
 
 class VCruiseHelper:
   def __init__(self, CP):
@@ -36,6 +40,10 @@ class VCruiseHelper:
     self.v_cruise_kph_last = 0
     self.button_timers = {ButtonType.decelCruise: 0, ButtonType.accelCruise: 0}
     self.button_change_states = {btn: {"standstill": False, "enabled": False} for btn in self.button_timers}
+    self.params = Params()
+    self.gas_pressed_last = False
+    self.adopted_v_cruise_kph = 0.0
+    self.pcm_v_cruise_kph_last = 0.0
 
   @property
   def v_cruise_initialized(self):
@@ -48,10 +56,12 @@ class VCruiseHelper:
       if not self.CP.pcmCruise:
         # if stock cruise is completely disabled, then we can use our own set speed logic
         self._update_v_cruise_non_pcm(CS, enabled, is_metric)
+        self._maybe_adopt_lift_speed(CS, enabled, is_metric, pcm_kph=self.v_cruise_kph)
         self.v_cruise_cluster_kph = self.v_cruise_kph
         self.update_button_timers(CS, enabled)
       else:
-        self.v_cruise_kph = CS.cruiseState.speed * CV.MS_TO_KPH
+        pcm_kph = CS.cruiseState.speed * CV.MS_TO_KPH
+        self.v_cruise_kph = pcm_kph
         self.v_cruise_cluster_kph = CS.cruiseState.speedCluster * CV.MS_TO_KPH
         if CS.cruiseState.speed == 0:
           self.v_cruise_kph = V_CRUISE_UNSET
@@ -59,9 +69,39 @@ class VCruiseHelper:
         elif CS.cruiseState.speed == -1:
           self.v_cruise_kph = -1
           self.v_cruise_cluster_kph = -1
+        else:
+          self._maybe_adopt_lift_speed(CS, enabled, is_metric, pcm_kph=pcm_kph)
     else:
       self.v_cruise_kph = V_CRUISE_UNSET
       self.v_cruise_cluster_kph = V_CRUISE_UNSET
+      self.adopted_v_cruise_kph = 0.0
+
+    self.gas_pressed_last = bool(CS.gasPressed)
+
+  def _maybe_adopt_lift_speed(self, CS, enabled, is_metric, pcm_kph):
+    # OP long only. Tesla cluster DI_digitalSpeed stays on the PCM value; comma HUD + planner use this.
+    if not self.CP.openpilotLongitudinalControl or not self.params.get_bool("SoftCruiseReturn"):
+      self.adopted_v_cruise_kph = 0.0
+      return
+    if not enabled or self.v_cruise_kph in (V_CRUISE_UNSET, -1):
+      self.adopted_v_cruise_kph = 0.0
+      return
+
+    inc = 1.0 if is_metric else IMPERIAL_INCREMENT
+    v_ego_kph = CS.vEgo * CV.MS_TO_KPH
+
+    # Any real Tesla/PCM set-speed change drops the shadow (user rolled the wheel).
+    if self.pcm_v_cruise_kph_last and abs(pcm_kph - self.pcm_v_cruise_kph_last) >= (inc * 0.5):
+      self.adopted_v_cruise_kph = 0.0
+    self.pcm_v_cruise_kph_last = pcm_kph
+
+    gas_falling = self.gas_pressed_last and not CS.gasPressed
+    if gas_falling and (v_ego_kph - pcm_kph) > (ADOPT_DEADZONE_MS * CV.MS_TO_KPH):
+      self.adopted_v_cruise_kph = float(np.clip(round(v_ego_kph / inc) * inc, V_CRUISE_MIN, V_CRUISE_MAX))
+
+    if self.adopted_v_cruise_kph > 0:
+      self.v_cruise_kph = max(pcm_kph, self.adopted_v_cruise_kph)
+      self.v_cruise_cluster_kph = self.v_cruise_kph
 
   def _update_v_cruise_non_pcm(self, CS, enabled, is_metric):
     # handle button presses. TODO: this should be in state_control, but a decelCruise press
@@ -136,3 +176,4 @@ class VCruiseHelper:
       self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
 
     self.v_cruise_cluster_kph = self.v_cruise_kph
+    self.adopted_v_cruise_kph = 0.0
