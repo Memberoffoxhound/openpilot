@@ -17,8 +17,6 @@
     pc: null,
     dc: null,
     streams: [],
-    map: null,
-    marker: null,
     audio: { ctx: null, source: null, next: 0, es: null },
     poll: null,
     mounted: false,
@@ -34,6 +32,12 @@
   function speedNum(ms, metric) {
     const v = metric ? (ms || 0) * 3.6 : (ms || 0) * 2.236936;
     return Math.max(0, Math.round(v));
+  }
+
+  function carPos() {
+    const lat = LV.live.lat, lon = LV.live.lon;
+    if (lat == null || lon == null || Math.abs(lat) < 1e-4) return null;
+    return { lat, lon, bearing: LV.live.bearing, source: "car" };
   }
 
   function html() {
@@ -109,41 +113,11 @@
   function paintMap() {
     const el = document.getElementById("liveMap");
     if (!el) return;
-    const lat = LV.live.lat, lon = LV.live.lon;
-    if (typeof window.L === "undefined") {
-      el.innerHTML = `<div class="live-map-fallback">${lat != null ? lat.toFixed(5) + ", " + lon.toFixed(5) : "NO GPS"}</div>`;
-      return;
-    }
-    const LL = window.L;
-    if (!lat || !lon || Math.abs(lat) < 1e-4) {
-      if (!LV.map) el.innerHTML = `<div class="live-map-fallback">WAITING FOR GPS</div>`;
-      return;
-    }
-    if (!LV.map) {
-      el.innerHTML = "";
-      LV.map = LL.map(el, { zoomControl: false, attributionControl: false, dragging: true });
-      LL.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        maxZoom: 20, subdomains: "abcd",
-      }).addTo(LV.map);
-      const pane = LV.map.getPane("tilePane");
-      if (pane) pane.style.filter = "grayscale(1) contrast(1.05) brightness(1.08)";
-      LV.marker = LL.circleMarker([lat, lon], {
-        radius: 6, color: "#3e8ceb", weight: 2, fillColor: "#3e8ceb", fillOpacity: .95,
-      }).addTo(LV.map);
-      LV.map.setView([lat, lon], 15);
-    } else {
-      LV.marker.setLatLng([lat, lon]);
-      const c = LV.map.getCenter();
-      if (LL.latLng(lat, lon).distanceTo(c) > 40) LV.map.panTo([lat, lon], { animate: true });
-    }
+    if (window.LiveMap) LiveMap.paint(el, carPos());
   }
 
   function killMap() {
-    if (LV.map) {
-      try { LV.map.remove(); } catch (e) {}
-      LV.map = null;
-      LV.marker = null;
-    }
+    if (window.LiveMap) LiveMap.kill();
   }
 
   function attachTracks(streams) {
@@ -367,7 +341,7 @@
       const stage = document.getElementById("liveStage");
       if (stage) stage.classList.toggle("rot90", LV.rotate);
       rerenderDock();
-      if (LV.map) setTimeout(() => { try { LV.map.invalidateSize(); } catch (e) {} }, 80);
+      setTimeout(paintMap, 80);
     };
     const fs = document.getElementById("liveFs");
     if (fs) fs.onclick = () => {
@@ -395,6 +369,7 @@
     paintHud();
     connect();
     if (LV.mic) startMic();
+    if (window.LiveMap) LiveMap.startDeviceGps(() => paintMap());
     if (LV.poll) clearInterval(LV.poll);
     LV.poll = setInterval(pollLive, 1000);
     pollLive();
@@ -403,6 +378,7 @@
   function unmount() {
     LV.mounted = false;
     if (LV.poll) { clearInterval(LV.poll); LV.poll = null; }
+    if (window.LiveMap) LiveMap.stopDeviceGps();
     stopMic();
     teardownPc();
     killMap();
