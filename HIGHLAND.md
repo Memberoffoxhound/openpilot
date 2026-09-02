@@ -57,6 +57,16 @@ On detect, C4 throws a 3s orange `userPrompt` toast: **vSlam logged**. Observe-o
 
 Hold display 3s → `/data/media/0/screenshots`. `deviceweb` on **8088**, no auth.
 
+### Live cameras
+
+Hamburger → **Live cameras**. LAN WebRTC viewer for comma 4 feeds.
+
+- Fcam (`road`) / Ecam (`wideRoad`) / Dcam (`driver`) / Combo (fcam + dcam postage stamp)
+- Tesla-style HUD: speed (IsMetric), upper-right map, SEXYPILOT wordmark + Engaged/Disengaged
+- Sets `IsLiveStreaming` so `webrtcd` + `stream_encoderd` come up. Signaling is proxied `deviceweb → 127.0.0.1:5001`.
+- Mic toggle plays `rawAudioData` (16 kHz PCM) over SSE. Onroad only — `micd` is an iscar process.
+- Portrait Rotate + Full for phone screen-share. Same PWA as the rest of deviceweb.
+
 ## Safety
 
 Does not touch driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).

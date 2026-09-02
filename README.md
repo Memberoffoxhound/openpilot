@@ -75,7 +75,7 @@ Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ig
 
 Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
 
-On the LAN: `http://<comma-ip>:8088`. Work in progress. Statistics plus a screenshot capture tool and gallery. Way more to come here. No auth — local network only.
+On the LAN: `http://<comma-ip>:8088`. Statistics, vSlam tracker, screenshots, and **Live cameras** (WebRTC fcam/ecam/dcam + Tesla overlay). No auth — local network only.
 
 ## Tesla compatibility
 
