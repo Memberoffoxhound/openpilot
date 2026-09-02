@@ -23,9 +23,8 @@ DESCRIPTIONS = {
   ),
   "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage openpilot."),
   "SoftCruiseReturn": tr_noop(
-    "After you accelerate past set speed and lift, keep that speed as the cruise target " +
-    "instead of biting regen back to the old set speed. Rolling the wheel changes Tesla's set speed and wins. " +
-    "If you later sit above the live set speed, the return is a slow coast, not a slam. " +
+    "After you accelerate past set speed and lift, ease back down instead of biting regen. " +
+    "Raising set speed while coming down is used immediately. " +
     "Lead braking is unchanged. Openpilot longitudinal only — Tesla TACC still slams on its own."
   ),
   "LongitudinalPersonality": tr_noop(
