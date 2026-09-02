@@ -249,16 +249,14 @@ def _unlock() -> None:
 
 
 def cache_segments_idle() -> None:
-  """Parked, after a drive. Fill the qlog segment cache, then rebuild the one stats cache."""
+  """Parked, after a drive. Commit overlays first so a short park still lands miles."""
   if not _with_cache_lock():
     return
   try:
-    n = _fill_seg_cache()
-    # HOT_SEC skips qlogs written in the last 2 minutes. Wait past that
-    # so the drive that just ended is in the cache before fold zeros live.
-    time.sleep(HOT_SEC + 5.0)
-    n += _fill_seg_cache()
-    n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
+    # Fold before any LogReader work so live/pending land in days[] even if
+    # the car cuts power before hot qlogs are readable.
+    _fold()
+    n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
     _fold()
     from openpilot.common.swaglog import cloudlog
     cloudlog.info(f"trip_cache wrote={n}")
@@ -270,7 +268,7 @@ def cache_segments_idle() -> None:
 
 
 def _rebuild() -> None:
-  """Statistics / boot. Recent qlogs first, fold, then the long scan only if parked."""
+  """Statistics / boot. Fold first, recent qlogs, then the long scan only if parked."""
   from openpilot.common.swaglog import cloudlog
   if not _with_cache_lock():
     # Park cache already reading qlogs. Fold whatever is on disk.
@@ -280,6 +278,7 @@ def _rebuild() -> None:
       cloudlog.exception("trip rebuild fold-only")
     return
   try:
+    _fold()
     n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
     _fold()
     if _offroad():
