@@ -25,7 +25,8 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 | `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
 
 Chicago local for day/week. UI thread never LogReader.
-Today keeps a `pending` overlay across park and new routes until the qlog fold absorbs those miles. Park cache waits `HOT_SEC+5` (125s) so the drive that just ended is readable.
+`live` and `pending` are stamped with a Chicago day. Home only adds them to Today when that stamp matches today.
+Offroad fold commits leftover overlay into `days[]` and clears `pending`/`live` immediately. The device often loses power a few minutes after park, so park cache does not wait `HOT_SEC` or scan 200 days of qlogs. Recent qlogs (3 days) are folded after the commit if power lasts. Boot / statistics still do the long scan when parked.
 
 ## Alpha longitudinal (stock)
 
