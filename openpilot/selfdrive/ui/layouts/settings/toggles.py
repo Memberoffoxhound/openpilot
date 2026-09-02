@@ -22,11 +22,6 @@ DESCRIPTIONS = {
     "Your attention is required at all times to use this feature."
   ),
   "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage openpilot."),
-  "SoftCruiseReturn": tr_noop(
-    "After you accelerate past set speed and lift, ease back down instead of biting regen. " +
-    "Raising set speed while coming down is used immediately. " +
-    "Lead braking is unchanged. Openpilot longitudinal only — Tesla TACC still slams on its own."
-  ),
   "LongitudinalPersonality": tr_noop(
     "Standard is recommended. In aggressive mode, openpilot will follow lead cars closer and be more aggressive with the gas and brake. " +
     "In relaxed mode openpilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
@@ -80,12 +75,6 @@ class TogglesLayout(Widget):
       "DisengageOnAccelerator": (
         lambda: tr("Disengage on Accelerator Pedal"),
         DESCRIPTIONS["DisengageOnAccelerator"],
-        "disengage_on_accelerator.png",
-        False,
-      ),
-      "SoftCruiseReturn": (
-        lambda: tr("Soft Landing"),
-        DESCRIPTIONS["SoftCruiseReturn"],
         "disengage_on_accelerator.png",
         False,
       ),
@@ -231,13 +220,11 @@ class TogglesLayout(Widget):
         self._toggles["ExperimentalMode"].action_item.set_enabled(True)
         self._toggles["ExperimentalMode"].set_description(e2e_description)
         self._long_personality_setting.action_item.set_enabled(True)
-        self._toggles["SoftCruiseReturn"].action_item.set_enabled(True)
       else:
         # no long for now
         self._toggles["ExperimentalMode"].action_item.set_enabled(False)
         self._toggles["ExperimentalMode"].action_item.set_state(False)
         self._long_personality_setting.action_item.set_enabled(False)
-        self._toggles["SoftCruiseReturn"].action_item.set_enabled(False)
         self._params.remove("ExperimentalMode")
 
         unavailable = tr("Experimental mode is currently unavailable on this car since the car's stock ACC is used for longitudinal control.")
@@ -260,10 +247,6 @@ class TogglesLayout(Widget):
     # refresh toggles from params to mirror external changes
     for param in self._toggle_defs:
       self._toggles[param].action_item.set_state(self._params.get_bool(param))
-
-    # TACC / no OP long: Soft Landing cannot act. Keep the row visible but inert.
-    if ui_state.CP is not None and not ui_state.has_longitudinal_control:
-      self._toggles["SoftCruiseReturn"].action_item.set_enabled(False)
 
     # these toggles need restart, block while engaged
     for toggle_def in self._toggle_defs:
