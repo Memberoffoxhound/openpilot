@@ -1,0 +1,283 @@
+/* Live camera studio — Tesla-inspired overlay */
+
+body[data-page="live"] {
+  overflow: hidden;
+  height: 100dvh;
+  background: #000;
+}
+body[data-page="live"] .top { display: none; }
+body[data-page="live"] main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  height: 100dvh;
+  width: 100%;
+}
+
+.live {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  background: #050506;
+  color: #fff;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.live-stage {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 20%, #1a1c22 0%, #07080a 62%);
+  display: grid;
+  place-items: center;
+}
+.live-stage.rot90 {
+  transform: rotate(90deg);
+  width: 100dvh;
+  height: 100dvw;
+  left: 50%;
+  top: 50%;
+  margin-left: calc(-50dvh);
+  margin-top: calc(-50dvw);
+}
+
+.live-video,
+.live-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  display: block;
+}
+.live-video { position: absolute; inset: 0; }
+
+.live-pip {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(92px, calc(72px + env(safe-area-inset-bottom)));
+  width: min(28vw, 220px);
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 10px 28px rgba(0,0,0,.45);
+  background: #111;
+  z-index: 4;
+}
+.live-pip video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.live-pip .pip-lab {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .16em;
+  color: rgba(255,255,255,.78);
+}
+
+.live-empty {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 24px;
+  max-width: 22rem;
+}
+.live-empty b {
+  display: block;
+  font-family: Tesla, var(--sans);
+  letter-spacing: .16em;
+  font-size: 18px;
+  font-weight: 400;
+  margin-bottom: 10px;
+}
+.live-empty p { color: var(--dim); font-size: 14px; margin: 0; }
+
+.live-hud { pointer-events: none; position: absolute; inset: 0; z-index: 5; }
+
+.live-speed {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left));
+  top: max(14px, env(safe-area-inset-top));
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  text-shadow: 0 2px 16px rgba(0,0,0,.55);
+}
+.live-speed .n {
+  font-size: clamp(56px, 9vw, 92px);
+  font-weight: 300;
+  letter-spacing: -.06em;
+  line-height: .86;
+  font-variant-numeric: tabular-nums;
+}
+.live-speed .u {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .18em;
+  color: rgba(255,255,255,.62);
+  padding-bottom: 8px;
+}
+
+.live-map {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  top: max(14px, env(safe-area-inset-top));
+  width: min(34vw, 280px);
+  height: min(26vh, 190px);
+  border-radius: 14px;
+  overflow: hidden;
+  pointer-events: auto;
+  background: rgba(18,18,22,.55);
+  border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0,0,0,.28);
+}
+.live-map .leaflet-container { background: transparent; }
+.live-map-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  color: rgba(255,255,255,.55);
+  padding: 10px;
+}
+
+.live-mark {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left));
+  bottom: max(96px, calc(76px + env(safe-area-inset-bottom)));
+  text-shadow: 0 2px 18px rgba(0,0,0,.55);
+}
+.live-mark .wm {
+  font-family: Tesla, var(--sans);
+  font-size: clamp(16px, 2.6vw, 26px);
+  letter-spacing: .18em;
+  color: rgba(255,255,255,.42);
+  line-height: 1;
+}
+.live-mark .st {
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.38);
+  border-top: 1px solid rgba(255,255,255,.28);
+  padding-top: 6px;
+  display: inline-block;
+}
+.live-mark .st.on { color: #3e8ceb; border-color: rgba(62,140,235,.55); }
+body[data-theme="openpilot"] .live-mark .st.on { color: #00ff40; border-color: rgba(0,255,64,.5); }
+
+.live-dock {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.78) 36%);
+}
+.live-feeds {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+.feed {
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(16,16,20,.72);
+  backdrop-filter: blur(10px);
+  padding: 10px 8px 8px;
+  text-align: left;
+  min-height: 58px;
+}
+.feed.on {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+.feed .fn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.feed .fs {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: rgba(255,255,255,.48);
+}
+.feed.on .fs { color: #333; }
+.feed .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5c5c64;
+}
+.feed .dot.live { background: #30d158; box-shadow: 0 0 8px #30d158; }
+.feed .dot.wait { background: #ffd60a; }
+.feed .dot.off { background: #ff453a; }
+
+.live-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.live-tools .btn {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  background: rgba(16,16,20,.72);
+}
+.live-tools .btn.on { background: #fff; color: #000; border-color: #fff; }
+
+.live-menu {
+  pointer-events: auto;
+  position: absolute;
+  left: max(8px, env(safe-area-inset-left));
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 7;
+}
+.live-menu.icon-btn {
+  width: 40px;
+  height: 40px;
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(8px);
+}
+
+@media (min-width: 900px) {
+  .live-pip { width: 240px; }
+  .live-map { width: 300px; height: 210px; }
+  .feed { min-height: 64px; padding: 12px 12px 10px; }
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  .live-feeds { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .live-speed .n { font-size: 64px; }
+  .live-map { width: 42vw; height: 18vh; }
+}
