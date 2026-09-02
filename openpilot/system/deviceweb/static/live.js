@@ -11,7 +11,7 @@
     feed: "combo",
     status: { fcam: "off", ecam: "off", dcam: "off", combo: "off" },
     conn: "idle",
-    live: { speedMs: 0, engaged: false, metric: false, lat: null, lon: null, bearing: null, livestream: false, webrtc: false },
+    live: { speedMs: 0, engaged: false, metric: false, lat: null, lon: null, bearing: null, livestream: false, webrtc: false, mic: false },
     rotate: false,
     mic: false,
     pc: null,
@@ -42,9 +42,6 @@
     const engaged = !!LV.live.engaged;
     const feed = FEEDS.find((f) => f.id === LV.feed) || FEEDS[3];
     return `<div class="live" id="liveRoot">
-      <button type="button" class="live-menu icon-btn" id="liveMenu" aria-label="Open menu">
-        <span class="burger" aria-hidden="true"></span>
-      </button>
       <div class="live-stage${LV.rotate ? " rot90" : ""}" id="liveStage">
         <div class="live-video" id="liveMainWrap">
           <video id="liveMain" playsinline autoplay muted></video>
@@ -57,16 +54,16 @@
           <b>SEXYPILOT</b>
           <p id="liveMsg">Connecting cameras…</p>
         </div>
-      </div>
-      <div class="live-hud">
-        <div class="live-speed">
-          <span class="n" id="liveSpeed">${spd}</span>
-          <span class="u" id="liveUnit">${metric ? "KM/H" : "MPH"}</span>
-        </div>
-        <div class="live-map" id="liveMap" aria-label="Map"></div>
-        <div class="live-mark">
-          <div class="wm">SEXYPILOT</div>
-          <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "Engaged" : "Disengaged"}</div>
+        <div class="live-hud">
+          <div class="live-speed">
+            <span class="n" id="liveSpeed">${spd}</span>
+            <span class="u" id="liveUnit">${metric ? "KM/H" : "MPH"}</span>
+          </div>
+          <div class="live-map" id="liveMap" aria-label="Map"></div>
+          <div class="live-mark">
+            <div class="wm">SEXYPILOT</div>
+            <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "Engaged" : "Disengaged"}</div>
+          </div>
         </div>
       </div>
       <div class="live-dock">
@@ -81,6 +78,7 @@
           }).join("")}
         </div>
         <div class="live-tools">
+          <button type="button" class="btn" id="liveMenu">Menu</button>
           <button type="button" class="btn${LV.mic ? " on" : ""}" id="liveMic">Mic ${LV.mic ? "on" : "off"}</button>
           <button type="button" class="btn${LV.rotate ? " on" : ""}" id="liveRot">Rotate</button>
           <button type="button" class="btn" id="liveFs">Full</button>
@@ -128,9 +126,9 @@
         maxZoom: 20, subdomains: "abcd",
       }).addTo(LV.map);
       const pane = LV.map.getPane("tilePane");
-      if (pane) pane.style.filter = "grayscale(1) contrast(1.12) brightness(.92)";
+      if (pane) pane.style.filter = "grayscale(1) contrast(1.05) brightness(1.08)";
       LV.marker = LL.circleMarker([lat, lon], {
-        radius: 6, color: "#3e8ceb", weight: 2, fillColor: "#3e8ceb", fillOpacity: .9,
+        radius: 6, color: "#3e8ceb", weight: 2, fillColor: "#3e8ceb", fillOpacity: .95,
       }).addTo(LV.map);
       LV.map.setView([lat, lon], 15);
     } else {
@@ -369,6 +367,7 @@
       const stage = document.getElementById("liveStage");
       if (stage) stage.classList.toggle("rot90", LV.rotate);
       rerenderDock();
+      if (LV.map) setTimeout(() => { try { LV.map.invalidateSize(); } catch (e) {} }, 80);
     };
     const fs = document.getElementById("liveFs");
     if (fs) fs.onclick = () => {
@@ -388,6 +387,7 @@
   }
 
   function mount() {
+    if (LV.mounted) return;
     LV.mounted = true;
     const saved = localStorage.getItem("sexypilot.mic");
     LV.mic = saved === "1" || (saved === null && !!LV.live.mic);
