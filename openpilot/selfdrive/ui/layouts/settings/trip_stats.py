@@ -262,3 +262,14 @@ def _skip_name(name: str, route: str, offroad: bool, mt: float) -> bool:
   if (not offroad) and route and route in str(name):
     return True
   return False
+
+
+def _fold_stats_history() -> None:
+  from openpilot.selfdrive.ui.layouts.settings.trip_fold import run_fold
+  run_fold(load_stats, save_stats, _is_offroad, _current_route, _skip_name,
+           _merge_buckets, _streaks, STATS_VER, DAY_KEEP)
+
+
+def stats_view(trip: dict | None = None) -> dict:
+  from openpilot.selfdrive.ui.layouts.settings.trip_fold import run_view
+  return run_view(load_stats(), _is_offroad, _streaks)
