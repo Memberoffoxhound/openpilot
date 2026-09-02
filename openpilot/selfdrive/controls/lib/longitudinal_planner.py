@@ -13,12 +13,19 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import Longi
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
+from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
 J_CRUISE_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MIN = -1.2
+# Soft return after the driver has gone above set speed. Overspeed is live
+# v_ego - v_cruise, so rolling set speed up mid-return immediately eases off.
+SOFT_RETURN_DEADZONE = 0.3          # m/s (~0.7 mph)
+SOFT_RETURN_BP = [0.3, 2.0, 6.0]    # m/s over set speed
+SOFT_RETURN_V = [-0.15, -0.40, -0.70]
+SOFT_RETURN_JERK = 0.35             # m/s^3, first bite after pedal lift
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
@@ -33,7 +40,8 @@ def get_max_accel(v_ego):
 def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
 
-def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, accel_coast, allow_throttle):
+def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, accel_coast, allow_throttle,
+                     soft_return=False):
   max_accel = ACCEL_MAX if e2e else get_max_accel(v_ego)
 
   if not e2e:
@@ -46,8 +54,14 @@ def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, 
       coast_limit = np.interp(v_ego, [MIN_ALLOW_THROTTLE_SPEED, MIN_ALLOW_THROTTLE_SPEED*2], [max_accel, clipped_accel_coast])
       max_accel = min(max_accel, coast_limit)
 
-  target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, max_accel)
+  a_min = A_CRUISE_MIN
   j_cruise = np.interp(v_ego, A_CRUISE_MAX_BP, J_CRUISE_VALS)
+  overspeed = v_ego - v_cruise
+  if soft_return and overspeed > SOFT_RETURN_DEADZONE:
+    a_min = float(np.interp(overspeed, SOFT_RETURN_BP, SOFT_RETURN_V))
+    j_cruise = min(j_cruise, SOFT_RETURN_JERK)
+
+  target_accel = np.clip(v_cruise - v_ego, a_min, max_accel)
   target_accel = float(np.clip(target_accel, a_cruise_prev - j_cruise * dt, a_cruise_prev + j_cruise * dt))
 
   return target_accel
@@ -69,6 +83,7 @@ class LongitudinalPlanner:
     self.v_desired_trajectory = np.zeros(CONTROL_N)
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
+    self.params = Params()
 
   def update(self, sm):
     if len(sm['carControl'].orientationNED) == 3:
@@ -130,9 +145,10 @@ class LongitudinalPlanner:
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
+    soft_return = self.params.get_bool("SoftCruiseReturn")
     self.a_cruise = get_cruise_accel(sm['selfdriveState'].experimentalMode, v_cruise, v_ego,
                                      self.a_cruise, steer_angle_without_offset, self.CP, self.dt,
-                                     accel_coast, self.allow_throttle)
+                                     accel_coast, self.allow_throttle, soft_return=soft_return)
     cruise_should_stop = should_stop(v_ego, self.a_cruise)
 
     candidates = [(output_a_target_mpc, self.mpc.source, output_should_stop_mpc),
