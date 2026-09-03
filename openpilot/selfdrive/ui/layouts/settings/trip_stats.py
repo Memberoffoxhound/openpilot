@@ -17,6 +17,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   CACHE_KEEP_SEC, TZ, _f, _iter_qlogs, _load_seg_cache, _save_seg_cache,
   _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, sunday_id, HOT_SEC,
+  LOCK_STALE_STATS_SEC, acquire_file_lock, release_file_lock,
 )
 from openpilot.selfdrive.ui.layouts.settings.trip_overlay import (
   empty_live, empty_pending, normalize_live, normalize_pending,
@@ -239,10 +240,7 @@ def flush_live() -> None:
 
 
 def fold_stats_history() -> None:
-  try:
-    fd = os.open(STATS_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.close(fd)
-  except FileExistsError:
+  if not acquire_file_lock(STATS_LOCK, LOCK_STALE_STATS_SEC):
     return
   try:
     _fold_stats_history()
@@ -250,10 +248,7 @@ def fold_stats_history() -> None:
     from openpilot.common.swaglog import cloudlog
     cloudlog.exception("trip stats fold")
   finally:
-    try:
-      STATS_LOCK.unlink()
-    except FileNotFoundError:
-      pass
+    release_file_lock(STATS_LOCK)
 
 
 def _skip_name(name: str, route: str, offroad: bool, mt: float) -> bool:
