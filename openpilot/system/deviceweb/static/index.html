@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1"/>
   <meta name="theme-color" content="#000000"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -12,9 +12,10 @@
   <link rel="icon" href="/icon.svg"/>
   <link rel="apple-touch-icon" href="/icon.svg"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="/app.css?v=38"/>
-  <link rel="stylesheet" href="/vslam-readout.css?v=38"/>
-  <link rel="stylesheet" href="/live.css?v=38"/>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+  <link rel="stylesheet" href="/app.css?v=61"/>
+  <link rel="stylesheet" href="/vslam-readout.css?v=61"/>
+  <link rel="stylesheet" href="/live.css?v=61"/>
 </head>
 <body data-theme="tesla">
   <a class="skip" href="#page">Skip to content</a>
@@ -32,7 +33,6 @@
     </nav>
     <p class="drawer-foot" id="drawerFoot"></p>
   </aside>
-
   <header class="top">
     <button type="button" id="menuBtn" class="icon-btn" aria-label="Open menu" aria-controls="drawer" aria-expanded="false">
       <span class="burger" aria-hidden="true"></span>
@@ -46,14 +46,14 @@
       <span><em>STREAK</em>—</span>
     </div>
   </header>
-
   <main id="page" tabindex="-1"></main>
   <div id="toast" class="toast" hidden role="status"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="/live-map.js?v=38" defer></script>
-  <script src="/live.js?v=38" defer></script>
-  <script src="/app.js?v=38" defer></script>
-  <script src="/live-route.js?v=38" defer></script>
-  <script src="/vslam-readout.js?v=38" defer></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" defer></script>
+  <script src="/live-map.js?v=61" defer></script>
+  <script src="/live.js?v=61" defer></script>
+  <script src="/app.js?v=61" defer></script>
+  <script src="/live-route.js?v=61" defer></script>
+  <script src="/vslam-readout.js?v=61" defer></script>
 </body>
 </html>
