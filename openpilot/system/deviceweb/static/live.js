@@ -7,12 +7,15 @@
     { id: "combo", label: "Combo", cameras: ["road", "driver"] },
   ];
 
+  const FS_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H3v4M17 3h4v4M7 21H3v-4M17 21h4v-4"/></svg>`;
+  const FS_EXIT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h4V4M21 8h-4V4M3 16h4v4M21 16h-4v4"/></svg>`;
+
   const LV = {
     feed: "combo",
     status: { fcam: "off", ecam: "off", dcam: "off", combo: "off" },
     conn: "idle",
     live: { speedMs: 0, engaged: false, metric: false, lat: null, lon: null, bearing: null, livestream: false, webrtc: false, mic: false },
-    rotate: false,
+    theater: false,
     mic: false,
     pc: null,
     dc: null,
@@ -45,8 +48,8 @@
     const spd = speedNum(LV.live.speedMs, metric);
     const engaged = !!LV.live.engaged;
     const feed = FEEDS.find((f) => f.id === LV.feed) || FEEDS[3];
-    return `<div class="live" id="liveRoot">
-      <div class="live-stage${LV.rotate ? " rot90" : ""}" id="liveStage">
+    return `<div class="live${LV.theater ? " theater" : ""}" id="liveRoot">
+      <div class="live-stage" id="liveStage">
         <div class="live-video" id="liveMainWrap">
           <video id="liveMain" playsinline autoplay muted></video>
         </div>
@@ -69,6 +72,9 @@
             <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "Engaged" : "Disengaged"}</div>
           </div>
         </div>
+        <div class="live-chrome">
+          <button type="button" class="fs-btn" id="liveFs" aria-label="Fullscreen">${FS_ICON}</button>
+        </div>
       </div>
       <div class="live-dock">
         <div class="live-feeds">
@@ -84,8 +90,6 @@
         <div class="live-tools">
           <button type="button" class="btn" id="liveMenu">Menu</button>
           <button type="button" class="btn${LV.mic ? " on" : ""}" id="liveMic">Mic ${LV.mic ? "on" : "off"}</button>
-          <button type="button" class="btn${LV.rotate ? " on" : ""}" id="liveRot">Rotate</button>
-          <button type="button" class="btn" id="liveFs">Full</button>
         </div>
       </div>
     </div>`;
@@ -132,6 +136,57 @@
     if (wrapPip) wrapPip.hidden = LV.feed !== "combo";
     if (pip && videos[1] && LV.feed === "combo") { pip.srcObject = videos[1]; pip.play().catch(() => {}); }
     if (empty) empty.hidden = videos.length > 0;
+  }
+
+  function applyTheater() {
+    const root = document.getElementById("liveRoot");
+    const fs = document.getElementById("liveFs");
+    if (root) root.classList.toggle("theater", !!LV.theater);
+    if (fs) {
+      fs.innerHTML = LV.theater ? FS_EXIT : FS_ICON;
+      fs.setAttribute("aria-label", LV.theater ? "Exit fullscreen" : "Fullscreen");
+    }
+    setTimeout(paintMap, 80);
+  }
+
+  async function lockLandscape() {
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock("landscape");
+      }
+    } catch (e) {}
+  }
+
+  function unlockOrientation() {
+    try {
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch (e) {}
+  }
+
+  async function enterTheater() {
+    LV.theater = true;
+    applyTheater();
+    const stage = document.getElementById("liveStage");
+    try {
+      if (stage && !document.fullscreenElement) {
+        await (stage.requestFullscreen?.() || stage.webkitRequestFullscreen?.());
+      }
+    } catch (e) {}
+    await lockLandscape();
+  }
+
+  async function exitTheater() {
+    LV.theater = false;
+    applyTheater();
+    unlockOrientation();
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen?.();
+    } catch (e) {}
+  }
+
+  async function toggleTheater() {
+    if (LV.theater) await exitTheater();
+    else await enterTheater();
   }
 
   async function startMic() {
@@ -314,8 +369,7 @@
       mic.classList.toggle("on", LV.mic);
       mic.textContent = LV.mic ? "Mic on" : "Mic off";
     }
-    const rot = document.getElementById("liveRot");
-    if (rot) rot.classList.toggle("on", LV.rotate);
+    applyTheater();
   }
 
   function bind() {
@@ -335,21 +389,19 @@
       if (LV.mic) startMic(); else stopMic();
       rerenderDock();
     };
-    const rot = document.getElementById("liveRot");
-    if (rot) rot.onclick = () => {
-      LV.rotate = !LV.rotate;
-      const stage = document.getElementById("liveStage");
-      if (stage) stage.classList.toggle("rot90", LV.rotate);
-      rerenderDock();
-      setTimeout(paintMap, 80);
-    };
     const fs = document.getElementById("liveFs");
-    if (fs) fs.onclick = () => {
-      const root = document.getElementById("liveRoot");
-      if (!root) return;
-      if (!document.fullscreenElement) root.requestFullscreen?.() || root.webkitRequestFullscreen?.();
-      else document.exitFullscreen?.();
-    };
+    if (fs) fs.onclick = () => { toggleTheater(); };
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+  }
+
+  function onFsChange() {
+    const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!on && LV.theater) {
+      LV.theater = false;
+      unlockOrientation();
+      applyTheater();
+    }
   }
 
   async function pollLive() {
@@ -377,11 +429,14 @@
 
   function unmount() {
     LV.mounted = false;
+    document.removeEventListener("fullscreenchange", onFsChange);
+    document.removeEventListener("webkitfullscreenchange", onFsChange);
     if (LV.poll) { clearInterval(LV.poll); LV.poll = null; }
     if (window.LiveMap) LiveMap.stopDeviceGps();
     stopMic();
     teardownPc();
     killMap();
+    exitTheater();
   }
 
   window.LiveView = { html, mount, unmount };
