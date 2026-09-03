@@ -21,6 +21,9 @@ HOT_SEC = 120.0
 CACHE_KEEP_SEC = 200 * 86400
 STATS_LOOKBACK_SEC = 3 * 86400
 CACHE_LOCK = Path("/data/trip_cache.lock")
+# Empty leftover files (old O_EXCL locks) or a dead pid must not block forever.
+LOCK_STALE_CACHE_SEC = 2 * 3600
+LOCK_STALE_STATS_SEC = 10 * 60
 
 
 def _f(d: dict, k: str) -> float:
@@ -58,6 +61,83 @@ def _offroad() -> bool:
     return bool(Params().get_bool("IsOffroad"))
   except Exception:
     return True
+
+
+def _pid_alive(pid: int) -> bool:
+  if pid <= 0:
+    return False
+  try:
+    os.kill(pid, 0)
+  except ProcessLookupError:
+    return False
+  except PermissionError:
+    return True
+  except OSError:
+    return False
+  return True
+
+
+def _lock_stale(path: Path, stale_sec: float) -> bool:
+  try:
+    age = time.time() - path.stat().st_mtime
+  except OSError:
+    return True
+  pid = None
+  try:
+    raw = path.read_text(encoding="utf-8").strip().split()
+    if raw:
+      pid = int(raw[0])
+  except (OSError, ValueError):
+    pid = None
+  if pid is not None:
+    if not _pid_alive(pid):
+      return True
+    return age > stale_sec
+  # Old empty O_EXCL lock: no owner to check.
+  return age > min(stale_sec, 120.0)
+
+
+def acquire_file_lock(path: Path, stale_sec: float) -> bool:
+  """Exclusive lock. Steals the file if the owner pid is dead or the lock is old."""
+  payload = f"{os.getpid()} {time.time():.0f}\n".encode()
+
+  def _create() -> bool:
+    try:
+      fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+      return False
+    try:
+      os.write(fd, payload)
+    finally:
+      os.close(fd)
+    return True
+
+  if _create():
+    return True
+  if not _lock_stale(path, stale_sec):
+    return False
+  try:
+    path.unlink()
+  except FileNotFoundError:
+    pass
+  except OSError:
+    return False
+  return _create()
+
+
+def release_file_lock(path: Path) -> None:
+  try:
+    raw = path.read_text(encoding="utf-8").strip().split()
+    if raw and int(raw[0]) != os.getpid():
+      return
+  except (OSError, ValueError):
+    pass
+  try:
+    path.unlink()
+  except FileNotFoundError:
+    pass
+  except OSError:
+    pass
 
 
 def _qlog(seg: Path) -> Path | None:
@@ -233,24 +313,22 @@ def _fold() -> None:
 
 
 def _with_cache_lock() -> bool:
-  try:
-    fd = os.open(CACHE_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.close(fd)
-    return True
-  except FileExistsError:
-    return False
+  return acquire_file_lock(CACHE_LOCK, LOCK_STALE_CACHE_SEC)
 
 
 def _unlock() -> None:
-  try:
-    CACHE_LOCK.unlink()
-  except FileNotFoundError:
-    pass
+  release_file_lock(CACHE_LOCK)
 
 
 def cache_segments_idle() -> None:
   """Parked, after a drive. Commit overlays first so a short park still lands miles."""
   if not _with_cache_lock():
+    # Another fill is alive. Still fold so Today is not waiting on LogReader.
+    try:
+      _fold()
+    except Exception:
+      from openpilot.common.swaglog import cloudlog
+      cloudlog.exception("trip cache fold-only")
     return
   try:
     # Fold before any LogReader work so live/pending land in days[] even if
