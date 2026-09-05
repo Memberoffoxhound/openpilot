@@ -46,12 +46,10 @@ class VSlamLoggerConfirmPage(NavScroller):
                                          lambda: self.dismiss(on_confirm))
     self._scroller.add_widgets([
       GreyBigButton("enabling\nvSlam logger", "scroll to continue", warn),
-      GreyBigButton("", "Observe-only. Does not touch gas, brake, or openpilot long."),
-      GreyBigButton("", "When Tesla drops cruise set speed by 6 mph or more,"),
-      GreyBigButton("", "the logger records pre/slam mph, path class, and recover timing."),
-      GreyBigButton("", "Events feed the C4 list, 60s trace, and LAN deviceweb."),
-      GreyBigButton("", "Leave on for a paper trail of phantom brakes."),
-      GreyBigButton("", "Turn off to stop writing /data/vslam events."),
+      GreyBigButton("", "Records Tesla cruise dumps of 6+ mph for review."),
+      GreyBigButton("", "Doesn't touch gas or brake — observe only."),
+      GreyBigButton("", "View events in S3XYPilot WebUI:"),
+      GreyBigButton("", "http://<comma-ip>:8088"),
       accept,
     ])
 
@@ -65,14 +63,10 @@ class VSlamFilterConfirmPage(NavScroller):
                                          lambda: self.dismiss(on_confirm))
     self._scroller.add_widgets([
       GreyBigButton("enabling\nvSlam filter", "scroll to continue", warn),
-      GreyBigButton("", "Counters stock Tesla phantom braking on openpilot long."),
-      GreyBigButton("", "On a straight-road slam (set-speed dump >= 6 mph,"),
-      GreyBigButton("", "no curve/ramp/blinker path), Tesla ACC can chase the"),
-      GreyBigButton("", "slammed cruise target and yank the car down even though"),
-      GreyBigButton("", "openpilot's planner did not ask for that slowdown."),
-      GreyBigButton("", "After a short window: rising set speed = ignore glitch;"),
-      GreyBigButton("", "still slammed = honor the new set speed."),
-      GreyBigButton("", "Locked off while TACC owns pedals. No invented corner slows."),
+      GreyBigButton("", "On openpilot long, stops Tesla phantom brakes from"),
+      GreyBigButton("", "yanking set speed down on straight roads."),
+      GreyBigButton("", "Off / locked when Tesla TACC owns the pedals."),
+      GreyBigButton("", "Won't invent slowdowns in curves or on ramps."),
       accept,
     ])
 

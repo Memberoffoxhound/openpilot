@@ -96,9 +96,9 @@ LAN deviceweb (`http://<comma-ip>:8088` → vSlam) mirrors the same two toggles.
 
 #### What each control does
 
-**vSlam Logger** — Observe-only. When Tesla drops cruise set speed by ≥6 mph, the logger records the slam (pre/slam mph, path class, recover timing) for the C4 list, 60s trace, and LAN deviceweb. It never changes gas, brake, or openpilot's longitudinal target. Leave it on if you want a paper trail of phantom brakes; turn it off to stop writing `/data/vslam` events.
+**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in **S3XYPilot WebUI** at `http://<comma-ip>:8088`.
 
-**vSlam Filter** — Active counter for stock Tesla phantom braking when **openpilot long** owns the policy. On a straight-road slam (≥6 mph set-speed dump with no curve/ramp/blinker path), Tesla's ACC can chase the slammed cruise target and yank the car down even though openpilot's planner didn't ask for it. After a short window, if set speed starts rising again the filter treats it as a glitch and ignores the dump; if it stays slammed, openpilot honors the new set speed. Locked off while **TACC** is the long policy (Tesla already owns pedals). Does not invent slowdowns in corners or on ramps.
+**vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off / locked when Tesla TACC owns the pedals. Won't invent slowdowns in curves or on ramps.
 
 #### Filter rule tree
 

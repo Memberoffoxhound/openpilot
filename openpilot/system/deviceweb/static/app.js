@@ -463,7 +463,7 @@ function vslamListHTML() {
       <button class="btn${filt ? " primary" : ""}" id="vslamFilterToggle" type="button" ${opLong ? "" : "disabled"}>${filt ? "Filter on" : (opLong ? "Filter off" : "Filter locked (TACC)")}</button>
       <button class="btn" id="vslamRefresh" type="button">Refresh</button>
     </div>
-    <p class="tiny">Logger = observe-only paper trail. Filter = counters Tesla phantom braking on OP long (locked on TACC). Same as Settings \u2192 vSlam Settings.</p>
+    <p class="tiny">Logger: records 6+ mph cruise dumps (view in S3XYPilot WebUI at http://&lt;comma-ip&gt;:8088). Filter: blocks phantom brakes on OP long; locked on TACC.</p>
     <div class="spark-key"><span class="k nom">nominal</span><span class="k lo">slowest slam</span><span class="k hi">highest in slam</span></div>
     ${evs.length ? `<div class="vslam-list">${evs.map(ev => {
       const title = ev.place || ev.road || ev.local_time || ev.id;
