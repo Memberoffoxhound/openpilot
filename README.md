@@ -98,7 +98,7 @@ LAN deviceweb (`http://<comma-ip>:8088` → vSlam) mirrors the same two toggles.
 
 **vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in **S3XYPilot WebUI** at `http://<comma-ip>:8088`.
 
-**vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off / locked when Tesla TACC owns the pedals. Won't invent slowdowns in curves or on ramps.
+**vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off/Locked whenever stock Tesla TACC is the longitudinal policy. Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps.
 
 #### Filter rule tree
 

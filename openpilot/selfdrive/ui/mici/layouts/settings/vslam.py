@@ -65,8 +65,10 @@ class VSlamFilterConfirmPage(NavScroller):
       GreyBigButton("enabling\nvSlam filter", "scroll to continue", warn),
       GreyBigButton("", "On openpilot long, stops Tesla phantom brakes from"),
       GreyBigButton("", "yanking set speed down on straight roads."),
-      GreyBigButton("", "Off / locked when Tesla TACC owns the pedals."),
-      GreyBigButton("", "Won't invent slowdowns in curves or on ramps."),
+      GreyBigButton("", "Off/Locked whenever stock Tesla TACC is the"),
+      GreyBigButton("", "longitudinal policy."),
+      GreyBigButton("", "Allows Tesla curvature assisted slowdowns"),
+      GreyBigButton("", "in curves such as exit off-ramps."),
       accept,
     ])
 

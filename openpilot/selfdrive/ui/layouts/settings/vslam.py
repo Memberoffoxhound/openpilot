@@ -16,7 +16,8 @@ LOGGER_DESC = tr_noop(
 
 FILTER_DESC = tr_noop(
   "On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. "
-  "Off / locked when Tesla TACC owns the pedals. Won't invent slowdowns in curves."
+  "Off/Locked whenever stock Tesla TACC is the longitudinal policy. "
+  "Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps."
 )
 
 
