@@ -3,7 +3,10 @@
 Observe-only. Does not touch panda, actuators, or the planner.
 
   cornering  → honor Tesla's set-speed drop (ramp / real curve)
-  straight   → ignore candidate (slam on a lane that is not turning)
+  straight   → 6s recover window on slams ≥ 6 mph
+                 set speed starts rising → ignore
+                 no rise after 6s        → honor (follow set speed down)
+                 driver adjusting        → driver (do not auto-follow)
   unknown    → hold current behavior until the trace has enough path
 """
 from __future__ import annotations
@@ -13,6 +16,9 @@ from typing import Any
 
 
 R_EARTH_M = 6371000.0
+SLAM_MPH = 6.0
+STRAIGHT_RECOVER_S = 6.0
+RISE_MPH = 1.0
 
 
 def _f(v: Any, default: float = 0.0) -> float:
@@ -78,6 +84,89 @@ def path_metrics(samples: list[dict]) -> dict:
   }
 
 
+def recover_window(event: dict, samples: list[dict] | None = None,
+                   window_s: float = STRAIGHT_RECOVER_S) -> dict:
+  """Did set speed start increasing within window_s after the slam floor?"""
+  samples = list(samples or [])
+  t0 = _f(event.get("t0"))
+  slam_mph = _f(event.get("slam_mph"))
+  dur = _f(event.get("duration_s"))
+  recovered = bool(event.get("recovered"))
+
+  timed = []
+  if t0:
+    for s in samples:
+      t = _f(s.get("t"))
+      if t0 <= t <= t0 + window_s:
+        timed.append(s)
+  if not timed:
+    timed = [s for s in samples if s.get("in_slam")]
+    if timed and not t0:
+      t0 = _f(timed[0].get("t"))
+      timed = [s for s in timed if _f(s.get("t")) <= t0 + window_s]
+
+  driver = bool(event.get("gas"))
+  for s in timed:
+    if bool(s.get("gas")):
+      driver = True
+
+  floor = slam_mph
+  vs = [_f(s.get("v_cruise_mph")) for s in timed]
+  if vs:
+    floor = min(vs)
+  elif slam_mph:
+    floor = slam_mph
+
+  rise_s = None
+  rise_mph = None
+  seen_floor = False
+  for s in timed:
+    v = _f(s.get("v_cruise_mph"))
+    t = _f(s.get("t"))
+    if v <= floor + 0.15:
+      seen_floor = True
+    if seen_floor and v >= floor + RISE_MPH:
+      rise_s = round(max(0.0, t - t0), 2) if t0 else None
+      rise_mph = round(v, 2)
+      break
+
+  if rise_s is None and not timed and recovered and 0 < dur <= window_s:
+    rise_s = round(dur, 2)
+    rise_mph = _f(event.get("recover_mph"), _f(event.get("pre_mph")))
+
+  return {
+    "recover_wait_s": window_s,
+    "slam_floor_mph": round(floor, 2) if floor else None,
+    "rise_started": rise_s is not None,
+    "rise_s": rise_s,
+    "rise_mph": rise_mph,
+    "driver_adjust": driver,
+  }
+
+
+def _straight_filter(rw: dict) -> tuple[str, str, str]:
+  if rw.get("driver_adjust"):
+    return (
+      "driver",
+      "Straight road \u2014 driver",
+      "Driver is adjusting speed. Leave the set-speed change alone.",
+    )
+  if rw.get("rise_started"):
+    when = rw.get("rise_s")
+    when_s = f" at {when:.1f}s" if when is not None else ""
+    return (
+      "ignore",
+      "Straight road \u2014 ignore",
+      f"Set speed started increasing{when_s} inside the 6s window. "
+      "Treat as a glitch \u2014 do not follow the slam down.",
+    )
+  return (
+    "honor",
+    "Straight road \u2014 honor",
+    "Set speed did not start increasing after 6s. Follow set speed down.",
+  )
+
+
 def classify(event: dict, samples: list[dict] | None = None) -> dict:
   samples = list(samples or [])
   slam = [s for s in samples if s.get("in_slam")] or samples
@@ -93,6 +182,7 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
   geo = path_metrics(slam if slam else samples)
   heading = geo["heading_delta_deg"]
   ratio = geo["path_ratio"]
+  rw = recover_window(event, samples)
 
   model_yaw = event.get("model_yaw_4s")
   if model_yaw is None and slam:
@@ -166,6 +256,16 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     corner += 1
     facts.append(f"vPlan already {v_plan_pre:.0f}")
 
+  if rw["driver_adjust"]:
+    facts.append("driver adjusting")
+  elif rw["rise_started"]:
+    if rw["rise_s"] is not None:
+      facts.append(f"set speed rose at {rw['rise_s']:.1f}s")
+    else:
+      facts.append("set speed rose in 6s")
+  elif abs(delta) >= SLAM_MPH or slam_mph:
+    facts.append("no rise in 6s")
+
   if corner >= straight + 2 and corner >= 3:
     path = "cornering"
     hint = "honor"
@@ -183,11 +283,7 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
       "openpilot long is not ready to invent that slowdown."
     )
   elif path == "straight":
-    headline = "Straight road \u2014 ignore"
-    summary = (
-      "Path stayed a lane. Tesla dumped set speed on a straight road. "
-      "Ignore candidate \u2014 same class as Ferguson, on any road."
-    )
+    hint, headline, summary = _straight_filter(rw)
   else:
     headline = "Not enough path \u2014 hold"
     summary = (
@@ -212,6 +308,12 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     "straight_score": straight,
     "model_yaw_4s": None if model_yaw_f is None else round(model_yaw_f, 1),
     "model_y_3s": None if model_y_f is None else round(model_y_f, 2),
+    "recover_wait_s": rw["recover_wait_s"],
+    "slam_floor_mph": rw["slam_floor_mph"],
+    "rise_started": rw["rise_started"],
+    "rise_s": rw["rise_s"],
+    "rise_mph": rw["rise_mph"],
+    "driver_adjust": rw["driver_adjust"],
   }
 
 

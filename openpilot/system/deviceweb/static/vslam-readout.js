@@ -16,6 +16,8 @@
     const filt = ev.filter || "hold";
     const head = ev.headline || (
       cls === "corner" ? "Cornering \u2014 honor" :
+      filt === "honor" ? "Straight road \u2014 honor" :
+      filt === "driver" ? "Straight road \u2014 driver" :
       cls === "straight" ? "Straight road \u2014 ignore" :
       "Not enough path \u2014 hold"
     );
