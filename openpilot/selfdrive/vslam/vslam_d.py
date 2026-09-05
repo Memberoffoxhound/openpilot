@@ -18,6 +18,7 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.vslam.classify import recover_window
 from openpilot.selfdrive.vslam.store import EVENTS_PATH, append_event, compact_spark, fire_logged_alert, is_enabled, write_trace
 
 MPH = 2.2369362920544
@@ -188,6 +189,7 @@ class VSlamD:
     ev["local_end"] = _local(ev["t_end"])
     samples = self._window(ev["t0"], ev["t_end"])
     ev["spark"] = compact_spark(samples)
+    ev.update(recover_window(ev, samples))
     write_trace(ev["id"], samples)
     append_event({k: v for k, v in ev.items() if not str(k).startswith("_")})
     cloudlog.warning(
