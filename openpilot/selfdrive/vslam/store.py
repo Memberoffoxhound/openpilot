@@ -10,6 +10,8 @@ TRACE_DIR = ROOT / "traces"
 ALERT_UNTIL_PATH = ROOT / "alert_until"
 ENABLED_PATH = ROOT / "enabled"
 ENABLED_PARAM = "VSlamEnabled"
+FILTER_PATH = ROOT / "filter"
+FILTER_PARAM = "VSlamFilterEnabled"
 ALERT_S = 3.0
 MAX_EVENTS = 400
 
@@ -53,6 +55,54 @@ def set_enabled(on: bool, params=None) -> None:
       params.put_bool(ENABLED_PARAM, bool(on), block=True)
     except Exception:
       pass
+
+
+def op_long_active(params=None) -> bool:
+  """True when openpilot long is the live policy. False = Tesla TACC owns gas/brake."""
+  if params is None:
+    try:
+      from openpilot.common.params import Params
+      params = Params()
+    except Exception:
+      return False
+  try:
+    return bool(params.get_bool("AlphaLongitudinalEnabled"))
+  except Exception:
+    return False
+
+
+def is_filter_enabled(params=None) -> bool:
+  """Armed only on OP long. File wins so the toggle works before a params rebuild."""
+  if not op_long_active(params):
+    return False
+  try:
+    if FILTER_PATH.is_file():
+      return FILTER_PATH.read_text(encoding="utf-8").strip() != "0"
+  except OSError:
+    pass
+  if params is not None:
+    try:
+      return bool(params.get_bool(FILTER_PARAM))
+    except Exception:
+      pass
+  return True
+
+
+def set_filter_enabled(on: bool, params=None) -> bool:
+  """Persist the filter toggle. Forced off when TACC is the long policy."""
+  if not op_long_active(params):
+    on = False
+  ensure()
+  try:
+    FILTER_PATH.write_text("1\n" if on else "0\n", encoding="utf-8")
+  except OSError:
+    pass
+  if params is not None:
+    try:
+      params.put_bool(FILTER_PARAM, bool(on), block=True)
+    except Exception:
+      pass
+  return bool(on) and op_long_active(params)
 
 
 _alert_cache: tuple[float, float] = (0.0, 0.0)  # mtime, until
