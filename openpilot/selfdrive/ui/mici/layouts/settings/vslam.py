@@ -1,4 +1,3 @@
-"""C4 vSlam Settings: logger + filter toggles (ALC-style explainers), list, 60s trace."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -7,7 +6,6 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.common import theme_color
 from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, GreyBigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.vslam.store import (
   is_enabled, set_enabled, is_filter_enabled, set_filter_enabled, op_long_active,
   load_events, load_trace,
@@ -37,40 +35,41 @@ def _lerp_c(a: rl.Color, b: rl.Color, t: float) -> rl.Color:
   )
 
 
+def _wire_vslam_confirm(page: NavScroller, title: str, bodies: list[str],
+                       on_confirm: Callable[[], None]) -> None:
+  warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+  check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+  accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                       lambda: page.dismiss(on_confirm))
+  page._scroller.add_widgets([
+    GreyBigButton(title, "scroll to continue", warn),
+    *[GreyBigButton("", body) for body in bodies],
+    accept,
+  ])
+
+
 class VSlamLoggerConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
-    accept = BigConfirmationCircleButton("slide to\nenable", check,
-                                         lambda: self.dismiss(on_confirm))
-    self._scroller.add_widgets([
-      GreyBigButton("enabling\nvSlam logger", "scroll to continue", warn),
-      GreyBigButton("", "Records Tesla cruise dumps of 6+ mph for review."),
-      GreyBigButton("", "Doesn't touch gas or brake — observe only."),
-      GreyBigButton("", "View events in S3XYPilot WebUI:"),
-      GreyBigButton("", "http://<comma-ip>:8088"),
-      accept,
-    ])
+    _wire_vslam_confirm(self, "enabling\nvSlam logger", [
+      "Records Tesla cruise dumps of 6+ mph for review.",
+      "Doesn't touch gas or brake — observe only.",
+      "View events in S3XYPilot WebUI:",
+      "http://<comma-ip>:8088",
+    ], on_confirm)
 
 
 class VSlamFilterConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
-    accept = BigConfirmationCircleButton("slide to\nenable", check,
-                                         lambda: self.dismiss(on_confirm))
-    self._scroller.add_widgets([
-      GreyBigButton("enabling\nvSlam filter", "scroll to continue", warn),
-      GreyBigButton("", "On openpilot long, stops Tesla phantom brakes from"),
-      GreyBigButton("", "yanking set speed down on straight roads."),
-      GreyBigButton("", "Off/Locked whenever stock Tesla TACC is the"),
-      GreyBigButton("", "longitudinal policy."),
-      GreyBigButton("", "Allows Tesla curvature assisted slowdowns"),
-      GreyBigButton("", "in curves such as exit off-ramps."),
-      accept,
-    ])
+    _wire_vslam_confirm(self, "enabling\nvSlam filter", [
+      "On openpilot long, stops Tesla phantom brakes from",
+      "yanking set speed down on straight roads.",
+      "Off/Locked whenever stock Tesla TACC is the",
+      "longitudinal policy.",
+      "Allows Tesla curvature assisted slowdowns",
+      "in curves such as exit off-ramps.",
+    ], on_confirm)
 
 
 class _Page(Widget):
@@ -179,8 +178,6 @@ class VSlamTraceWidget(_Page):
 
 
 class VSlamLayoutMici(NavScroller):
-  """Settings → vSlam Settings. Logger and filter are separate controls."""
-
   def __init__(self):
     super().__init__()
     self._scroller._snap_items = True

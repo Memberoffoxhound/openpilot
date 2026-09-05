@@ -5,7 +5,6 @@ import base64
 import json
 
 from openpilot.common.params import Params
-from openpilot.common.swaglog import cloudlog
 
 _place_cache = {"key": None, "label": None}
 
@@ -113,28 +112,9 @@ def live_state() -> dict:
     "place": None,
   }
   try:
-    import os
-    vals = {}
-    with open("/proc/meminfo") as f:
-      for line in f:
-        k, rest = line.split(":", 1)
-        vals[k] = int(rest.strip().split()[0])
-    total, avail = vals.get("MemTotal") or 0, vals.get("MemAvailable") or 0
-    if total > 0:
-      out["memPct"] = max(0, min(100, round(100.0 * (1.0 - avail / total))))
-    temps = []
-    for name in os.listdir("/sys/class/thermal"):
-      if not name.startswith("thermal_zone"):
-        continue
-      base = "/sys/class/thermal/" + name
-      try:
-        kind = open(base + "/type").read().strip().lower()
-        if "cpu" in kind:
-          temps.append(int(open(base + "/temp").read().strip()) / 1000.0)
-      except Exception:
-        continue
-    if temps:
-      out["tempC"] = round(sum(temps) / len(temps))
+    from openpilot.system.deviceweb.deviceweb import _cpu_temp_c, _mem_pct
+    out["memPct"] = _mem_pct()
+    out["tempC"] = _cpu_temp_c()
   except Exception:
     pass
   try:

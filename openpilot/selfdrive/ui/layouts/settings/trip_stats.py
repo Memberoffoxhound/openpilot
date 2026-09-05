@@ -15,13 +15,12 @@ from pathlib import Path
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
-  CACHE_KEEP_SEC, TZ, _f, _iter_qlogs, _load_seg_cache, _save_seg_cache,
-  _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, sunday_id, HOT_SEC,
-  LOCK_STALE_STATS_SEC, acquire_file_lock, release_file_lock,
+  _f, chicago_now, day_id, HOT_SEC, LOCK_STALE_STATS_SEC,
+  acquire_file_lock, release_file_lock,
 )
 from openpilot.selfdrive.ui.layouts.settings.trip_overlay import (
   empty_live, empty_pending, normalize_live, normalize_pending,
-  overlay_day, add_pending, day_bucket, commit_overlay,
+  add_pending, day_bucket,
 )
 
 STATS_PATH = Path("/data/trip_stats.json")
@@ -265,6 +264,6 @@ def _fold_stats_history() -> None:
            _merge_buckets, _streaks, STATS_VER, DAY_KEEP)
 
 
-def stats_view(trip: dict | None = None) -> dict:
+def stats_view() -> dict:
   from openpilot.selfdrive.ui.layouts.settings.trip_fold import run_view
   return run_view(load_stats(), _is_offroad, _streaks)

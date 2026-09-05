@@ -7,8 +7,8 @@
   }
   function pathClass(ev) {
     const p = ev.path || ev.kind || "";
-    if (p === "cornering" || p === "ramp") return "corner";
-    if (p === "straight" || p === "interstate") return "straight";
+    if (p === "cornering") return "corner";
+    if (p === "straight") return "straight";
     return "unknown";
   }
   function readout(ev) {

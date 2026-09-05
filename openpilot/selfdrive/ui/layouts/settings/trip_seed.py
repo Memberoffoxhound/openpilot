@@ -47,20 +47,9 @@ def sunday_id(dt: datetime | None = None) -> str:
   return sun.date().isoformat()
 
 
-def _bounds() -> tuple[datetime, datetime, datetime]:
-  now = chicago_now()
-  day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
-  sun = now - timedelta(days=(now.weekday() + 1) % 7)
-  week0 = sun.replace(hour=0, minute=0, second=0, microsecond=0)
-  return now, day0, week0
-
-
 def _offroad() -> bool:
-  try:
-    from openpilot.common.params import Params
-    return bool(Params().get_bool("IsOffroad"))
-  except Exception:
-    return True
+  from openpilot.selfdrive.ui.layouts.settings.trip_stats import _is_offroad
+  return _is_offroad()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -273,13 +262,9 @@ def _seg_tuple(hit: dict) -> tuple[float, float, float, float]:
   )
 
 
-def _fill_seg_cache(lookback_sec: float | None = None) -> int:
+def _fill_seg_cache(lookback_sec: float = STATS_LOOKBACK_SEC) -> int:
   """LogReader finished qlogs that are not already cached. Returns new entries."""
-  if lookback_sec is None:
-    _, _, week0 = _bounds()
-    min_mt = week0.timestamp() - 2 * 86400
-  else:
-    min_mt = time.time() - lookback_sec
+  min_mt = time.time() - lookback_sec
   cache = _load_seg_cache()
   wrote = 0
   dirty = False
@@ -323,7 +308,6 @@ def _unlock() -> None:
 def cache_segments_idle() -> None:
   """Parked, after a drive. Commit overlays first so a short park still lands miles."""
   if not _with_cache_lock():
-    # Another fill is alive. Still fold so Today is not waiting on LogReader.
     try:
       _fold()
     except Exception:
@@ -331,8 +315,6 @@ def cache_segments_idle() -> None:
       cloudlog.exception("trip cache fold-only")
     return
   try:
-    # Fold before any LogReader work so live/pending land in days[] even if
-    # the car cuts power before hot qlogs are readable.
     _fold()
     n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
     _fold()
@@ -349,7 +331,6 @@ def _rebuild() -> None:
   """Statistics / boot. Fold first, recent qlogs, then the long scan only if parked."""
   from openpilot.common.swaglog import cloudlog
   if not _with_cache_lock():
-    # Park cache already reading qlogs. Fold whatever is on disk.
     try:
       _fold()
     except Exception:

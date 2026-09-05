@@ -1,14 +1,4 @@
-"""Label vSlam events as cornering vs straight road.
-
-Observe-only. Does not touch panda, actuators, or the planner.
-
-  cornering  → honor Tesla's set-speed drop (ramp / real curve)
-  straight   → 6s recover window on slams ≥ 6 mph
-                 set speed starts rising → ignore
-                 no rise after 6s        → honor (follow set speed down)
-                 driver adjusting        → driver (do not auto-follow)
-  unknown    → hold current behavior until the trace has enough path
-"""
+"""Observe-only: label vSlam events as cornering vs straight."""
 from __future__ import annotations
 
 import math
@@ -114,8 +104,6 @@ def recover_window(event: dict, samples: list[dict] | None = None,
   vs = [_f(s.get("v_cruise_mph")) for s in timed]
   if vs:
     floor = min(vs)
-  elif slam_mph:
-    floor = slam_mph
 
   rise_s = None
   rise_mph = None
@@ -243,9 +231,7 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
   elif slam_mph and v_ego_med <= slam_mph + 6 and delta <= -10:
     corner += 1
 
-  if a_min <= -2.0:
-    facts.append(f"aEgo {a_min:.1f}")
-  elif a_min <= -1.2:
+  if a_min <= -1.2:
     facts.append(f"aEgo {a_min:.1f}")
 
   if recovered and 0 < dur <= 8:
@@ -292,7 +278,6 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     )
 
   return {
-    "kind": path,
     "path": path,
     "filter": hint,
     "headline": headline,
@@ -302,7 +287,6 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     "path_m": geo["path_m"],
     "a_ego_min": round(a_min, 3),
     "v_ego_med": round(v_ego_med, 2),
-    "class_why": " \u00b7 ".join(facts) if facts else "thin trace",
     "facts": facts,
     "corner_score": corner,
     "straight_score": straight,

@@ -21,7 +21,6 @@ FONT_PATH = OPENPILOT_DIR / "openpilot/selfdrive/assets/fonts/TESLA.ttf"
 SHOT_DIR = Path("/data/media/0/screenshots")
 SHOT_REQ = Path("/data/screenshot_request")
 SHOT_PLAY = Path("/data/screenshot_play")
-TRIP_PATH = Path("/data/trip_meter.json")
 
 _cpu_last: tuple[int, int] | None = None
 
@@ -132,20 +131,10 @@ def _info() -> dict:
   return info
 
 
-def _trip() -> dict:
-  t: dict = {}
-  try:
-    t = json.loads(TRIP_PATH.read_text(encoding="utf-8"))
-  except Exception:
-    pass
-  return t if isinstance(t, dict) else {}
-
-
 def _stats_payload() -> dict:
-  trip = _trip()
   try:
     from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
-    view = stats_view(trip)
+    view = stats_view()
   except Exception:
     view = {}
   return view

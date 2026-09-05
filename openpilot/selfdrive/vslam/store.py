@@ -21,7 +21,6 @@ def ensure() -> None:
 
 
 def fire_logged_alert(duration_s: float = ALERT_S) -> None:
-  """Stamp a 3s onroad toast. UI reads this; no panda / selfdrived change."""
   ensure()
   try:
     ALERT_UNTIL_PATH.write_text(f"{time.time() + duration_s:.3f}\n", encoding="utf-8")
@@ -30,7 +29,6 @@ def fire_logged_alert(duration_s: float = ALERT_S) -> None:
 
 
 def is_enabled(params=None) -> bool:
-  """Default on. File wins so the toggle works before a params rebuild."""
   try:
     if ENABLED_PATH.is_file():
       return ENABLED_PATH.read_text(encoding="utf-8").strip() != "0"
@@ -58,7 +56,6 @@ def set_enabled(on: bool, params=None) -> None:
 
 
 def op_long_active(params=None) -> bool:
-  """True when openpilot long is the live policy. False = Tesla TACC owns gas/brake."""
   if params is None:
     try:
       from openpilot.common.params import Params
@@ -72,7 +69,6 @@ def op_long_active(params=None) -> bool:
 
 
 def is_filter_enabled(params=None) -> bool:
-  """Armed only on OP long. File wins so the toggle works before a params rebuild."""
   if not op_long_active(params):
     return False
   try:
@@ -89,7 +85,6 @@ def is_filter_enabled(params=None) -> bool:
 
 
 def set_filter_enabled(on: bool, params=None) -> bool:
-  """Persist the filter toggle. Forced off when TACC is the long policy."""
   if not op_long_active(params):
     on = False
   ensure()
@@ -186,7 +181,6 @@ def load_trace(eid: str) -> dict:
 
 
 def compact_spark(samples: list[dict], n: int = 48) -> list[dict]:
-  """Downsampled vCruise + in_slam flags for the event-list mini spark."""
   if not samples:
     return []
   step = max(1, len(samples) // n)

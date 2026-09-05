@@ -55,8 +55,6 @@ function say(m) {
   clearTimeout(say._t);
   say._t = setTimeout(() => { el.hidden = true; }, 2800);
 }
-function hdrVal(v, s) { return (v == null || v === "") ? "\u2014" : v + s; }
-
 function fmtDist(meters, unit, tenths) {
   const v = unit === "km" ? (meters || 0) / 1000 : (meters || 0) / 1609.344;
   if (tenths && v < 100) return v.toFixed(1);
@@ -463,7 +461,7 @@ function vslamListHTML() {
       <button class="btn${filt ? " primary" : ""}" id="vslamFilterToggle" type="button" ${opLong ? "" : "disabled"}>${filt ? "Filter on" : (opLong ? "Filter off" : "Filter locked (TACC)")}</button>
       <button class="btn" id="vslamRefresh" type="button">Refresh</button>
     </div>
-    <p class="tiny">Logger: records 6+ mph cruise dumps (view in S3XYPilot WebUI at http://&lt;comma-ip&gt;:8088). Filter: blocks phantom brakes on OP long; Off/Locked whenever stock Tesla TACC is the longitudinal policy; allows Tesla curvature assisted slowdowns in curves such as exit off-ramps.</p>
+    <p class="tiny">Logger records 6+ mph cruise dumps. Filter blocks phantom brakes on OP long (locked on TACC).</p>
     <div class="spark-key"><span class="k nom">nominal</span><span class="k lo">slowest slam</span><span class="k hi">highest in slam</span></div>
     ${evs.length ? `<div class="vslam-list">${evs.map(ev => {
       const title = ev.place || ev.road || ev.local_time || ev.id;
@@ -526,8 +524,6 @@ function paintMap() {
   }
   const rng = slamRange(samples);
   _map = L.map(el, { zoomControl: true, attributionControl: false });
-  // Carto Positron is a clean vector-styled basemap. Grayscale is applied to
-  // the tile pane only so the vSlam color line stays saturated.
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     maxZoom: 20,
     subdomains: "abcd",

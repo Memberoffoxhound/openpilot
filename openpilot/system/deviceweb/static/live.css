@@ -1,5 +1,3 @@
-/* Live camera — Twitch-style portrait player */
-
 body[data-page="live"] {
   overflow: hidden;
   height: 100dvh;
@@ -234,7 +232,6 @@ body[data-page="live"] main {
 .live-mark .st.on { color: #3e8ceb; border-color: rgba(62,140,235,.55); }
 body[data-theme="openpilot"] .live-mark .st.on { color: #00ff40; border-color: rgba(0,255,64,.5); }
 
-/* Chrome on the player, like Twitch */
 .live-chrome {
   pointer-events: auto;
   position: absolute;
@@ -340,11 +337,6 @@ body[data-theme="openpilot"] .live-mark .st.on { color: #00ff40; border-color: r
 }
 .live-tools .btn.on { background: #fff; color: #000; border-color: #fff; }
 
-/*
-  Fullscreen / theater: rotate THE STAGE only.
-  Phone stays portrait. Video is a 16:9 landscape rectangle
-  that fills the short and long edges.
-*/
 .live.theater .live-dock { visibility: hidden; }
 .live.theater .live-stage,
 .live-stage:fullscreen,
