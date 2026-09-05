@@ -16,7 +16,7 @@ const S = {
   shotPick: false,
   shotSel: {},
   confirm: null,
-  vslam: { enabled: true, events: [], count: 0 },
+  vslam: { enabled: true, filter_enabled: true, op_long: false, events: [], count: 0 },
   vslamDetail: null,
 };
 let _map = null;
@@ -452,15 +452,18 @@ function sparkSVG(samples) {
 
 function vslamListHTML() {
   const on = !!S.vslam.enabled;
+  const filt = !!S.vslam.filter_enabled;
+  const opLong = !!S.vslam.op_long;
   const evs = S.vslam.events || [];
   return `<div class="stack">
-    <div class="h-row"><p class="h-label">vSlam tracker</p>
+    <div class="h-row"><p class="h-label">vSlam Settings</p>
       <span class="badge">${evs.length} event${evs.length === 1 ? "" : "s"}</span></div>
     <div class="live-tools">
       <button class="btn${on ? " primary" : ""}" id="vslamToggle" type="button">${on ? "Logger on" : "Logger off"}</button>
+      <button class="btn${filt ? " primary" : ""}" id="vslamFilterToggle" type="button" ${opLong ? "" : "disabled"}>${filt ? "Filter on" : (opLong ? "Filter off" : "Filter locked (TACC)")}</button>
       <button class="btn" id="vslamRefresh" type="button">Refresh</button>
     </div>
-    <p class="tiny">Observe-only. Logs cruise-set drops \u2265 6 mph. Same store as Settings \u2192 vSlam.</p>
+    <p class="tiny">Logger = observe-only paper trail. Filter = counters Tesla phantom braking on OP long (locked on TACC). Same as Settings \u2192 vSlam Settings.</p>
     <div class="spark-key"><span class="k nom">nominal</span><span class="k lo">slowest slam</span><span class="k hi">highest in slam</span></div>
     ${evs.length ? `<div class="vslam-list">${evs.map(ev => {
       const title = ev.place || ev.road || ev.local_time || ev.id;
@@ -550,7 +553,13 @@ function paintMap() {
 async function loadVslam(id) {
   try {
     const list = await api("/api/vslam");
-    S.vslam = { enabled: !!list.enabled, events: list.events || [], count: list.count || 0 };
+    S.vslam = {
+      enabled: !!list.enabled,
+      filter_enabled: !!list.filter_enabled,
+      op_long: !!list.op_long,
+      events: list.events || [],
+      count: list.count || 0,
+    };
   } catch (e) {
     say(e.message || "vslam list failed");
   }
@@ -583,6 +592,25 @@ async function toggleVslam() {
   } catch (e) { say(e.message || "toggle failed"); }
 }
 
+async function toggleVslamFilter() {
+  if (!S.vslam.op_long) {
+    say("Filter locked while TACC owns long");
+    return;
+  }
+  const next = !S.vslam.filter_enabled;
+  try {
+    const r = await api("/api/vslam/filter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filter_enabled: next }),
+    });
+    S.vslam.filter_enabled = !!r.filter_enabled;
+    S.vslam.op_long = !!r.op_long;
+    say(S.vslam.filter_enabled ? "vSlam filter on" : "vSlam filter off");
+    render();
+  } catch (e) { say(e.message || "filter toggle failed"); }
+}
+
 function bindPage() {
   if (S.page === "shots") {
     $("shotCap").onclick = () => captureShot();
@@ -597,6 +625,8 @@ function bindPage() {
   if (S.page === "vslam") {
     const tog = $("vslamToggle");
     if (tog) tog.onclick = () => toggleVslam();
+    const ft = $("vslamFilterToggle");
+    if (ft) ft.onclick = () => toggleVslamFilter();
     const ref = $("vslamRefresh");
     if (ref) ref.onclick = () => loadVslam(S.vslamId);
     const back = $("vslamBack");

@@ -225,7 +225,9 @@ def _decorate_vslam(ev: dict, samples=None) -> dict:
 
 
 def _vslam_list() -> dict:
-  from openpilot.selfdrive.vslam.store import compact_spark, is_enabled, load_events, load_trace
+  from openpilot.selfdrive.vslam.store import (
+    compact_spark, is_enabled, is_filter_enabled, load_events, load_trace, op_long_active,
+  )
   p = _params()
   events = list(reversed(load_events(200)))
   for ev in events[:50]:
@@ -236,7 +238,13 @@ def _vslam_list() -> dict:
     if not ev.get("spark"):
       ev["spark"] = compact_spark(samples)
     _decorate_vslam(ev, samples)
-  return {"enabled": is_enabled(p), "events": events, "count": len(events)}
+  return {
+    "enabled": is_enabled(p),
+    "filter_enabled": is_filter_enabled(p),
+    "op_long": op_long_active(p),
+    "events": events,
+    "count": len(events),
+  }
 
 
 def _vslam_event(eid: str) -> dict:
@@ -257,6 +265,18 @@ def _vslam_set(on: bool) -> dict:
   p = _params()
   set_enabled(bool(on), p)
   return {"ok": True, "enabled": is_enabled(p)}
+
+
+def _vslam_set_filter(on: bool) -> dict:
+  from openpilot.selfdrive.vslam.store import is_filter_enabled, op_long_active, set_filter_enabled
+  p = _params()
+  armed = set_filter_enabled(bool(on), p)
+  return {
+    "ok": True,
+    "filter_enabled": is_filter_enabled(p),
+    "armed": bool(armed),
+    "op_long": op_long_active(p),
+  }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -376,6 +396,14 @@ class Handler(BaseHTTPRequestHandler):
         if on is None:
           on = body.get("on")
         return self._json(200, _vslam_set(bool(on)))
+      if path in ("/api/vslam/filter", "/api/device/vslam/filter"):
+        body = self._read_json()
+        on = body.get("filter_enabled")
+        if on is None:
+          on = body.get("enabled")
+        if on is None:
+          on = body.get("on")
+        return self._json(200, _vslam_set_filter(bool(on)))
       if path in ("/api/screenshots/capture", "/api/device/screenshots/capture"):
         return self._json(200, _request_shot())
       if path in ("/api/screenshots/delete", "/api/device/screenshots/delete"):

@@ -35,7 +35,7 @@ class SettingsLayout(NavScroller):
     stats_btn.set_click_callback(lambda: gui_app.push_widget(self._stats_layout))
 
     self._vslam_layout = VSlamLayoutMici()
-    vslam_btn = SettingsBigButton("vSlam", "", gui_app.texture("icons_mici/exclamation_point.png", 64, 64))
+    vslam_btn = SettingsBigButton("vSlam Settings", "", gui_app.texture("icons_mici/exclamation_point.png", 64, 64))
     vslam_btn.set_click_callback(lambda: gui_app.push_widget(self._vslam_layout))
 
     network_panel = NetworkLayoutMici()

@@ -1,10 +1,17 @@
-"""C4 vSlam tracker. Snap pages: enable toggle + list + 60s trace."""
+"""C4 vSlam Settings: logger + filter toggles (ALC-style explainers), list, 60s trace."""
 from __future__ import annotations
 
-from openpilot.selfdrive.ui.layouts.settings.common import theme_color
+from collections.abc import Callable
+
 from openpilot.common.params import Params
-from openpilot.selfdrive.ui.mici.widgets.button import BigToggle
-from openpilot.selfdrive.vslam.store import is_enabled, load_events, load_trace, set_enabled
+from openpilot.selfdrive.ui.layouts.settings.common import theme_color
+from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, GreyBigButton
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
+from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.vslam.store import (
+  is_enabled, set_enabled, is_filter_enabled, set_filter_enabled, op_long_active,
+  load_events, load_trace,
+)
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
@@ -28,6 +35,46 @@ def _lerp_c(a: rl.Color, b: rl.Color, t: float) -> rl.Color:
     int(a.b + (b.b - a.b) * t),
     255,
   )
+
+
+class VSlamLoggerConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+    accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                         lambda: self.dismiss(on_confirm))
+    self._scroller.add_widgets([
+      GreyBigButton("enabling\nvSlam logger", "scroll to continue", warn),
+      GreyBigButton("", "Observe-only. Does not touch gas, brake, or openpilot long."),
+      GreyBigButton("", "When Tesla drops cruise set speed by 6 mph or more,"),
+      GreyBigButton("", "the logger records pre/slam mph, path class, and recover timing."),
+      GreyBigButton("", "Events feed the C4 list, 60s trace, and LAN deviceweb."),
+      GreyBigButton("", "Leave on for a paper trail of phantom brakes."),
+      GreyBigButton("", "Turn off to stop writing /data/vslam events."),
+      accept,
+    ])
+
+
+class VSlamFilterConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+    accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                         lambda: self.dismiss(on_confirm))
+    self._scroller.add_widgets([
+      GreyBigButton("enabling\nvSlam filter", "scroll to continue", warn),
+      GreyBigButton("", "Counters stock Tesla phantom braking on openpilot long."),
+      GreyBigButton("", "On a straight-road slam (set-speed dump >= 6 mph,"),
+      GreyBigButton("", "no curve/ramp/blinker path), Tesla ACC can chase the"),
+      GreyBigButton("", "slammed cruise target and yank the car down even though"),
+      GreyBigButton("", "openpilot's planner did not ask for that slowdown."),
+      GreyBigButton("", "After a short window: rising set speed = ignore glitch;"),
+      GreyBigButton("", "still slammed = honor the new set speed."),
+      GreyBigButton("", "Locked off while TACC owns pedals. No invented corner slows."),
+      accept,
+    ])
 
 
 class _Page(Widget):
@@ -135,31 +182,60 @@ class VSlamTraceWidget(_Page):
     rl.draw_text_ex(font, "planner", rl.Vector2(r.x + 90, r.y + r.height - 16), 14, 0, PLAN)
 
 
-class VSlamEnableToggle(BigToggle):
-  """Same green-pill widget as Toggles. On = detect + log."""
-
-  def __init__(self):
-    super().__init__("vSlam logger", initial_state=is_enabled(), toggle_callback=self._on)
-
-  def _on(self, state: bool):
-    set_enabled(state, Params())
-
-  def show_event(self):
-    super().show_event()
-    self.set_checked(is_enabled())
-
-
 class VSlamLayoutMici(NavScroller):
+  """Settings → vSlam Settings. Logger and filter are separate controls."""
+
   def __init__(self):
     super().__init__()
     self._scroller._snap_items = True
     self._scroller._spacing = 0
     self._scroller._pad = 0
-    self._enable = VSlamEnableToggle()
-    self._items = (self._enable, VSlamListWidget(), VSlamTraceWidget())
+    self._params = Params()
+    self._logger = BigToggle("vSlam logger", initial_state=is_enabled(self._params),
+                             toggle_callback=self._on_logger)
+    self._filter = BigToggle("vSlam filter", initial_state=is_filter_enabled(self._params),
+                             toggle_callback=self._on_filter)
+    self._list = VSlamListWidget()
+    self._trace = VSlamTraceWidget()
+    self._items = (self._logger, self._filter, self._list, self._trace)
     self._scroller.add_widgets(list(self._items))
 
   def show_event(self):
     super().show_event()
+    self._refresh_toggles()
     for w in self._items:
       w.show_event()
+
+  def _refresh_toggles(self):
+    self._logger.set_checked(is_enabled(self._params))
+    op_long = op_long_active(self._params)
+    self._filter.set_enabled(op_long)
+    self._filter.set_checked(is_filter_enabled(self._params) if op_long else False)
+
+  def _on_logger(self, state: bool):
+    if state:
+      self._logger.set_checked(False)
+
+      def on_confirm():
+        set_enabled(True, self._params)
+        self._logger.set_checked(True)
+
+      gui_app.push_widget(VSlamLoggerConfirmPage(on_confirm))
+    else:
+      set_enabled(False, self._params)
+
+  def _on_filter(self, state: bool):
+    if not op_long_active(self._params):
+      self._filter.set_checked(False)
+      set_filter_enabled(False, self._params)
+      return
+    if state:
+      self._filter.set_checked(False)
+
+      def on_confirm():
+        armed = set_filter_enabled(True, self._params)
+        self._filter.set_checked(armed)
+
+      gui_app.push_widget(VSlamFilterConfirmPage(on_confirm))
+    else:
+      set_filter_enabled(False, self._params)

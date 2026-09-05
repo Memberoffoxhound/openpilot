@@ -79,11 +79,28 @@ On the LAN: `http://<comma-ip>:8088`. Statistics, vSlam tracker, screenshots, an
 
 ### vSlam
 
-Tesla can dump cruise set speed by 6 mph or more with no curve in front of you. On **TACC**, Tesla still owns gas and brake, so that slam is Tesla's problem. On **OP long**, the slammed set speed becomes openpilot's cruise target and the car follows it down.
+Tesla can dump cruise set speed by 6 mph or more with no curve in front of you. On **TACC**, Tesla still owns gas and brake, so that slam is Tesla's problem. On **OP long**, the slammed set speed becomes openpilot's cruise target and the car follows it down — which is how stock phantom braking overrides the openpilot longitudinal planner.
 
-**Logger** (default on) only records those slams. Observe-only.
+#### Settings tree
 
-**Filter** sits after the logger toggle. It is the counter for stock Tesla slams when openpilot long is the policy. Locked — cannot enable — while TACC is the long policy.
+```
+Settings
+└── vSlam Settings
+    ├── vSlam logger   (observe-only; default on)
+    ├── vSlam filter   (behavioral; OP long only; locked on TACC)
+    ├── event list
+    └── 60s trace
+```
+
+LAN deviceweb (`http://<comma-ip>:8088` → vSlam) mirrors the same two toggles.
+
+#### What each control does
+
+**vSlam Logger** — Observe-only. When Tesla drops cruise set speed by ≥6 mph, the logger records the slam (pre/slam mph, path class, recover timing) for the C4 list, 60s trace, and LAN deviceweb. It never changes gas, brake, or openpilot's longitudinal target. Leave it on if you want a paper trail of phantom brakes; turn it off to stop writing `/data/vslam` events.
+
+**vSlam Filter** — Active counter for stock Tesla phantom braking when **openpilot long** owns the policy. On a straight-road slam (≥6 mph set-speed dump with no curve/ramp/blinker path), Tesla's ACC can chase the slammed cruise target and yank the car down even though openpilot's planner didn't ask for it. After a short window, if set speed starts rising again the filter treats it as a glitch and ignores the dump; if it stays slammed, openpilot honors the new set speed. Locked off while **TACC** is the long policy (Tesla already owns pedals). Does not invent slowdowns in corners or on ramps.
+
+#### Filter rule tree
 
 ```
 vCruise drop >= 6 mph
@@ -108,8 +125,6 @@ vCruise drop >= 6 mph
       `-- still sitting at the slammed set speed at 6 s - HONOR
             follow set speed down
 ```
-
-C4: Settings -> vSlam (logger, then filter) and Settings -> toggles. LAN deviceweb has the same two buttons.
 
 ## Tesla compatibility
 
