@@ -1,5 +1,5 @@
 /* S3XYPilot LAN UI — statistics + vSlam tracker + screenshots */
-const PAGES = ["home", "vslam", "shots"];
+const PAGES = ["home", "live", "vslam", "shots"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2l3.1 3.2L13 4.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -108,6 +108,7 @@ function closeMenu() {
 
 function setPage(p, id) {
   if (!PAGES.includes(p)) p = "home";
+  if (p !== "live" && window.LiveView) LiveView.unmount();
   if (p !== "shots") { S.shotView = null; S.shotPick = false; document.onkeydown = null; }
   if (p !== "vslam") { S.vslamId = null; S.vslamDetail = null; killMap(); }
   S.page = p;
@@ -450,18 +451,15 @@ function sparkSVG(samples) {
 
 function vslamListHTML() {
   const on = !!S.vslam.enabled;
-  const filt = !!S.vslam.filter_enabled;
-  const opLong = !!S.vslam.op_long;
   const evs = S.vslam.events || [];
   return `<div class="stack">
     <div class="h-row"><p class="h-label">vSlam Settings</p>
       <span class="badge">${evs.length} event${evs.length === 1 ? "" : "s"}</span></div>
     <div class="live-tools">
       <button class="btn${on ? " primary" : ""}" id="vslamToggle" type="button">${on ? "Logger on" : "Logger off"}</button>
-      <button class="btn${filt ? " primary" : ""}" id="vslamFilterToggle" type="button" ${opLong ? "" : "disabled"}>${filt ? "Filter on" : (opLong ? "Filter off" : "Filter locked (TACC)")}</button>
       <button class="btn" id="vslamRefresh" type="button">Refresh</button>
     </div>
-    <p class="tiny">Logger records 6+ mph cruise dumps. Filter blocks phantom brakes on OP long (locked on TACC).</p>
+    <p class="tiny">Logger records 6+ mph cruise dumps. Filter UI hidden until a planner consumer exists.</p>
     <div class="spark-key"><span class="k nom">nominal</span><span class="k lo">slowest slam</span><span class="k hi">highest in slam</span></div>
     ${evs.length ? `<div class="vslam-list">${evs.map(ev => {
       const title = ev.place || ev.road || ev.local_time || ev.id;
@@ -490,6 +488,17 @@ function vslamDetailHTML() {
   const samples = (d.trace && d.trace.samples) || [];
   const title = ev.place || ev.road || ev.local_time || ev.id;
   const gps = samples.some(s => Math.abs(s.lat || 0) > 1e-4);
+  const filt = ev.filter || "hold";
+  const path = ev.path || "";
+  const roCls = path === "cornering" ? "corner" : path === "straight" ? "straight" : "unknown";
+  const head = ev.headline || "Not enough path \u2014 hold";
+  const body = ev.summary || "";
+  const why = (ev.facts || []).join(" \u00b7 ");
+  const readout = `<div class="readout ${roCls}">
+      <div class="ro-head"><b>${esc(head)}</b><span class="ro-filt">${esc(filt)}</span></div>
+      ${body ? `<p>${esc(body)}</p>` : ""}
+      ${why ? `<p class="tiny">${esc(why)}</p>` : ""}
+    </div>`;
   return `<div class="stack">
     <div class="h-row"><p class="h-label">vSlam</p>
       <button class="btn" id="vslamBack" type="button">Back</button></div>
@@ -499,6 +508,7 @@ function vslamDetailHTML() {
       <p class="tiny">${esc(ev.route || "")}</p>
     </div>
     ${sparkSVG(samples)}
+    ${readout}
     <div class="spark-key"><span class="k nom">vCruise nominal</span><span class="k lo">slowest</span><span class="k hi">highest</span><span class="k plan">vPlan</span></div>
     ${gps ? `<div id="vslamMap" class="vslam-map" role="img" aria-label="slam map"></div>` :
       `<p class="tiny">No GPS on this trace \u2014 map skipped.</p>`}
@@ -588,24 +598,6 @@ async function toggleVslam() {
   } catch (e) { say(e.message || "toggle failed"); }
 }
 
-async function toggleVslamFilter() {
-  if (!S.vslam.op_long) {
-    say("Filter locked while TACC owns long");
-    return;
-  }
-  const next = !S.vslam.filter_enabled;
-  try {
-    const r = await api("/api/vslam/filter", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filter_enabled: next }),
-    });
-    S.vslam.filter_enabled = !!r.filter_enabled;
-    S.vslam.op_long = !!r.op_long;
-    say(S.vslam.filter_enabled ? "vSlam filter on" : "vSlam filter off");
-    render();
-  } catch (e) { say(e.message || "filter toggle failed"); }
-}
 
 function bindPage() {
   if (S.page === "shots") {
@@ -621,8 +613,6 @@ function bindPage() {
   if (S.page === "vslam") {
     const tog = $("vslamToggle");
     if (tog) tog.onclick = () => toggleVslam();
-    const ft = $("vslamFilterToggle");
-    if (ft) ft.onclick = () => toggleVslamFilter();
     const ref = $("vslamRefresh");
     if (ref) ref.onclick = () => loadVslam(S.vslamId);
     const back = $("vslamBack");
@@ -632,16 +622,23 @@ function bindPage() {
 }
 
 function pageHTML() {
+  if (S.page === "live") {
+    return (window.LiveView && LiveView.html()) || '<div class="live-empty"><b>S3XYPilot</b><p>Live viewer failed to load.</p></div>';
+  }
   if (S.page === "vslam") return S.vslamId ? vslamDetailHTML() : vslamListHTML();
   if (S.page === "shots") return shotsHTML();
   return homeHTML();
 }
 
 function render() {
+  const prev = document.body.dataset.page;
+  if (prev === "live" && S.page !== "live" && window.LiveView) LiveView.unmount();
+  document.body.dataset.page = S.page;
   const root = $("page");
   killMap();
   root.innerHTML = pageHTML();
   bindPage();
+  if (S.page === "live" && window.LiveView) LiveView.mount();
 }
 
 async function refreshHome() {

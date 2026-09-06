@@ -6,53 +6,6 @@ import json
 
 from openpilot.common.params import Params
 
-_place_cache = {"key": None, "label": None}
-
-def _place_label(lat, lon):
-  if lat is None or lon is None:
-    return None
-  key = (round(float(lat), 3), round(float(lon), 3))
-  if _place_cache["key"] == key and _place_cache["label"]:
-    return _place_cache["label"]
-  try:
-    import urllib.request
-    url = (
-      "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1"
-      f"&lat={float(lat):.5f}&lon={float(lon):.5f}"
-    )
-    req = urllib.request.Request(url, headers={"User-Agent": "S3XYPilot/0.11.23"})
-    with urllib.request.urlopen(req, timeout=5) as r:
-      data = json.loads(r.read().decode())
-    addr = data.get("address") or {}
-    road = addr.get("road") or addr.get("pedestrian") or addr.get("residential") or addr.get("hamlet")
-    city = (
-      addr.get("city") or addr.get("town") or addr.get("village")
-      or addr.get("hamlet") or addr.get("suburb") or addr.get("county")
-    )
-    iso = addr.get("ISO3166-2-lvl4") or ""
-    st = iso.split("-")[-1] if "-" in iso else (addr.get("state_code") or "")
-    if not st:
-      raw = addr.get("state") or ""
-      st = raw if len(raw) <= 12 else ""
-      if not st:
-        st = (addr.get("country_code") or "").upper()
-    parts = [x for x in (road, city, st) if x]
-    seen, uniq = set(), []
-    for part in parts:
-      k = part.lower()
-      if k in seen:
-        continue
-      seen.add(k)
-      uniq.append(part)
-    label = ", ".join(uniq) if uniq else None
-    if label:
-      _place_cache["key"] = key
-      _place_cache["label"] = label
-      return label
-  except Exception:
-    pass
-  return _place_cache.get("label")
-
 WEBRTC_CAMERAS = ("road", "wideRoad", "driver")
 _live_sm = None
 
@@ -106,17 +59,7 @@ def live_state() -> dict:
     "livestream": bool(p.get_bool("IsLiveStreaming")),
     "webrtc": webrtc_up(),
     "mic": bool(p.get_bool("RecordAudio")),
-    "tempC": None,
-    "memPct": None,
-    "cpuPct": None,
-    "place": None,
   }
-  try:
-    from openpilot.system.deviceweb.deviceweb import _cpu_temp_c, _mem_pct
-    out["memPct"] = _mem_pct()
-    out["tempC"] = _cpu_temp_c()
-  except Exception:
-    pass
   try:
     sm = _smaster()
     sm.update(80)
@@ -148,8 +91,6 @@ def live_state() -> dict:
           out["lat"], out["lon"] = lat, lon
     except Exception:
       pass
-  if out.get("lat") is not None:
-    out["place"] = _place_label(out["lat"], out["lon"])
   return out
 
 

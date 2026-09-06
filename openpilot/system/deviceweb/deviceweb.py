@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -13,74 +12,34 @@ from urllib.parse import parse_qs, unquote, urlparse
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.deviceweb import liveapi
+from openpilot.system.deviceweb.sysinfo import cpu_pct, cpu_temp_c, mem_pct
 
 PORT = int(os.environ.get("DEVICEWEB_PORT", "8088"))
+VERSION = "0.11.23"
 STATIC_DIR = Path(__file__).parent / "static"
 OPENPILOT_DIR = Path(os.environ.get("OPENPILOT_PATH", "/data/openpilot"))
 FONT_PATH = OPENPILOT_DIR / "openpilot/selfdrive/assets/fonts/TESLA.ttf"
 SHOT_DIR = Path("/data/media/0/screenshots")
 SHOT_REQ = Path("/data/screenshot_request")
 SHOT_PLAY = Path("/data/screenshot_play")
+NO_STORE = {
+  "index.html", "app.js", "app.css", "live.js", "live.css",
+  "live-map.js", "live-route.js", "vslam-readout.js", "vslam-readout.css",
+}
 
-_cpu_last: tuple[int, int] | None = None
+_info_sm = None
 
 
 def _params() -> Params:
   return Params()
 
 
-def _cpu_pct() -> int | None:
-  global _cpu_last
-  try:
-    with open("/proc/stat") as f:
-      nums = [int(x) for x in f.readline().split()[1:8]]
-    idle, total = nums[3] + nums[4], sum(nums)
-    prev = _cpu_last
-    _cpu_last = (idle, total)
-    if prev is None:
-      return _cpu_pct()
-    didle, dtotal = idle - prev[0], total - prev[1]
-    if dtotal <= 0:
-      return None
-    return max(0, min(100, round(100.0 * (1.0 - didle / dtotal))))
-  except Exception:
-    return None
-
-
-def _mem_pct() -> int | None:
-  try:
-    vals: dict[str, int] = {}
-    with open("/proc/meminfo") as f:
-      for line in f:
-        k, rest = line.split(":", 1)
-        vals[k] = int(rest.strip().split()[0])
-    total, avail = vals.get("MemTotal") or 0, vals.get("MemAvailable") or 0
-    if total <= 0:
-      return None
-    return max(0, min(100, round(100.0 * (1.0 - avail / total))))
-  except Exception:
-    return None
-
-
-def _cpu_temp_c() -> int | None:
-  temps: list[float] = []
-  try:
-    for name in os.listdir("/sys/class/thermal"):
-      if not name.startswith("thermal_zone"):
-        continue
-      base = Path("/sys/class/thermal") / name
-      try:
-        kind = (base / "type").read_text().strip().lower()
-        if "cpu" not in kind:
-          continue
-        temps.append(int((base / "temp").read_text().strip()) / 1000.0)
-      except Exception:
-        continue
-  except Exception:
-    return None
-  if not temps:
-    return None
-  return round(sum(temps) / len(temps))
+def _smaster():
+  global _info_sm
+  if _info_sm is None:
+    from openpilot.cereal import messaging
+    _info_sm = messaging.SubMaster(["deviceState"])
+  return _info_sm
 
 
 def _info() -> dict:
@@ -88,7 +47,7 @@ def _info() -> dict:
   tesla = p.get("LaneColor", return_default=True) == 1
   info = {
     "name": "S3XYPilot",
-    "version": p.get("Version") or "0.11.23",
+    "version": p.get("Version") or VERSION,
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
     "dongle": p.get("DongleId") or "",
@@ -96,15 +55,14 @@ def _info() -> dict:
     "engaged": p.get_bool("IsEngaged"),
     "theme": "tesla" if tesla else "openpilot",
     "accent": [62, 140, 235] if tesla else [0, 255, 64],
-    "tempC": _cpu_temp_c(),
-    "cpuPct": _cpu_pct(),
-    "memPct": _mem_pct(),
+    "tempC": cpu_temp_c(),
+    "cpuPct": cpu_pct(),
+    "memPct": mem_pct(),
     "diskFreeGb": None,
     "diskTotalGb": None,
   }
   try:
-    from openpilot.cereal import messaging
-    sm = messaging.SubMaster(["deviceState"])
+    sm = _smaster()
     sm.update(80)
     if sm.updated["deviceState"] or sm.valid["deviceState"]:
       ds = sm["deviceState"]
@@ -231,6 +189,7 @@ def _vslam_list() -> dict:
     "enabled": is_enabled(p),
     "filter_enabled": is_filter_enabled(p),
     "op_long": op_long_active(p),
+    "filter_ui": False,  # observe-only until a planner consumer exists
     "events": events,
     "count": len(events),
   }
@@ -269,7 +228,7 @@ def _vslam_set_filter(on: bool) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-  server_version = "S3XYPilot/0.11.23"
+  server_version = f"S3XYPilot/{VERSION}"
   protocol_version = "HTTP/1.1"
 
   def log_message(self, fmt: str, *args) -> None:
@@ -309,6 +268,10 @@ class Handler(BaseHTTPRequestHandler):
     self.send_header("Cache-Control", cache)
     self.end_headers()
     self.wfile.write(data)
+
+  def _fail(self, where: str) -> None:
+    cloudlog.exception(f"deviceweb {where}")
+    self._json(500, {"error": "internal"})
 
   def do_GET(self) -> None:
     parsed = urlparse(self.path)
@@ -350,22 +313,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._bytes(FONT_PATH.read_bytes(), "font/ttf", "public, max-age=86400")
       return self._static(path)
     except Exception:
-      cloudlog.exception("deviceweb GET")
-      self._json(500, {"error": traceback.format_exc().splitlines()[-1]})
+      self._fail("GET")
 
   def do_DELETE(self) -> None:
-    parsed = urlparse(self.path)
-    path = unquote(parsed.path)
-    try:
-      if path in ("/api/screenshots", "/api/device/screenshots"):
-        names = self._read_json().get("names") or []
-        if isinstance(names, str):
-          names = [names]
-        return self._json(200, _delete_shots(list(names)))
-      self._json(404, {"error": "not found"})
-    except Exception:
-      cloudlog.exception("deviceweb DELETE")
-      self._json(500, {"error": traceback.format_exc().splitlines()[-1]})
+    # Screenshot delete is POST /api/screenshots/delete only.
+    self._json(404, {"error": "not found"})
 
   def do_POST(self) -> None:
     parsed = urlparse(self.path)
@@ -402,8 +354,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, _delete_shots(list(names)))
       self._json(404, {"error": "not found"})
     except Exception:
-      cloudlog.exception("deviceweb POST")
-      self._json(500, {"error": traceback.format_exc().splitlines()[-1]})
+      self._fail("POST")
 
   def _static(self, path: str) -> None:
     rel = path.lstrip("/")
@@ -422,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
     ctype = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
     if candidate.suffix == ".webmanifest":
       ctype = "application/manifest+json"
-    cache = "no-store" if candidate.name in ("index.html", "app.js", "app.css", "live.js", "live.css") else "public, max-age=3600"
+    cache = "no-store" if candidate.name in NO_STORE else "public, max-age=3600"
     self._bytes(data, ctype, cache)
 
 

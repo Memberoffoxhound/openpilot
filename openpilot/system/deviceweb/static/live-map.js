@@ -1,5 +1,4 @@
-/* Corner map: MapKit JS (Apple) / Google Maps JS / Leaflet fallback.
-   Uses car GPS when present, otherwise the phone/browser Geolocation API. */
+/* Corner map: MapKit JS / Google Maps JS / Leaflet. Car GPS preferred. */
 (function () {
   const KEYS = { apple: "sexypilot.mapkit", google: "sexypilot.gmaps", prefer: "sexypilot.mapPrefer" };
 
@@ -11,7 +10,6 @@
     last: null,
     watch: null,
     device: null,
-    loading: false,
   };
 
   function isiOS() {
@@ -161,9 +159,6 @@
       const ll = { lat: pos.lat, lng: pos.lon };
       M.marker.setPosition(ll);
       const c = M.map.getCenter();
-      if (c && google.maps.geometry) {
-        /* geometry library optional */
-      }
       if (c && (Math.abs(c.lat() - pos.lat) + Math.abs(c.lng() - pos.lon) > 0.0004)) {
         M.map.panTo(ll);
       }
@@ -279,7 +274,7 @@
     sheet.innerHTML = `
       <div class="live-map-card">
         <b>Corner map</b>
-        <p>Apple MapKit JS and Google Maps JS need a token stored on this phone. The PWA cannot embed the native Maps app. Car GPS is preferred; the browser GPS fills in when the car has no fix.</p>
+        <p>MapKit/Google tokens stay on this phone. Car GPS preferred; browser GPS fills gaps.</p>
         <label>Provider
           <select id="mapPrefer">
             <option value="apple"${cur === "apple" ? " selected" : ""}>Apple Maps (MapKit JS)</option>
@@ -288,10 +283,10 @@
           </select>
         </label>
         <label>MapKit JS token
-          <input id="mapApple" type="password" autocomplete="off" placeholder="eyJ…" value="${appleToken().replace(/"/g, """)}"/>
+          <input id="mapApple" type="password" autocomplete="off" placeholder="eyJ…" value="${appleToken().replace(/"/g, "&quot;")}"/>
         </label>
         <label>Google Maps API key
-          <input id="mapGoogle" type="password" autocomplete="off" placeholder="AIza…" value="${googleKey().replace(/"/g, """)}"/>
+          <input id="mapGoogle" type="password" autocomplete="off" placeholder="AIza…" value="${googleKey().replace(/"/g, "&quot;")}"/>
         </label>
         <div class="row">
           <button type="button" class="btn" id="mapCancel">Close</button>

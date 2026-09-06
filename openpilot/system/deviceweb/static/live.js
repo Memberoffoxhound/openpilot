@@ -58,7 +58,7 @@
           <span class="pip-lab">DCAM</span>
         </div>
         <div class="live-empty" id="liveEmpty">
-          <b>SEXYPILOT</b>
+          <b>S3XYPilot</b>
           <p id="liveMsg">Connecting cameras…</p>
         </div>
         <div class="live-hud">
@@ -68,7 +68,7 @@
           </div>
           <div class="live-map" id="liveMap" aria-label="Map"></div>
           <div class="live-mark">
-            <div class="wm">SEXYPILOT</div>
+            <div class="wm">S3XYPilot</div>
             <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "Engaged" : "Disengaged"}</div>
           </div>
         </div>

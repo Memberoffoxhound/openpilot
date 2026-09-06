@@ -25,7 +25,6 @@ body[data-page="live"] main {
   -webkit-user-select: none;
 }
 
-/* Upper half: true 16:9. Never cover-crop the road cam. */
 .live-stage {
   position: relative;
   flex: 0 0 auto;
@@ -265,7 +264,6 @@ body[data-theme="openpilot"] .live-mark .st.on { color: #00ff40; border-color: r
   stroke-width: 1.8;
 }
 
-/* Lower half: feeds + tools. Not painted over the 16:9 frame. */
 .live-dock {
   pointer-events: auto;
   position: relative;
@@ -366,7 +364,6 @@ body[data-theme="openpilot"] .live-mark .st.on { color: #00ff40; border-color: r
   width: 160px;
 }
 
-/* Device already landscape: fill the screen, no CSS rotate. */
 @media (orientation: landscape) {
   .live:not(.theater) .live-stage {
     max-height: 100dvh;
