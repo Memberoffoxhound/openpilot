@@ -1,9 +1,4 @@
-"""One trip cache. Qlogs are source of truth.
-
-/data/trip_stats.json is the only store Home and the statistics
-widgets read. Offroad fold commits live/pending into days[] immediately
-so a short park window cannot leave yesterday on Today's row.
-"""
+"""Trip cache store for Home and statistics widgets."""
 from __future__ import annotations
 
 import json

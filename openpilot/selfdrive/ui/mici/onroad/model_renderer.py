@@ -36,7 +36,6 @@ TESLA_LANE_BLUE = rl.Color(*THEME_TESLA_RGB, 255)
 LANE_LINE_COLORS = {
   UIStatus.DISENGAGED: rl.Color(200, 200, 200, 255),
   UIStatus.OVERRIDE: rl.Color(255, 255, 255, 255),
-  UIStatus.ENGAGED: TESLA_LANE_BLUE,
 }
 
 
@@ -56,6 +55,7 @@ class LeadVehicle:
 class ModelRenderer(Widget):
   def __init__(self):
     super().__init__()
+    self._ll_engaged = TESLA_LANE_BLUE
     self._longitudinal_control = False
     self._experimental_mode = False
     self._blend_filter = FirstOrderFilter(1.0, 0.25, 1 / gui_app.target_fps)
@@ -301,7 +301,7 @@ class ModelRenderer(Widget):
     alpha = np.clip(prob, 0.0, 0.7)
     if adjacent:
       if ui_state.status == UIStatus.ENGAGED:
-        _base_color = getattr(self, "_ll_engaged", TESLA_LANE_BLUE)
+        _base_color = self._ll_engaged
       else:
         _base_color = LANE_LINE_COLORS.get(ui_state.status, LANE_LINE_COLORS[UIStatus.DISENGAGED])
       color = rl.Color(_base_color.r, _base_color.g, _base_color.b, int(alpha * 255))

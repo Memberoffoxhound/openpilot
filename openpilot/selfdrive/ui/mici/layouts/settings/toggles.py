@@ -1,15 +1,12 @@
 from collections.abc import Callable
 
-import pyray as rl
 from openpilot.cereal import log
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton, BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
-from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
-  LANE_COLOR_LABELS, ONROAD_UI_LABELS, COMPASS_SIZE_LABELS,
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
@@ -20,33 +17,40 @@ from openpilot.selfdrive.ui.ui_state import ui_state
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
 
+def _wire_confirm(page: NavScroller, title: str, bodies: list[str], on_confirm: Callable[[], None]) -> None:
+  warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
+  check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+  accept = BigConfirmationCircleButton("slide to\nenable", check,
+                                       lambda: page.dismiss(on_confirm))
+  page._scroller.add_widgets([
+    GreyBigButton(title, "scroll to continue", warn),
+    *[GreyBigButton("", body) for body in bodies],
+    accept,
+  ])
+
+
 class AutoLaneChangeConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
-    warn = gui_app.texture("icons_mici/setup/warning.png", 64, 64)
-    check = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
-    accept = BigConfirmationCircleButton("slide to\nenable", check,
-                                         lambda: self.dismiss(on_confirm))
-    self._scroller.add_widgets([
-      GreyBigButton("enabling\nauto lane change", "scroll to continue", warn),
-      GreyBigButton("", "Auto Lane Change uses Tesla's stock blind spot monitoring"),
-      GreyBigButton("", "to check for a vehicle in the adjacent lane prior to merging."),
-      GreyBigButton("", "You are still responsible for ensuring the lane of travel is clear"),
-      GreyBigButton("", "and agree to intervene as necessary."),
-      accept,
-    ])
+    _wire_confirm(self, "enabling\nauto lane change", [
+      "Auto Lane Change uses Tesla's stock blind spot monitoring",
+      "to check for a vehicle in the adjacent lane prior to merging.",
+      "You are still responsible for ensuring the lane of travel is clear",
+      "and agree to intervene as necessary.",
+    ], on_confirm)
 
 
-class OnroadUiCycle(BigButton):
-  """Tap to switch stock onroad HUD vs custom."""
-
-  def __init__(self):
-    super().__init__("onroad UI", "")
+class _ParamCycle(BigButton):
+  def __init__(self, title: str, label_fn, next_fn, apply_fn):
+    super().__init__(title, "")
     self._params = Params()
+    self._label_fn = label_fn
+    self._next_fn = next_fn
+    self._apply_fn = apply_fn
     self.refresh()
 
   def refresh(self):
-    value = onroad_ui_label(self._params)
+    value = self._label_fn(self._params)
     if value != self.value:
       self.set_value(value)
 
@@ -56,62 +60,35 @@ class OnroadUiCycle(BigButton):
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
-    nxt = next_onroad_ui(self._params)
-    set_onroad_ui(nxt, self._params)
-    self.set_value(ONROAD_UI_LABELS[nxt])
+    nxt = self._next_fn(self._params)
+    self._apply_fn(nxt, self._params)
+    self.refresh()
 
 
-class CompassSizeCycle(BigButton):
-  """Small left between DM and wheel, or large top-right. Custom UI only."""
-
+class OnroadUiCycle(_ParamCycle):
   def __init__(self):
-    super().__init__("compass size", "")
-    self._params = Params()
-    self.refresh()
+    super().__init__(
+      "onroad UI", onroad_ui_label, next_onroad_ui,
+      lambda nxt, p: set_onroad_ui(nxt, p),
+    )
 
-  def refresh(self):
-    value = compass_size_label(self._params)
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    nxt = next_compass_size(self._params)
-    self._params.put("CompassSize", nxt, block=True)
-    self.set_value(COMPASS_SIZE_LABELS[nxt])
-
-
-class LaneColorCycle(BigButton):
-  """Tap to cycle tesla / openpilot paint. Tesla is Autopilot blue on lanes and HUD chrome."""
-
+class CompassSizeCycle(_ParamCycle):
   def __init__(self):
-    super().__init__("theme", "")
-    self._params = Params()
-    self.refresh()
+    super().__init__(
+      "compass size", compass_size_label, next_compass_size,
+      lambda nxt, p: p.put("CompassSize", nxt, block=True),
+    )
 
-  def refresh(self):
-    value = lane_color_label(self._params)
-    if value != self.value:
-      self.set_value(value)
 
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    nxt = next_lane_color(self._params)
-    self._params.put("LaneColor", nxt, block=True)
-    self.set_value(LANE_COLOR_LABELS[nxt])
+class LaneColorCycle(_ParamCycle):
+  def __init__(self):
+    super().__init__(
+      "theme", lane_color_label, next_lane_color,
+      lambda nxt, p: p.put("LaneColor", nxt, block=True),
+    )
 
 
 class DeloreanCycle(BigButton):
-  """88mph clip on going onroad. Off by default."""
-
   def __init__(self):
     super().__init__("delorean", "")
     self.refresh()
@@ -142,8 +119,6 @@ class DeloreanPreview(BigButton):
 
 
 class ThemeLayoutMici(NavScroller):
-  """Settings → theme. Subsections live here."""
-
   def __init__(self):
     super().__init__()
     self._onroad_ui = OnroadUiCycle()

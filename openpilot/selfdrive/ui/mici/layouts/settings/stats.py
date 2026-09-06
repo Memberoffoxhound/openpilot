@@ -1,4 +1,4 @@
-"""S3XYPilot statistics. Three snap widgets on the C4 536x240."""
+"""S3XYPilot statistics widgets for the C4."""
 from __future__ import annotations
 
 import math
@@ -15,7 +15,6 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 
-TESLA_GREEN = rl.Color(80, 230, 150, 255)
 WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 BLACK = rl.Color(0, 0, 0, 255)
 LABEL = rl.Color(142, 142, 147, 255)
@@ -27,16 +26,12 @@ MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
-def _metric() -> bool:
-  return bool(ui_state.is_metric)
-
-
 def _unit_m() -> float:
-  return 1000.0 if _metric() else 1609.344
+  return 1000.0 if ui_state.is_metric else 1609.344
 
 
 def _fmt_dist(meters: float, tenths: bool = False) -> str:
-  v, u = meters / _unit_m(), ("km" if _metric() else "mi")
+  v, u = meters / _unit_m(), ("km" if ui_state.is_metric else "mi")
   if tenths and v < 100:
     txt = f"{v:.1f}"
   elif v >= 1000:
@@ -47,7 +42,7 @@ def _fmt_dist(meters: float, tenths: bool = False) -> str:
 
 
 def _fmt_pair(eng: float, tot: float) -> str:
-  u = "km" if _metric() else "mi"
+  u = "km" if ui_state.is_metric else "mi"
 
   def _n(m: float) -> str:
     v = m / _unit_m()
@@ -165,7 +160,7 @@ class StatsEngageWidget(_StatsPage):
     rows = (
       ("Total Miles", _fmt_dist(float(v.get("life_m") or 0)), WHITE),
       ("Engaged", _fmt_dist(float(v.get("life_e") or 0)), WHITE),
-      ("Longest streak", _fmt_dist(float(v.get("longest_m") or 0), tenths=True), TESLA_GREEN),
+      ("Longest streak", _fmt_dist(float(v.get("longest_m") or 0), tenths=True), theme_color()),
     )
     sizes = ((36, 34, 36), (36, 32, 36), (34, 30, 34), (32, 28, 32))
     lab_sz = val_sz = tsz = 36

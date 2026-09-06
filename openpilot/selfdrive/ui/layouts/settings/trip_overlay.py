@@ -1,4 +1,4 @@
-"""Dated live/pending overlay helpers for trip_stats."""
+"""Dated live/pending overlay helpers."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta

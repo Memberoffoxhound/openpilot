@@ -22,7 +22,7 @@ from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 
 
 class ReviewTermsPage(TermsPage, NavScroller):
-  """TermsPage with NavWidget swipe-to-dismiss for reviewing in device settings."""
+
   def __init__(self):
     super().__init__(on_accept=self.dismiss, on_decline=self.dismiss)
     self._terms_header.set_visible(False)
@@ -66,8 +66,6 @@ class MiciFccModal(NavRawScrollPanel):
 def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.Texture, exit_on_confirm: bool = True, red: bool = False):
   if not ui_state.engaged:
     def confirm_callback():
-      # Check engaged again in case it changed while the dialog was open
-      # TODO: if true, we stay on the dialog if not exit_on_confirm until normal onroad timeout
       if not ui_state.engaged:
         callback()
 
@@ -91,7 +89,7 @@ class EngagedConfirmationButton(BigButton):
 
 
 class ResetCalibrationButton(EngagedConfirmationButton):
-  """C4 Device button: live roll/pitch/yaw on the button itself."""
+
 
   def __init__(self, icon: rl.Texture, callback: Callable[[], None]):
     super().__init__("reset calibration", "reset", icon, callback)
@@ -164,7 +162,6 @@ class PairBigButton(BigButton):
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
 
-    # TODO: show ad dialog when clicked if not prime
     if ui_state.prime_state.is_paired():
       return
     dlg: BigDialog | PairingDialog

@@ -17,12 +17,12 @@ from openpilot.cereal import log
 
 EventName = log.OnroadEvent.EventName
 
-# Constants
 SET_SPEED_NA = 255
 KM_TO_MILE = 0.621371
 CRUISE_DISABLED_CHAR = '–'
 
-SET_SPEED_PERSISTENCE = 2.5  # seconds
+SET_SPEED_PERSISTENCE = 2.5
+COMPASS_FULL_ALPHA = 229.5
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ COLORS = Colors()
 
 
 class TurnIntent(Widget):
-  FADE_IN_ANGLE = 30  # degrees
+  FADE_IN_ANGLE = 30
 
   def __init__(self):
     super().__init__()
@@ -74,7 +74,6 @@ class TurnIntent(Widget):
     left = any(e.name == EventName.preLaneChangeLeft for e in sm['onroadEvents'])
     right = any(e.name == EventName.preLaneChangeRight for e in sm['onroadEvents'])
     if left or right:
-      # pre lane change
       if not self._pre:
         self._turn_intent_rotation_filter.x = self.FADE_IN_ANGLE if left else -self.FADE_IN_ANGLE
 
@@ -83,17 +82,14 @@ class TurnIntent(Widget):
       self._turn_intent_alpha_filter.update(1)
       self._turn_intent_rotation_filter.update(0)
     elif any(e.name == EventName.laneChange for e in sm['onroadEvents']):
-      # fade out and rotate away
       self._pre = False
       self._turn_intent_alpha_filter.update(0)
 
       if self._turn_intent_direction == 0:
-        # unknown. missed pre frame?
         self._turn_intent_rotation_filter.update(0)
       else:
         self._turn_intent_rotation_filter.update(self._turn_intent_direction * self.FADE_IN_ANGLE)
     else:
-      # didn't complete lane change, just hide
       self._pre = False
       self._turn_intent_direction = 0
       self._turn_intent_alpha_filter.update(0)
@@ -154,7 +150,6 @@ class HudRenderer(Widget):
     self._can_draw_top_icons = can_draw_top_icons
 
   def drawing_top_icons(self) -> bool:
-    # whether we're drawing any top icons currently
     return bool(self._set_speed_alpha_filter.x > 1e-2)
 
   def _update_state(self) -> None:
@@ -243,11 +238,9 @@ class HudRenderer(Widget):
         self._wheel_alpha_filter.update(0)
         self._wheel_y_filter.update(wheel_txt.height / 2)
       else:
-        # Tesla: same 0.7 cap as the lane lines so a parked HUD does not burn the OLED.
         self._wheel_alpha_filter.update(255 * (THEME_LANE_ALPHA if tesla else 0.9))
         self._wheel_y_filter.update(0)
 
-    # pos
     pos_x = int(rect.x + 21 + wheel_txt.width / 2)
     pos_y = int(rect.y + rect.height - 14 - wheel_txt.height / 2 + self._wheel_y_filter.x)
     rotation = -ui_state.sm['carState'].steeringAngleDeg
@@ -264,7 +257,6 @@ class HudRenderer(Widget):
     dest_rect = rl.Rectangle(pos_x, pos_y, wheel_txt.width, wheel_txt.height)
     origin = (wheel_txt.width / 2, wheel_txt.height / 2)
 
-    # color and draw
     a = int(self._wheel_alpha_filter.x)
     if tesla and not self._show_wheel_critical:
       r, g, b = THEME_TESLA_RGB
@@ -274,7 +266,6 @@ class HudRenderer(Widget):
     rl.draw_texture_pro(wheel_txt, src_rect, dest_rect, origin, rotation, color)
 
     if self._show_wheel_critical:
-      # Draw exclamation point icon
       EXCLAMATION_POINT_SPACING = 10
       exclamation_pos_x = pos_x - self._txt_exclamation_point.width / 2 + wheel_txt.width / 2 + EXCLAMATION_POINT_SPACING
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
@@ -292,7 +283,7 @@ class HudRenderer(Widget):
     rl.draw_texture_pro(fan_tex, src, dest, rl.Vector2(fan / 2, fan / 2), heading,
                         theme_color(a / 255.0))
     fan_r = fan / 2
-    track_a = int(255 * 0.25 * (a / 229.5))
+    track_a = int(255 * 0.25 * (a / COMPASS_FULL_ALPHA))
     rl.draw_ring(rl.Vector2(cx, cy), fan_r + 1, fan_r + 3, 0, 360, 36,
                  rl.Color(255, 255, 255, max(0, min(255, track_a))))
     if not letter:
@@ -352,7 +343,6 @@ class HudRenderer(Widget):
     x = rect.x
     y = rect.y
 
-    # draw drop shadow
     circle_radius = 162 // 2
     rl.draw_circle_gradient(rl.Vector2(x + circle_radius, y + circle_radius), circle_radius,
                             rl.Color(0, 0, 0, int(255 / 2 * alpha)), rl.BLANK)

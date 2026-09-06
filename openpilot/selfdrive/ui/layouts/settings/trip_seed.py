@@ -1,8 +1,4 @@
-"""Qlog reader for the one trip cache.
-
-Segment cache: /data/trip_seed_cache.json. Fold in trip_stats.py
-rebuilds days[] from this cache. Nothing here writes today/week.
-"""
+"""Qlog segment cache for trip_stats fold."""
 from __future__ import annotations
 
 import json
@@ -21,7 +17,6 @@ HOT_SEC = 120.0
 CACHE_KEEP_SEC = 200 * 86400
 STATS_LOOKBACK_SEC = 3 * 86400
 CACHE_LOCK = Path("/data/trip_cache.lock")
-# Empty leftover files (old O_EXCL locks) or a dead pid must not block forever.
 LOCK_STALE_CACHE_SEC = 2 * 3600
 LOCK_STALE_STATS_SEC = 10 * 60
 
@@ -37,6 +32,10 @@ def chicago_now() -> datetime:
   return datetime.now(TZ)
 
 
+def engaged_pct(eng: float, meters: float) -> int:
+  return int(round(100.0 * eng / meters)) if meters > 1 else 0
+
+
 def day_id(dt: datetime | None = None) -> str:
   return (dt or chicago_now()).date().isoformat()
 
@@ -48,7 +47,7 @@ def sunday_id(dt: datetime | None = None) -> str:
 
 
 def _offroad() -> bool:
-  from openpilot.selfdrive.ui.layouts.settings.trip_stats import _is_offroad
+  from openpilot.selfdrive.ui.layouts.settings.trip_stats import _is_offroad as _is_offroad
   return _is_offroad()
 
 
@@ -343,7 +342,8 @@ def _rebuild() -> None:
     if _offroad():
       n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
       _fold()
-    cloudlog.info(f"trip_rebuild wrote={n} offroad={_offroad()}")
+    off = _offroad()
+    cloudlog.info(f"trip_rebuild wrote={n} offroad={off}")
   except Exception:
     cloudlog.exception("trip rebuild")
   finally:

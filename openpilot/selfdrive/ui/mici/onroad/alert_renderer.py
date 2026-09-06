@@ -109,8 +109,6 @@ class AlertRenderer(Widget):
     self._text_gen_time = 0
     self._alert_text2_gen = ''
 
-    # animation filters
-    # TODO: use 0.1 but with proper alert height calculation
     self._alert_y_filter = BounceFilter(0, 0.1, 1 / gui_app.target_fps)
     self._alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
 
@@ -127,20 +125,17 @@ class AlertRenderer(Widget):
     self._txt_blind_spot_right = gui_app.texture('icons_mici/onroad/blind_spot_left.png', 134, 150, flip_x=True)
 
   def get_alert(self, sm: messaging.SubMaster) -> Alert | None:
-    """Generate the current alert based on selfdrive state."""
+
     ss = sm['selfdriveState']
 
-    # Check if selfdriveState messages have stopped arriving
     if not sm.updated['selfdriveState']:
       recv_frame = sm.recv_frame['selfdriveState']
       time_since_onroad = time.monotonic() - ui_state.started_time
 
-      # 1. Never received selfdriveState since going onroad
       waiting_for_startup = recv_frame < ui_state.started_frame
       if waiting_for_startup and time_since_onroad > 10:
         return ALERT_STARTUP_PENDING
 
-      # 2. Lost communication with selfdriveState after receiving it
       if COMMA_HARDWARE and not waiting_for_startup:
         ss_missing = time.monotonic() - sm.recv_time['selfdriveState']
         if ss_missing > SELFDRIVE_STATE_TIMEOUT:
@@ -148,7 +143,6 @@ class AlertRenderer(Widget):
             return ALERT_CRITICAL_TIMEOUT
           return ALERT_CRITICAL_REBOOT
 
-    # No stock alert — show the 3s orange vSlam toast if one was just logged
     if ss.alertSize == 0:
       try:
         if time.time() < alert_until():
@@ -157,7 +151,6 @@ class AlertRenderer(Widget):
         pass
       return None
 
-    # Return current alert
     ret = Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize.raw, status=ss.alertStatus.raw,
                 visual_alert=ss.alertHudVisual, alert_type=ss.alertType)
     self._prev_alert = ret
@@ -173,7 +166,6 @@ class AlertRenderer(Widget):
     icon_margin_x = 20
     icon_margin_y = 18
 
-    # alert_type format is "EventName/eventType" (e.g., "preLaneChangeLeft/warning")
     event_name = alert.alert_type.split('/')[0] if alert.alert_type else ''
 
     if event_name == 'preLaneChangeLeft':
@@ -211,7 +203,6 @@ class AlertRenderer(Widget):
 
     self._last_icon_side = icon_side
 
-    # create text rect based on icon presence
     text_x = self._rect.x + ALERT_MARGIN
     text_width = self._rect.width - ALERT_MARGIN
     if icon_side == 'left':
@@ -233,12 +224,10 @@ class AlertRenderer(Widget):
   def _render(self, rect: rl.Rectangle) -> bool:
     alert = self.get_alert(ui_state.sm)
 
-    # Animate fade and slide in/out
     self._alert_y_filter.update(self._rect.y - 50 if alert is None else self._rect.y)
     self._alpha_filter.update(0 if alert is None else 1)
 
     if alert is None:
-      # If still animating out, keep the previous alert
       if self._alpha_filter.x > 0.01 and self._prev_alert is not None:
         alert = self._prev_alert
       else:
@@ -277,7 +266,6 @@ class AlertRenderer(Widget):
                        rl.Color(255, 255, 255, int(icon_alpha * self._alpha_filter.x)))
 
   def _draw_background(self, alert: Alert) -> None:
-    # draw top gradient for alert text at top
     color = ALERT_COLORS.get(alert.status, ALERT_COLORS[AlertStatus.normal])
     color = rl.Color(color.r, color.g, color.b, int(255 * 0.90 * self._alpha_filter.x))
     translucent_color = rl.Color(color.r, color.g, color.b, int(0 * self._alpha_filter.x))
@@ -285,7 +273,6 @@ class AlertRenderer(Widget):
     small_alert_height = round(self._rect.height * 0.583) # 140px at mici height
     medium_alert_height = round(self._rect.height * 0.833) # 200px at mici height
 
-    # alert_type format is "EventName/eventType" (e.g., "preLaneChangeLeft/warning")
     event_name = alert.alert_type.split('/')[0] if alert.alert_type else ''
 
     if event_name == 'preLaneChangeLeft':
@@ -308,9 +295,7 @@ class AlertRenderer(Widget):
   def _draw_text(self, alert: Alert, alert_layout: AlertLayout) -> None:
     icon_side = alert_layout.icon.side if alert_layout.icon is not None else None
 
-    # TODO: hack
     alert_text1 = alert.text1.lower().replace('calibrating: ', 'calibrating:\n')
-    # TODO: there should be a common way to determine font size based on text length to maximize rect
     if len(alert_text1) <= 12:
       font_size = 92 - 10
     elif len(alert_text1) <= 16:
@@ -338,7 +323,6 @@ class AlertRenderer(Widget):
 
     alert_text2 = alert.text2.lower()
 
-    # randomize chars and length for testing
     if DEBUG:
       if time.monotonic() - self._text_gen_time > 0.5:
         self._alert_text2_gen = ''.join(random.choices(string.ascii_lowercase + ' ', k=random.randint(0, 40)))

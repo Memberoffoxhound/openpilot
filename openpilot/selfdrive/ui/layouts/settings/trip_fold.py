@@ -1,11 +1,11 @@
-"""Park/boot fold and Home stats_view. Imported lazily from trip_stats."""
+"""Park/boot fold helpers for trip_stats."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   CACHE_KEEP_SEC, TZ, _f, _iter_qlogs, _load_seg_cache, _save_seg_cache,
-  _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, sunday_id,
+  _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, engaged_pct, sunday_id,
 )
 from openpilot.selfdrive.ui.layouts.settings.trip_overlay import (
   empty_live, empty_pending, normalize_live, normalize_pending,
@@ -207,12 +207,9 @@ def run_view(st: dict, is_offroad, streaks) -> dict:
       mm, ee = max(_f(sm, "m"), from_days_m), max(_f(sm, "e"), from_days_e)
     months.append({"id": mk, "m": mm, "e": ee, "current": mk == cur_month})
 
-  def pct(eng, meters):
-    return int(round(100.0 * eng / meters)) if meters > 1 else 0
-
   return {
-    "pct": pct(life_e, life_m), "week_pct": pct(week_e, week_m),
-    "today_pct": pct(today_e, today_m),
+    "pct": engaged_pct(life_e, life_m), "week_pct": engaged_pct(week_e, week_m),
+    "today_pct": engaged_pct(today_e, today_m),
     "streak_days": max(int(st.get("max_day_streak") or 0), current, window),
     "week_days": week_days, "months": months,
     "longest_m": max(_f(st, "max_streak_m"), _f(live, "streak_m")),

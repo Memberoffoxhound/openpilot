@@ -27,6 +27,13 @@ def _split_description(desc: str) -> tuple[str, str, str, str] | None:
   return version, branch, commit, date
 
 
+UPDATER_PROC = "openpilot.system.updated.updated"
+
+
+def _ping_updater(sig: str) -> None:
+  subprocess.run(f"pkill -{sig} -f {UPDATER_PROC}", shell=True)
+
+
 class UpdaterState(IntEnum):
   IDLE = 0
   WAITING_FOR_UPDATER = 1
@@ -103,9 +110,9 @@ class CheckUpdateButton(BigButton):
 
     def run():
       if self.get_value() == "download update":
-        subprocess.run("pkill -SIGHUP -f openpilot.system.updated.updated", shell=True)
+        _ping_updater("SIGHUP")
       else:
-        subprocess.run("pkill -SIGUSR1 -f openpilot.system.updated.updated", shell=True)
+        _ping_updater("SIGUSR1")
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -251,7 +258,7 @@ class TargetBranchButton(BigButton):
   def _on_select(self, branch: str):
     ui_state.params.put("UpdaterTargetBranch", branch, block=True)
     self.set_value(branch)
-    subprocess.run("pkill -SIGUSR1 -f openpilot.system.updated.updated", shell=True)
+    _ping_updater("SIGUSR1")
 
 
 class SoftwareLayoutMici(NavScroller):

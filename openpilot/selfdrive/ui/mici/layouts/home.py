@@ -12,18 +12,18 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
+from openpilot.selfdrive.ui.layouts.settings.trip_seed import engaged_pct
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.common.version import RELEASE_BRANCHES
 
-HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
-WORDMARK_SIZE = 80
+MICI_MICI_WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
-  """SEXYPILOT wordmark from TESLA.ttf. Falls back to Inter DISPLAY."""
+  """S3XYPilot wordmark glyphs from TESLA.ttf (S-E-X-Y-P-I-L-O-T). Falls back to Inter DISPLAY."""
   try:
     chars = "SEXYPILOT"
     cps = sorted(map(ord, chars))
@@ -40,17 +40,6 @@ def _wordmark_font() -> rl.Font:
 
 
 NetworkType = log.DeviceState.NetworkType
-
-NETWORK_TYPES = {
-  NetworkType.none: "Offline",
-  NetworkType.wifi: "WiFi",
-  NetworkType.cell2G: "2G",
-  NetworkType.cell3G: "3G",
-  NetworkType.cell4G: "LTE",
-  NetworkType.cell5G: "5G",
-  NetworkType.ethernet: "Ethernet",
-}
-
 
 class AlertsPill(Widget):
   ICON_OFFSET = 12
@@ -149,7 +138,7 @@ class NetworkIcon(Widget):
 
 
 class LongModeBadge(Widget):
-  """Footer: Tesla T + TACC, or comma + LONG."""
+
   H = 48
   LOGO_W = 48
   COL_W = 16
@@ -190,10 +179,6 @@ class MiciHomeLayout(Widget):
     self._on_alerts_click: Callable | None = None
     self._alert_count_callback: Callable[[], int] | None = None
 
-    self._mouse_down_t: None | float = None
-    self._did_long_press = False
-    self._is_pressed_prev = False
-
     self._version_text = self._get_version_text()
     self._wordmark_font = _wordmark_font()
 
@@ -220,7 +205,6 @@ class MiciHomeLayout(Widget):
     ], spacing=18)
 
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
@@ -237,8 +221,7 @@ class MiciHomeLayout(Widget):
       dist, unit = meters / 1000.0, "km"
     else:
       dist, unit = meters / 1609.344, "mi"
-    pct = int(round(100.0 * eng_m / meters)) if meters > 1 else 0
-    return f"{int(round(dist))}{unit} {pct}%"
+    return f"{int(round(dist))}{unit} {engaged_pct(eng_m, meters)}%"
 
   def _refresh_trip(self):
     now = time.monotonic()
@@ -292,7 +275,6 @@ class MiciHomeLayout(Widget):
 
     commit_date_raw = ui_state.params.get("GitCommitDate")
     try:
-      # GitCommitDate format from get_commit_date(): '%ct %ci' e.g. "'1708012345 2024-02-15 ...'"
       unix_ts = int(commit_date_raw.strip("'").split()[0])
       date_str = datetime.datetime.fromtimestamp(unix_ts).strftime("%b %d")
     except (ValueError, IndexError, TypeError, AttributeError):
@@ -301,14 +283,11 @@ class MiciHomeLayout(Widget):
     return version, branch, commit[:7], date_str
 
   def _render(self, _):
-    # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 2)
-    # C4 is 536px. TESLA.ttf @ 80 is ~580px of ink.
-    wm = 60 if self.rect.width < 1000 else WORDMARK_SIZE
+    wm = 60 if self.rect.width < 1000 else MICI_WORDMARK_SIZE
     rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, wm, 0, LABEL_WHITE)
 
     if self._version_text is not None:
-      # release branch
       release_branch = self._version_text[1] in RELEASE_BRANCHES
       version_pos = rl.Rectangle(text_pos.x, text_pos.y + wm + 16, 100, 44)
       self._version_label.set_text(self._version_text[0])
@@ -350,7 +329,6 @@ class MiciHomeLayout(Widget):
       self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4,
                                     min(avail, x - version_pos.x) + 8, lsz + 8)
 
-    # ***** Center-aligned bottom section icons *****
     op_long = bool(ui_state.has_longitudinal_control)
     self._experimental_icon.set_visible(op_long)
     self._experimental_icon.set_enabled(op_long)
@@ -363,7 +341,6 @@ class MiciHomeLayout(Widget):
     footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 48, self.rect.width - HOME_PADDING, 48)
     self._status_bar_layout.render(footer_rect)
 
-    # TODO: add alignment to hboxlayout and add to there
     self._alerts_pill.set_position(self.rect.x + self.rect.width - self._alerts_pill.rect.width - HOME_PADDING,
                                    self.rect.y + self.rect.height - self._alerts_pill.rect.height)
     self._alerts_pill.render()
