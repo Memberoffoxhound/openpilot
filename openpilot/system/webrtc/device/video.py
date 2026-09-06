@@ -31,10 +31,17 @@ class EncodedVideoFrame:
 
 
 class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
-  camera_to_sock_mapping = {
+  # stream_encoderd (offroad / notcar)
+  live_socks = {
     "driver": "livestreamCabinEncodeData",
     "wideRoad": "livestreamWideRoadEncodeData",
     "road": "livestreamNarrowRoadEncodeData",
+  }
+  # onroad encoderd. qcam is already H264; road/wide/cabin mains are HEVC.
+  onroad_socks = {
+    "driver": "cabinEncodeData",
+    "wideRoad": "wideRoadEncodeData",
+    "road": "qNarrowRoadEncodeData",
   }
 
   def __init__(self, camera_type: str, video_enabled: bool = True):
@@ -52,8 +59,13 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
     super().stop()
     self._sock = None
 
+  def _sock_name(self, camera_type: str) -> str:
+    if self.params.get_bool("IsOffroad"):
+      return self.live_socks[camera_type]
+    return self.onroad_socks[camera_type]
+
   def _make_sock(self, camera_type: str) -> messaging.SubSocket:
-    return messaging.sub_sock(self.camera_to_sock_mapping[camera_type], conflate=True)
+    return messaging.sub_sock(self._sock_name(camera_type), conflate=True)
 
   def switch_camera(self, camera_type: str) -> None:
     self._sock = self._make_sock(camera_type)
