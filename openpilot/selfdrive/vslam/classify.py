@@ -172,35 +172,9 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
   ratio = geo["path_ratio"]
   rw = recover_window(event, samples)
 
-  model_yaw = event.get("model_yaw_4s")
-  if model_yaw is None and slam:
-    model_yaw = slam[0].get("model_yaw_4s")
-  model_y = event.get("model_y_3s")
-  if model_y is None and slam:
-    model_y = slam[0].get("model_y_3s")
-  model_yaw_f = None if model_yaw is None else abs(_f(model_yaw))
-  model_y_f = None if model_y is None else abs(_f(model_y))
-
   corner = 0
   straight = 0
   facts: list[str] = []
-
-  if model_yaw_f is not None:
-    if model_yaw_f >= 12:
-      corner += 3
-      facts.append(f"model yaw {model_yaw_f:.0f} deg at 4s")
-    elif model_yaw_f < 8:
-      straight += 2
-      facts.append(f"model yaw {model_yaw_f:.0f} deg at 4s")
-  if model_y_f is not None:
-    if model_y_f >= 2.0:
-      corner += 2
-      facts.append(f"model path y {model_y_f:.1f} m at 3s")
-    elif model_y_f < 1.2:
-      straight += 1
-      facts.append(f"model path y {model_y_f:.1f} m at 3s")
-  if model_yaw_f is None and model_y_f is None:
-    facts.append("model path not on this trace")
 
   if heading is not None:
     if heading >= 25:
@@ -257,17 +231,14 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     hint = "honor"
   elif straight >= corner + 2 and straight >= 3:
     path = "straight"
-    hint = "ignore"
+    hint = "hold"  # overwritten below for straight
   else:
     path = "unknown"
     hint = "hold"
 
   if path == "cornering":
     headline = "Cornering \u2014 honor"
-    summary = (
-      "Path is bending (ramp or real curve). Honor this slam. "
-      "openpilot long is not ready to invent that slowdown."
-    )
+    summary = "Path is bending (ramp or real curve). Honor this slam."
   elif path == "straight":
     hint, headline, summary = _straight_filter(rw)
   else:
@@ -290,8 +261,6 @@ def classify(event: dict, samples: list[dict] | None = None) -> dict:
     "facts": facts,
     "corner_score": corner,
     "straight_score": straight,
-    "model_yaw_4s": None if model_yaw_f is None else round(model_yaw_f, 1),
-    "model_y_3s": None if model_y_f is None else round(model_y_f, 2),
     "recover_wait_s": rw["recover_wait_s"],
     "slam_floor_mph": rw["slam_floor_mph"],
     "rise_started": rw["rise_started"],

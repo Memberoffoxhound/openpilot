@@ -1,21 +1,31 @@
 from openpilot.common.params import Params
-from openpilot.selfdrive.vslam.store import (
-  is_enabled, set_enabled, is_filter_enabled, set_filter_enabled, op_long_active,
-)
+from openpilot.selfdrive.vslam.store import is_enabled, set_enabled
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import toggle_item
 from openpilot.system.ui.widgets.scroller import Scroller
 
 LOGGER_DESC = tr_noop(
-  "Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. "
-  "View events in S3XYPilot WebUI at http://<comma-ip>:8088."
+  "Records 6+ mph cruise dumps for review (observe-only). "
+  "WebUI: http://<comma-ip>:8088"
 )
 
+# Kept for shared copy / future planner wiring. Filter UI is hidden until a consumer exists.
 FILTER_DESC = tr_noop(
-  "On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. "
-  "Off/Locked whenever stock Tesla TACC is the longitudinal policy. "
-  "Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps."
+  "Observe-only for now: would block phantom brakes on OP long when a planner reader exists. "
+  "Locked off on TACC."
+)
+
+FILTER_FAQ = (
+  "Observe-only until a planner consumer exists.",
+  "Would apply on openpilot long only; locked on TACC.",
+)
+
+LOGGER_FAQ = (
+  "Records Tesla cruise dumps of 6+ mph for review.",
+  "Doesn't touch gas or brake — observe only.",
+  "View events in S3XYPilot WebUI:",
+  "http://<comma-ip>:8088",
 )
 
 
@@ -29,31 +39,16 @@ class VSlamLayout(Widget):
       initial_state=is_enabled(self._params),
       callback=self._on_logger,
     )
-    self._filter = toggle_item(
-      lambda: tr("vSlam Filter"),
-      description=lambda: tr(FILTER_DESC),
-      initial_state=is_filter_enabled(self._params),
-      callback=self._on_filter,
-    )
-    self._scroller = Scroller([self._logger, self._filter], line_separator=True, spacing=0)
+    # Filter toggle hidden: no planner reader yet (param helpers remain in store.py).
+    self._scroller = Scroller([self._logger], line_separator=True, spacing=0)
 
   def show_event(self):
     super().show_event()
-    self._refresh()
-
-  def _refresh(self):
     self._logger.action_item.set_state(is_enabled(self._params))
-    op_long = op_long_active(self._params)
-    self._filter.action_item.set_enabled(op_long)
-    self._filter.action_item.set_state(is_filter_enabled(self._params) if op_long else False)
 
   def _on_logger(self, state: bool):
     set_enabled(bool(state), self._params)
     self._logger.action_item.set_state(is_enabled(self._params))
-
-  def _on_filter(self, state: bool):
-    set_filter_enabled(bool(state), self._params)
-    self._refresh()
 
   def _render(self, rect):
     self._scroller.render(rect)

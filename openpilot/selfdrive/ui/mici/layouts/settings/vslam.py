@@ -6,19 +6,16 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.common import theme_color
 from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, GreyBigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
+from openpilot.selfdrive.ui.layouts.settings.vslam import FILTER_FAQ, LOGGER_FAQ
 from openpilot.selfdrive.vslam.store import (
-  is_enabled, set_enabled, is_filter_enabled, set_filter_enabled, op_long_active,
-  load_events, load_trace,
+  is_enabled, set_enabled, load_events, load_trace,
 )
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import NavScroller
 import pyray as rl
 
-WHITE = rl.Color(255, 255, 255, int(255 * 0.92))
-LABEL = rl.Color(142, 142, 147, 255)
-DIM = rl.Color(100, 100, 100, 255)
-TRACK = rl.Color(42, 42, 48, 255)
+from openpilot.selfdrive.ui.mici.layouts.settings.stats import WHITE, LABEL, DIM, TRACK
 YELLOW = rl.Color(255, 204, 0, 255)
 RED = rl.Color(255, 59, 48, 255)
 GREEN = rl.Color(80, 230, 150, 255)
@@ -51,34 +48,25 @@ def _wire_vslam_confirm(page: NavScroller, title: str, bodies: list[str],
 class VSlamLoggerConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
-    _wire_vslam_confirm(self, "enabling\nvSlam logger", [
-      "Records Tesla cruise dumps of 6+ mph for review.",
-      "Doesn't touch gas or brake — observe only.",
-      "View events in S3XYPilot WebUI:",
-      "http://<comma-ip>:8088",
-    ], on_confirm)
+    _wire_vslam_confirm(self, "enabling\nvSlam logger", list(LOGGER_FAQ), on_confirm)
 
 
 class VSlamFilterConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
-    _wire_vslam_confirm(self, "enabling\nvSlam filter", [
-      "On openpilot long, stops Tesla phantom brakes from",
-      "yanking set speed down on straight roads.",
-      "Off/Locked whenever stock Tesla TACC is the",
-      "longitudinal policy.",
-      "Allows Tesla curvature assisted slowdowns",
-      "in curves such as exit off-ramps.",
-    ], on_confirm)
+    _wire_vslam_confirm(self, "enabling\nvSlam filter", list(FILTER_FAQ), on_confirm)
+
+
+MICI_PAGE_W, MICI_PAGE_H = 536, 240
 
 
 class _Page(Widget):
   def __init__(self):
     super().__init__()
-    self.set_rect(rl.Rectangle(0, 0, 536, 240))
+    self.set_rect(rl.Rectangle(0, 0, MICI_PAGE_W, MICI_PAGE_H))
 
   def _update_state(self):
-    self.set_rect(rl.Rectangle(self.rect.x, self.rect.y, 536, 240))
+    self.set_rect(rl.Rectangle(self.rect.x, self.rect.y, MICI_PAGE_W, MICI_PAGE_H))
 
 
 class VSlamListWidget(_Page):
@@ -186,24 +174,17 @@ class VSlamLayoutMici(NavScroller):
     self._params = Params()
     self._logger = BigToggle("vSlam logger", initial_state=is_enabled(self._params),
                              toggle_callback=self._on_logger)
-    self._filter = BigToggle("vSlam filter", initial_state=is_filter_enabled(self._params),
-                             toggle_callback=self._on_filter)
     self._list = VSlamListWidget()
     self._trace = VSlamTraceWidget()
-    self._items = (self._logger, self._filter, self._list, self._trace)
+    # Filter toggle hidden until a planner consumer exists.
+    self._items = (self._logger, self._list, self._trace)
     self._scroller.add_widgets(list(self._items))
 
   def show_event(self):
     super().show_event()
-    self._refresh_toggles()
+    self._logger.set_checked(is_enabled(self._params))
     for w in self._items:
       w.show_event()
-
-  def _refresh_toggles(self):
-    self._logger.set_checked(is_enabled(self._params))
-    op_long = op_long_active(self._params)
-    self._filter.set_enabled(op_long)
-    self._filter.set_checked(is_filter_enabled(self._params) if op_long else False)
 
   def _on_logger(self, state: bool):
     if state:
@@ -216,19 +197,3 @@ class VSlamLayoutMici(NavScroller):
       gui_app.push_widget(VSlamLoggerConfirmPage(on_confirm))
     else:
       set_enabled(False, self._params)
-
-  def _on_filter(self, state: bool):
-    if not op_long_active(self._params):
-      self._filter.set_checked(False)
-      set_filter_enabled(False, self._params)
-      return
-    if state:
-      self._filter.set_checked(False)
-
-      def on_confirm():
-        armed = set_filter_enabled(True, self._params)
-        self._filter.set_checked(armed)
-
-      gui_app.push_widget(VSlamFilterConfirmPage(on_confirm))
-    else:
-      set_filter_enabled(False, self._params)

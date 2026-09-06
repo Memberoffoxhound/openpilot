@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Detect vCruise slams >= 6 mph and persist traces + place names.
-
-Does not touch panda safety or actuation. Observe-only.
-"""
+"""Detect vCruise slams >= 6 mph; observe-only traces + place names."""
 from __future__ import annotations
 
 import json
@@ -130,8 +127,6 @@ def _reverse(lat: float, lon: float) -> dict:
 class VSlamD:
   def __init__(self):
     self.params = Params()
-    # liveLocationKalman is gone on this cereal — unknown sockets crash SubMaster
-    # and manager then blocks engage with processNotRunning.
     self.sm = messaging.SubMaster([
       "carState", "longitudinalPlan", "gpsLocation", "gpsLocationExternal",
       "deviceState",

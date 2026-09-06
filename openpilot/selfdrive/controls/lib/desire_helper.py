@@ -6,8 +6,7 @@ from openpilot.selfdrive.controls.lib.auto_lane_change import AutoLaneChangeCont
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 
-# Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
-# S3XYPilot Highland: no auto lane change below 25 mph (stock is 20).
+# rav4kumar / sunnypilot ALC; Highland floor 25 mph (stock 20).
 LANE_CHANGE_SPEED_MIN = 25 * CV.MPH_TO_MS
 LANE_CHANGE_TIME_MAX = 10.
 LANE_CHANGE_START_TIME = 0.5
@@ -32,7 +31,6 @@ class DesireHelper:
     one_blinker = carstate.leftBlinker != carstate.rightBlinker
     below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN
 
-    # lateral_active is the engaged gate — blinker is ignored when disengaged
     if not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX:
       self.lane_change_state = LaneChangeState.off
       self.lane_change_direction = LaneChangeDirection.none
