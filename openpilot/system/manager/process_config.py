@@ -61,6 +61,12 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
+# Second encoder process. Onroad encoderd already publishes qcam + HEVC.
+# Starting stream_encoderd while engaged starves controlsd (comm / lateral alerts).
+# Only run it offroad (parked LAN / Connect) or on the body.
+def livestream_encoder(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return ((not started) and params.get_bool("IsLiveStreaming")) or (started and CP.notCar)
+
 def or_(*fns):
   return lambda *args: operator.or_(*(fn(*args) for fn in fns))
 
@@ -72,13 +78,13 @@ procs = [
 
   NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
-  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
+  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], livestream_encoder),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
 
   NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
   PythonProcess("proclogd", "openpilot.system.proclogd", only_onroad, enabled=platform.system() != "Darwin"),
-  PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
+  PythonProcess("journald", "openpilot.system.journald", only_onroad, enabled=platform.system() != "Darwin"),
   PythonProcess("micd", "openpilot.system.micd", iscar),
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
