@@ -47,11 +47,11 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
   def __init__(self, camera_type: str, video_enabled: bool = True):
     super().__init__(camera_type, DT_MDL)
 
+    self.params = Params()
     self._sock = self._make_sock(camera_type)
     self._pts = 0
     self._t0_ns = time.monotonic_ns()
     self.timing_sei_enabled = False
-    self.params = Params()
     self._seen_keyframe = False
     self.video_enabled = video_enabled
 
@@ -60,7 +60,8 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
     self._sock = None
 
   def _sock_name(self, camera_type: str) -> str:
-    if self.params.get_bool("IsOffroad"):
+    params = getattr(self, "params", None) or Params()
+    if params.get_bool("IsOffroad"):
       return self.live_socks[camera_type]
     return self.onroad_socks[camera_type]
 
