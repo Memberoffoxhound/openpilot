@@ -1,4 +1,4 @@
-/* S3XYPilot LAN WebRTC viewer */
+/* SEXYPILOT LAN WebRTC viewer */
 (function () {
   const FEEDS = [
     { id: "fcam", label: "Fcam", cameras: ["road"] },
@@ -58,7 +58,7 @@
           <span class="pip-lab">DCAM</span>
         </div>
         <div class="live-empty" id="liveEmpty">
-          <b>S3XYPilot</b>
+          <b>SEXYPILOT</b>
           <p id="liveMsg">Connecting cameras…</p>
         </div>
         <div class="live-hud">
@@ -68,8 +68,8 @@
           </div>
           <div class="live-map" id="liveMap" aria-label="Map"></div>
           <div class="live-mark">
-            <div class="wm">S3XYPilot</div>
-            <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "Engaged" : "Disengaged"}</div>
+            <div class="wm">SEXYPILOT</div>
+            <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "ENGAGED" : "DISENGAGED"}</div>
           </div>
         </div>
         <div class="live-chrome">
@@ -108,7 +108,7 @@
     if (n) n.textContent = String(speedNum(LV.live.speedMs, metric));
     if (u) u.textContent = metric ? "KM/H" : "MPH";
     if (e) {
-      e.textContent = LV.live.engaged ? "Engaged" : "Disengaged";
+      e.textContent = LV.live.engaged ? "ENGAGED" : "DISENGAGED";
       e.classList.toggle("on", !!LV.live.engaged);
     }
     paintMap();
