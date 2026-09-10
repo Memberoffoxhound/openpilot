@@ -1,4 +1,5 @@
 import datetime
+import math
 import time
 
 from openpilot.cereal import log
@@ -88,21 +89,21 @@ class AlertsPill(Widget):
 class NetworkIcon(Widget):
   def __init__(self):
     super().__init__()
-    self.set_rect(rl.Rectangle(0, 0, 54, 44))  # max size of all icons
+    self.set_rect(rl.Rectangle(0, 0, 60, 47))  # max size of all icons
     self._net_type = NetworkType.none
     self._net_strength = 0
 
-    self._wifi_slash_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_slash.png", 50, 44)
-    self._wifi_none_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_none.png", 50, 37)
-    self._wifi_low_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_low.png", 50, 37)
-    self._wifi_medium_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_medium.png", 50, 37)
-    self._wifi_full_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_full.png", 50, 37)
+    self._wifi_slash_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_slash.png", 54, 47)
+    self._wifi_none_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_none.png", 54, 40)
+    self._wifi_low_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_low.png", 54, 40)
+    self._wifi_medium_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_medium.png", 54, 40)
+    self._wifi_full_txt = gui_app.texture("icons_mici/settings/network/wifi_strength_full.png", 54, 40)
 
-    self._cell_none_txt = gui_app.texture("icons_mici/settings/network/cell_strength_none.png", 54, 36)
-    self._cell_low_txt = gui_app.texture("icons_mici/settings/network/cell_strength_low.png", 54, 36)
-    self._cell_medium_txt = gui_app.texture("icons_mici/settings/network/cell_strength_medium.png", 54, 36)
-    self._cell_high_txt = gui_app.texture("icons_mici/settings/network/cell_strength_high.png", 54, 36)
-    self._cell_full_txt = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 54, 36)
+    self._cell_none_txt = gui_app.texture("icons_mici/settings/network/cell_strength_none.png", 60, 40)
+    self._cell_low_txt = gui_app.texture("icons_mici/settings/network/cell_strength_low.png", 60, 40)
+    self._cell_medium_txt = gui_app.texture("icons_mici/settings/network/cell_strength_medium.png", 60, 40)
+    self._cell_high_txt = gui_app.texture("icons_mici/settings/network/cell_strength_high.png", 60, 40)
+    self._cell_full_txt = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 60, 40)
 
   def _update_state(self):
     device_state = ui_state.sm['deviceState']
@@ -186,7 +187,9 @@ class MiciHomeLayout(Widget):
     self._experimental_icon.set_enabled(True)
     self._experimental_icon.set_click_callback(self._toggle_experimental)
     self._long_badge = LongModeBadge()
+    self._usb_icon = IconWidget("icons_mici/usb.png", (62, 40))
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (68, 40))
+    self._chestnut_loading_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
     self._chestnut_failed_icon = IconWidget("icons_mici/chestnut_orange.png", (68, 40))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
@@ -198,7 +201,9 @@ class MiciHomeLayout(Widget):
       NetworkIcon(),
       self._long_badge,
       self._experimental_icon,
+      self._usb_icon,
       self._chestnut_icon,
+      self._chestnut_loading_icon,
       self._chestnut_failed_icon,
       self._body_icon,
       self._mic_icon,
@@ -333,8 +338,16 @@ class MiciHomeLayout(Widget):
     self._experimental_icon.set_visible(op_long)
     self._experimental_icon.set_enabled(op_long)
     self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
-    self._chestnut_icon.set_visible(ui_state.chestnut_state in (ChestnutState.READY, ChestnutState.LOADING, ChestnutState.ACTIVE))
-    self._chestnut_failed_icon.set_visible(ui_state.chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
+    usb_connected = ui_state.usb_connected
+    usb_unknown = ui_state.usb_unknown
+    chestnut_state = ui_state.chestnut_state
+    self._usb_icon.set_visible(usb_connected and usb_unknown)
+    self._chestnut_icon.set_visible(not usb_unknown and chestnut_state not in
+                                    (ChestnutState.LOADING, ChestnutState.UNCOMPILED, ChestnutState.FAILED) and
+                                    (usb_connected or chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE)))
+    self._chestnut_loading_icon.set_visible(not usb_unknown and chestnut_state == ChestnutState.LOADING)
+    self._chestnut_loading_icon.set_opacity(0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0)))
+    self._chestnut_failed_icon.set_visible(not usb_unknown and chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
     self._mic_icon.set_visible(ui_state.recording_audio)
     self._body_icon.set_visible(bool(ui_state.is_body))
 
