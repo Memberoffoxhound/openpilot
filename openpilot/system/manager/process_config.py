@@ -67,6 +67,10 @@ def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
 def livestream_encoder(started: bool, params: Params, CP: car.CarParams) -> bool:
   return ((not started) and params.get_bool("IsLiveStreaming")) or (started and CP.notCar)
 
+# LAN PWA. Do not run the HTTP server onroad unless livestream is actually on.
+def deviceweb_run(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return (not started) or params.get_bool("IsLiveStreaming") or CP.notCar
+
 def or_(*fns):
   return lambda *args: operator.or_(*(fn(*args) for fn in fns))
 
@@ -93,7 +97,7 @@ procs = [
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
-  PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", always_run),
+  PythonProcess("deviceweb", "openpilot.system.deviceweb.deviceweb", deviceweb_run),
   PythonProcess("vslam_d", "openpilot.selfdrive.vslam.vslam_d", only_onroad),
   PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", driverview),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
