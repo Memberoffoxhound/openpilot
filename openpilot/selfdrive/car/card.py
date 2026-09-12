@@ -102,6 +102,19 @@ class Car:
             cached_params = _cached_params
             break
 
+      # 2026 Model 3 Highland: seed EPS FW so empty ISO-TP cannot MOCK.
+      if cached_params is None:
+        seed = car.CarParams.new_message()
+        seed.brand = "tesla"
+        seed.carFingerprint = "TESLA_MODEL_3"
+        fw = car.CarParams.CarFw.new_message()
+        fw.ecu = car.CarParams.Ecu.eps
+        fw.fwVersion = b'TeMYG4_Main_0.0.0 (78),E4H015.05.0'
+        fw.address = 0x730
+        fw.brand = "tesla"
+        seed.carFw = [fw]
+        cached_params = seed
+
       self.CI = get_car(*self.can_callbacks, obd_callback(self.params), alpha_long_allowed, is_release, cached_params)
       self.RI = interfaces[self.CI.CP.carFingerprint].RadarInterface(self.CI.CP)
       self.CP = self.CI.CP
