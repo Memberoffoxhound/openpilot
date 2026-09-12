@@ -1,8 +1,10 @@
 # S3XYPilot
 
-Tesla-first fork. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
+**This branch is only for a 2026 Tesla Model 3 Highland (HW4).** It is hardcoded to stock openpilot’s `TESLA_MODEL_3` platform (the existing 2024–25 HW4 Model 3). Do not install on any other car — fingerprinting will not probe or match anything else.
 
-Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
+Hobby project. No support. Install at your own risk.
+
+Stalkless 2026 Model 3 Highland. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
 
 Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
 
@@ -13,7 +15,7 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 
 ## Highland
 
-Stalkless Teslas have no cruise stalk. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
+Fingerprinting is pinned to `TESLA_MODEL_3` (2024–25 HW4). This 2026 Highland is that platform. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
 
 You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
 
@@ -128,18 +130,9 @@ vCruise drop >= 6 mph
 
 ## Tesla compatibility
 
-Same Tesla platforms as stock comma. **2026 Model 3 Highland is not on comma’s list yet; this fork is driven on one and it works.**
+**2026 Model 3 Highland only (HW4, Tesla B harness).** Fingerprinting is hardcoded to stock `TESLA_MODEL_3` (the 2024–25 HW4 Model 3 entry). Do not install on any other car.
 
-| Car | Years | Notes |
-|---|---|---|
-| Model 3 HW3 | 2019–23 | [comma official](https://docs.comma.ai/CARS/) |
-| Model 3 HW4 | 2024–26 | official through 2025; **2026 Highland confirmed on this fork** |
-| Model Y HW3 | 2020–23 | comma official |
-| Model Y HW4 | 2024–25 | comma official |
-
-HW3 uses Tesla A harness, HW4 uses Tesla B. Alpha longitudinal is TACC vs openpilot gas/brake.
-
-S / X / Cybertruck are not supported. 2026 Model Y is untested here.
+Alpha longitudinal is TACC vs openpilot gas/brake.
 
 ## Install
 

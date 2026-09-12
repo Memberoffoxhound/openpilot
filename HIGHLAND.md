@@ -31,7 +31,7 @@ Offroad fold commits leftover overlay into `days[]` and clears `pending`/`live` 
 
 ## Alpha longitudinal (stock)
 
-A 2026 Model 3 Highland fingerprints as `TESLA_MODEL_3`. Stock master sets `alphaLongitudinalAvailable = True`.
+A 2026 Model 3 Highland is hardcoded to `TESLA_MODEL_3` (stock 2024–25 HW4). Empty EPS ISO-TP uses this car’s `E4H015.05.0` FW and never falls through to MOCK. Stock master sets `alphaLongitudinalAvailable = True`.
 
 - Visible on development branches (`AlphaLongitudinalEnabled` is `DEVELOPMENT_ONLY`).
 - Can change onroad while not engaged. Cannot while engaged.
