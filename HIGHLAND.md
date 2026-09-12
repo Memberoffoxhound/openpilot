@@ -8,6 +8,24 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 
 AGNOS on this branch is pinned to **19.6** (`launch_env.sh` + `openpilot/common/hardware/comma/agnos.json`). Keep those two in lockstep.
 
+## Tesla 3-bit steering (opendbc#3389)
+
+Cherry-picked onto `TeslaPilot-opendbc` Highland. Not in comma master yet.
+
+Tesla widened `DAS_steeringControlType` from 2 bits to 3 bits (new value `4 = FSD`). Sending the old 2-bit `ANGLE_CONTROL` made the car read LKAS. Crossing a lane line then tripped `invalidLkasSetting` until park.
+
+This car's EPS `E4H015.05.0` is **3-bit** (not in `LEGACY_DAS_STEERING_FW`). Pack/read type `1` as 3-bit.
+
+After an openpilot update, also pull the opendbc submodule — the installer pin does not move by itself:
+
+```
+cd /data/openpilot/opendbc_repo && git fetch origin Highland && git checkout Highland && git pull
+```
+
+Then reboot so panda rebuilds `tesla.h`.
+
+DBC must say `SG_ DAS_steeringControlType : 23|3@0+` and `VAL_ ... 4 "FSD"`.
+
 ## Git LFS
 
 `.lfsconfig` points at **comma's GitLab LFS**, not GitHub. The Comma 4 updater can only download LFS objects that already live there.
@@ -101,4 +119,4 @@ Hamburger → **Live cameras**. LAN WebRTC viewer for comma 4 feeds.
 
 ## Safety
 
-Does not touch driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
+Panda Tesla safety **does** change with the 3-bit PR (`opendbc/safety/modes/tesla.h` on TeslaPilot-opendbc Highland). Driver monitoring is untouched. See [SAFETY.md](SAFETY.md).
