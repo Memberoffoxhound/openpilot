@@ -13,8 +13,9 @@
 openpilot/selfdrive/car/tests/test_models_segs.txt filter=lfs diff=lfs merge=lfs -text
 openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
 
-# S3XYPilot Highland boot mark and media. Must be normal blobs: .lfsconfig
-# points at comma GitLab, and these OIDs are not there.
+# S3XYPilot Highland media. Normal blobs only. .lfsconfig points at
+# comma GitLab LFS; these OIDs are not hosted there. None of these is
+# large enough to need LFS (largest custom file is 88mph.wav ~1 MB).
 openpilot/selfdrive/assets/images/spinner_comma.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/fonts/TESLA.ttf -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/sounds/88mph.wav -filter=lfs -diff=lfs -merge=lfs -text
@@ -22,3 +23,4 @@ openpilot/selfdrive/assets/sounds/shutter.wav -filter=lfs -diff=lfs -merge=lfs -
 openpilot/selfdrive/assets/icons_mici/tesla_t.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/settings/theme.png -filter=lfs -diff=lfs -merge=lfs -text
 openpilot/selfdrive/assets/icons_mici/usb.png -filter=lfs -diff=lfs -merge=lfs -text
+openpilot/selfdrive/assets/icons_mici/chestnut_orange.png -filter=lfs -diff=lfs -merge=lfs -text

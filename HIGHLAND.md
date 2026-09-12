@@ -4,7 +4,36 @@
 
 Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
-`master` is an unmodified comma.ai/openpilot mirror.
+`master` is an unmodified comma.ai/openpilot mirror. Do **not** merge master wholesale into Highland. That pull (bc500d0) bumped AGNOS 19.6 → 19.7, retargeted `agnos.json` at a 4.7 GB system image, and is what made the on-device updater hang. Cherry-pick only the files you need.
+
+AGNOS on this branch is pinned to **19.6** (`launch_env.sh` + `openpilot/common/hardware/comma/agnos.json`). Keep those two in lockstep.
+
+## Git LFS
+
+`.lfsconfig` points at **comma's GitLab LFS**, not GitHub. The Comma 4 updater can only download LFS objects that already live there.
+
+**Nothing custom on this fork needs LFS.** Measured on device:
+
+| File | Size | Why it exists |
+|---|---:|---|
+| `icons_mici/settings/theme.png` | 623 B | Theme row |
+| `icons_mici/usb.png` | 1.5 KB | Home USB |
+| `icons_mici/tesla_t.png` | 5.7 KB | Wordmark / T |
+| `sounds/shutter.wav` | 13 KB | Screenshot |
+| `icons_mici/chestnut_orange.png` | 13 KB | Home loading |
+| `fonts/TESLA.ttf` | 22 KB | S3XYPilot wordmark |
+| `images/spinner_comma.png` | 23 KB | Boot spinner |
+| `sounds/88mph.wav` | 937 KB | Delorean easter egg |
+
+Those stay **normal git blobs** (see `.gitattributes` exceptions). If you add another Highland-only png/wav/ttf, add a `-filter=lfs` line for it. Do not `git add --renormalize` them onto LFS.
+
+The only LFS objects this branch should pull are **comma's models**, already on GitLab:
+
+| File | Size |
+|---|---:|
+| `dmonitoring_model.onnx` | 7.5 MB |
+| `driving_supercombo.onnx` | 58 MB |
+| `big_driving_supercombo.onnx` | 731 MB |
 
 ## Params
 
@@ -38,6 +67,8 @@ A 2026 Model 3 Highland is hardcoded to `TESLA_MODEL_3` (stock 2024–25 HW4). E
 - Change requests an onroad cycle (`OnroadCycleRequested`) so panda safety reinits.
 
 Tesla stock ACC until this is on. Experimental is gated on openpilot long.
+
+The Sep 10 master merge is what made cold-start fingerprint fall through to MOCK (empty ISO-TP, VIN query Tesla does not answer). The pin + EPS seed in `launch_env.sh` / `card.py` restore the pre-merge behavior. Do not drop those when pulling comma files.
 
 ## vSlam tracker
 
