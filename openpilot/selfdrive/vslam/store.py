@@ -100,7 +100,7 @@ def set_filter_enabled(on: bool, params=None) -> bool:
   return bool(on) and op_long_active(params)
 
 
-_alert_cache: tuple[float, float] = (0.0, 0.0)  # mtime, until
+_alert_cache: tuple[float, float] = (0.0, 0.0)
 
 
 def alert_until() -> float:
@@ -140,23 +140,55 @@ def load_events(limit: int = 200) -> list[dict]:
   return out[-limit:]
 
 
+def trim_events() -> None:
+  """Rewrite jsonl + drop old traces. Offroad only."""
+  events = load_events(MAX_EVENTS + 80)
+  if len(events) <= MAX_EVENTS:
+    return
+  keep = events[-MAX_EVENTS:]
+  try:
+    with EVENTS_PATH.open("w", encoding="utf-8") as f:
+      for e in keep:
+        f.write(json.dumps(e, separators=(",", ":")) + "\n")
+  except OSError:
+    return
+  keep_ids = {e["id"] for e in keep}
+  for p in TRACE_DIR.glob("*.json"):
+    if p.stem not in keep_ids:
+      try:
+        p.unlink()
+      except OSError:
+        pass
+
+
+def patch_event(eid: str, fields: dict) -> None:
+  """Update one jsonl row. Offroad only."""
+  if not EVENTS_PATH.is_file() or not eid:
+    return
+  try:
+    lines = EVENTS_PATH.read_text(encoding="utf-8").splitlines()
+  except OSError:
+    return
+  out = []
+  for line in lines:
+    try:
+      obj = json.loads(line)
+    except json.JSONDecodeError:
+      out.append(line)
+      continue
+    if obj.get("id") == eid:
+      obj.update(fields)
+    out.append(json.dumps(obj, separators=(",", ":")))
+  try:
+    EVENTS_PATH.write_text("\n".join(out) + "\n", encoding="utf-8")
+  except OSError:
+    pass
+
+
 def append_event(ev: dict) -> None:
   ensure()
   with EVENTS_PATH.open("a", encoding="utf-8") as f:
     f.write(json.dumps(ev, separators=(",", ":")) + "\n")
-  events = load_events(MAX_EVENTS + 80)
-  if len(events) > MAX_EVENTS:
-    keep = events[-MAX_EVENTS:]
-    with EVENTS_PATH.open("w", encoding="utf-8") as f:
-      for e in keep:
-        f.write(json.dumps(e, separators=(",", ":")) + "\n")
-    keep_ids = {e["id"] for e in keep}
-    for p in TRACE_DIR.glob("*.json"):
-      if p.stem not in keep_ids:
-        try:
-          p.unlink()
-        except OSError:
-          pass
 
 
 def write_trace(eid: str, samples: list[dict]) -> None:
