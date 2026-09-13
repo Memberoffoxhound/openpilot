@@ -20,3 +20,6 @@ if [ -z "$AGNOS_VERSION" ]; then
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+# 2026 Model 3 Highland only — stock 2024-25 HW4 TESLA_MODEL_3.
+export FINGERPRINT="${FINGERPRINT:-TESLA_MODEL_3}"

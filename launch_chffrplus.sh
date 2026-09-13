@@ -17,14 +17,9 @@ function agnos_init {
   sudo chgrp gpu /dev/adsprpc-smd /dev/ion /dev/kgsl-3d0
   sudo chmod 660 /dev/adsprpc-smd /dev/ion /dev/kgsl-3d0
 
-  # Check if AGNOS update is required
-  if [ $(< /VERSION) != "$AGNOS_VERSION" ]; then
-    AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
-    MANIFEST="$DIR/system/hardware/tici/agnos.json"
-    if $AGNOS_PY --verify $MANIFEST; then
-      sudo reboot
-    fi
-    $DIR/system/hardware/tici/updater $AGNOS_PY $MANIFEST
+  # Highland: never flash AGNOS from launch. flash.comma.ai only.
+  if [ "$(< /VERSION)" != "$AGNOS_VERSION" ]; then
+    echo "AGNOS $(< /VERSION) != pin $AGNOS_VERSION — skip on-device OS flash"
   fi
 }
 

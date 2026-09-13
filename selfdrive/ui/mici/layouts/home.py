@@ -8,9 +8,31 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.layouts import HBoxLayout
 from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from importlib.resources import as_file
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.layouts.settings.trip_seed import engaged_pct
+from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.system.version import RELEASE_BRANCHES
+
+LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
+
+
+def _wordmark_font():
+  # TESLAPILOT glyphs from TESLA.ttf. Falls back to Inter DISPLAY.
+  try:
+    chars = "TESLAPILOT"
+    with as_file(FONT_DIR) as fs:
+      cps = [ord(c) for c in chars]
+      buf = rl.ffi.new("int[]", cps)
+      font = rl.load_font_ex((fs / "TESLA.ttf").as_posix(), 200, rl.ffi.cast("int *", buf), len(cps))
+      if font.glyphCount > 0:
+        rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
+        return font
+  except Exception:
+    pass
+  return gui_app.font(FontWeight.DISPLAY)
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
@@ -156,7 +178,8 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._openpilot_label = UnifiedLabel("openpilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False)
+    self._wordmark_font = _wordmark_font()
+    self._openpilot_label = UnifiedLabel("TESLAPILOT", font_size=72, font_weight=FontWeight.DISPLAY, max_width=520, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
@@ -218,9 +241,20 @@ class MiciHomeLayout(Widget):
     return version, branch, commit[:7], date_str
 
   def _render(self, _):
-    # TODO: why is there extra space here to get it to be flush?
-    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
+    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 8)
+    mark = "TESLAPILOT"
+    avail = max(200, self.rect.width - HOME_PADDING * 2)
+    size = 72
+    while size > 28:
+      w = measure_text_cached(self._wordmark_font, mark, size).x
+      if w <= avail:
+        break
+      size -= 2
+    rl.draw_text_ex(self._wordmark_font, mark, text_pos, size, 0, LABEL_WHITE)
+    # keep stock label offscreen so layout math below still works
+    self._openpilot_label.set_text("")
     self._openpilot_label.set_position(text_pos.x, text_pos.y)
+    self._openpilot_label.font_size = int(size)
     self._openpilot_label.render()
 
     if self._version_text is not None:
@@ -247,7 +281,18 @@ class MiciHomeLayout(Widget):
         self._version_commit_label.render()
 
     # ***** Center-aligned bottom section icons *****
-    self._experimental_icon.set_visible(ui_state.experimental_mode)
+    # LONG = openpilot gas/brake. TACC = Tesla cruise. experimental icon only on LONG.
+    self._experimental_icon.set_visible(bool(ui_state.has_longitudinal_control))
+    self._experimental_icon.set_enabled(bool(ui_state.has_longitudinal_control))
+    try:
+      self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
+    except Exception:
+      pass
+    # draw TACC/LONG in the footer left of the icon row
+    letters = "LONG" if ui_state.has_longitudinal_control else "TACC"
+    rl.draw_text_ex(gui_app.font(FontWeight.ROMAN), letters,
+                    rl.Vector2(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 44),
+                    28, 0, LABEL_WHITE)
     self._egpu_icon.set_visible(ui_state.usbgpu and ui_state.usbgpu_compiled)
     self._egpu_icon_gray.set_visible(ui_state.usbgpu and not ui_state.usbgpu_compiled)
     self._mic_icon.set_visible(ui_state.recording_audio)
