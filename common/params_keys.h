@@ -40,6 +40,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DriverTooDistracted", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"AlphaLongitudinalEnabled", {PERSISTENT, BOOL}},  // available on Highland, not release-gated
     {"LaneColor", {PERSISTENT, INT, "1"}},
+    {"CompassSize", {PERSISTENT, INT, "0"}},
+    {"CustomOnroadUi", {PERSISTENT, INT, "0"}},
     {"ExperimentalMode", {PERSISTENT, BOOL}},
     {"ExperimentalModeConfirmed", {PERSISTENT, BOOL}},
     {"FirmwareQueryDone", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},

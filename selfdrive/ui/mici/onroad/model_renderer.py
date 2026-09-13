@@ -1,12 +1,14 @@
 import colorsys
 import numpy as np
 import pyray as rl
-from cereal import messaging, car
+from cereal import messaging
+from opendbc.car.structs import car
 from dataclasses import dataclass, field
 from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, THEME_TESLA_RGB, THEME_OPENPILOT_RGB
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -28,10 +30,12 @@ NO_THROTTLE_COLORS = [
   rl.Color(242, 242, 242, 0),   # HSLF(112/360, 0.0, 0.95, 0.0)
 ]
 
+STOCK_LANE_GREEN = rl.Color(*THEME_OPENPILOT_RGB, 255)
+TESLA_LANE_BLUE = rl.Color(*THEME_TESLA_RGB, 255)
+
 LANE_LINE_COLORS = {
   UIStatus.DISENGAGED: rl.Color(200, 200, 200, 255),
   UIStatus.OVERRIDE: rl.Color(255, 255, 255, 255),
-  UIStatus.ENGAGED: rl.Color(0, 255, 64, 255),
 }
 
 
@@ -43,14 +47,15 @@ class ModelPoints:
 
 @dataclass
 class LeadVehicle:
-  glow: list[float] = field(default_factory=list)
-  chevron: list[float] = field(default_factory=list)
+  glow: list[tuple[float, float]] = field(default_factory=list)
+  chevron: list[tuple[float, float]] = field(default_factory=list)
   fill_alpha: int = 0
 
 
 class ModelRenderer(Widget):
   def __init__(self):
     super().__init__()
+    self._ll_engaged = TESLA_LANE_BLUE
     self._longitudinal_control = False
     self._experimental_mode = False
     self._blend_filter = FirstOrderFilter(1.0, 0.25, 1 / gui_app.target_fps)
@@ -99,7 +104,7 @@ class ModelRenderer(Widget):
     self._torque_filter.update(-ui_state.sm['carOutput'].actuatorsOutput.torque)
 
     # Check if data is up-to-date
-    if (sm.recv_frame["liveCalibration"] < ui_state.started_frame or
+    if (sm.recv_frame["extrinsicsCalibration"] < ui_state.started_frame or
         sm.recv_frame["modelV2"] < ui_state.started_frame):
       return
 
@@ -111,8 +116,8 @@ class ModelRenderer(Widget):
     # Update state
     self._experimental_mode = sm['selfdriveState'].experimentalMode
 
-    live_calib = sm['liveCalibration']
-    self._path_offset_z = live_calib.height[0] if live_calib.height else HEIGHT_INIT[0]
+    extrinsics_calibration = sm['extrinsicsCalibration']
+    self._path_offset_z = extrinsics_calibration.height[0] if extrinsics_calibration.height else HEIGHT_INIT[0]
 
     if sm.updated['carParams']:
       self._longitudinal_control = sm['carParams'].openpilotLongitudinalControl
@@ -139,6 +144,7 @@ class ModelRenderer(Widget):
 
     # Draw elements (hide when disengaged)
     if ui_state.status != UIStatus.DISENGAGED:
+      self._ll_engaged = self._engaged_ll_color()
       self._draw_lane_lines()
       self._draw_path(sm)
 
@@ -165,7 +171,7 @@ class ModelRenderer(Widget):
     leads = [radar_state.leadOne, radar_state.leadTwo]
 
     for i, lead_data in enumerate(leads):
-      if lead_data and lead_data.status:
+      if lead_data and lead_data.present:
         d_rel, y_rel, v_rel = lead_data.dRel, lead_data.yRel, lead_data.vRel
         idx = self._get_path_length_idx(path_x_array, d_rel)
 
@@ -194,7 +200,7 @@ class ModelRenderer(Widget):
       road_edge.projected_points = self._map_line_to_polygon(road_edge.raw_points, line_width_factor, 0.0, max_idx)
 
     # Update path using raw points
-    if lead and lead.status:
+    if lead and lead.present:
       lead_d = lead.dRel * 2.0
       max_distance = np.clip(lead_d - min(lead_d * 0.35, 10.0), 0.0, max_distance)
 
@@ -282,10 +288,22 @@ class ModelRenderer(Widget):
 
     return LeadVehicle(glow=glow, chevron=chevron, fill_alpha=int(fill_alpha))
 
+  def _engaged_ll_color(self):
+    try:
+      if not custom_onroad_ui():
+        return STOCK_LANE_GREEN
+      mode = ui_state.params.get("LaneColor", return_default=True)
+    except Exception:
+      mode = 1
+    return TESLA_LANE_BLUE if mode == 1 else STOCK_LANE_GREEN
+
   def _get_ll_color(self, prob: float, adjacent: bool, left: bool):
     alpha = np.clip(prob, 0.0, 0.7)
     if adjacent:
-      _base_color = LANE_LINE_COLORS.get(ui_state.status, LANE_LINE_COLORS[UIStatus.DISENGAGED])
+      if ui_state.status == UIStatus.ENGAGED:
+        _base_color = self._ll_engaged
+      else:
+        _base_color = LANE_LINE_COLORS.get(ui_state.status, LANE_LINE_COLORS[UIStatus.DISENGAGED])
       color = rl.Color(_base_color.r, _base_color.g, _base_color.b, int(alpha * 255))
 
       # turn adjacent lls orange if torque is high

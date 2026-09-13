@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE,
+  tesla_theme, theme_color, THEME_TESLA_RGB, THEME_LANE_ALPHA,
+)
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -18,6 +22,8 @@ KM_TO_MILE = 0.621371
 CRUISE_DISABLED_CHAR = '–'
 
 SET_SPEED_PERSISTENCE = 2.5  # seconds
+
+COMPASS_FULL_ALPHA = 229.5
 
 
 @dataclass(frozen=True)
@@ -178,6 +184,7 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_steering_wheel(rect)
+    self._draw_compass(rect)
 
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
     wheel_txt = self._txt_wheel_critical if self._show_wheel_critical else self._txt_wheel
@@ -190,7 +197,8 @@ class HudRenderer(Widget):
         self._wheel_alpha_filter.update(0)
         self._wheel_y_filter.update(wheel_txt.height / 2)
       else:
-        self._wheel_alpha_filter.update(255 * 0.9)
+        tesla = tesla_theme()
+        self._wheel_alpha_filter.update(255 * (THEME_LANE_ALPHA if tesla else 0.9))
         self._wheel_y_filter.update(0)
 
     # pos
@@ -211,7 +219,11 @@ class HudRenderer(Widget):
     origin = (wheel_txt.width / 2, wheel_txt.height / 2)
 
     # color and draw
-    color = rl.Color(255, 255, 255, int(self._wheel_alpha_filter.x))
+    if tesla_theme() and not self._show_wheel_critical:
+      r, g, b = 62, 140, 235  # THEME_TESLA_RGB
+      color = rl.Color(r, g, b, int(self._wheel_alpha_filter.x))
+    else:
+      color = rl.Color(255, 255, 255, int(self._wheel_alpha_filter.x))
     rl.draw_texture_pro(wheel_txt, src_rect, dest_rect, origin, rotation, color)
 
     if self._show_wheel_critical:
@@ -220,6 +232,68 @@ class HudRenderer(Widget):
       exclamation_pos_x = pos_x - self._txt_exclamation_point.width / 2 + wheel_txt.width / 2 + EXCLAMATION_POINT_SPACING
       exclamation_pos_y = pos_y - self._txt_exclamation_point.height / 2
       rl.draw_texture_ex(self._txt_exclamation_point, rl.Vector2(exclamation_pos_x, exclamation_pos_y), 0.0, 1.0, rl.WHITE)
+
+  def _paint_compass(self, cx: float, cy: float, size: int, fan: int, a: int,
+                     heading: float, letter: str | None, bg: rl.Texture, fan_tex: rl.Texture,
+                     font_sz: int) -> None:
+    if a < 3:
+      return
+    fade = rl.Color(255, 255, 255, a)
+    rl.draw_texture_ex(bg, rl.Vector2(cx - size / 2, cy - size / 2), 0.0, 1.0, fade)
+    src = rl.Rectangle(0, 0, fan_tex.width, fan_tex.height)
+    dest = rl.Rectangle(cx, cy, fan, fan)
+    rl.draw_texture_pro(fan_tex, src, dest, rl.Vector2(fan / 2, fan / 2), heading,
+                        theme_color(a / 255.0))
+    fan_r = fan / 2
+    track_a = int(255 * 0.25 * (a / COMPASS_FULL_ALPHA))
+    rl.draw_ring(rl.Vector2(cx, cy), fan_r + 1, fan_r + 3, 0, 360, 36,
+                 rl.Color(255, 255, 255, max(0, min(255, track_a))))
+    if not letter:
+      return
+    sz = font_sz
+    ts = measure_text_cached(self._font_bold, letter, sz)
+    while ts.x > size * 0.62 and sz > 12:
+      sz -= 1
+      ts = measure_text_cached(self._font_bold, letter, sz)
+    rl.draw_text_ex(self._font_bold, letter, rl.Vector2(cx - ts.x / 2, cy - ts.y / 2), sz, 0, fade)
+
+  def _draw_compass(self, rect: rl.Rectangle) -> None:
+    letter = heading_letter()
+    deg = heading_deg()
+    if letter:
+      self._compass_letter = letter
+    if deg is not None:
+      cur = self._heading_filter.x
+      delta = (deg - cur + 180.0) % 360.0 - 180.0
+      heading = self._heading_filter.update(cur + delta) % 360.0
+      self._heading_filter.x = heading
+    heading = self._heading_filter.x
+    letter = self._compass_letter
+
+    engaged = ui_state.status != UIStatus.DISENGAGED and custom_onroad_ui()
+    set_a = float(self._set_speed_alpha_filter.x)
+    large = compass_size() == COMPASS_LARGE
+    if large:
+      self._compass_fade.update(1.0 if engaged else 0.0)
+    else:
+      self._compass_fade.update(1.0 if engaged and set_a < 1e-2 else 0.0)
+
+    a = int(255 * 0.9 * self._compass_fade.x)
+    if not (custom_onroad_ui() and a >= 3):
+      return
+    if large:
+      size, fan, font = 90, 78, 42
+      cx = rect.x + rect.width - 16 - size / 2
+      cy = rect.y + 10 + size / 2
+      bg, fan_tex = self._txt_compass_bg90, self._txt_compass_fan90
+    else:
+      size, fan, font = 60, 52, 28
+      cx = rect.x + 16 + size / 2
+      dm_cy = rect.y + 10 + size / 2
+      wheel_cy = rect.y + rect.height - 14 - self._txt_wheel.height / 2 + self._wheel_y_filter.x
+      cy = (dm_cy + wheel_cy) / 2
+      bg, fan_tex = self._txt_compass_bg, self._txt_compass_fan
+    self._paint_compass(cx, cy, size, fan, a, heading, letter, bg, fan_tex, font)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

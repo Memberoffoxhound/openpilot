@@ -46,4 +46,7 @@ class CarInterface(CarInterfaceBase):
 
     ret.dashcamOnly = candidate in (CAR.TESLA_MODEL_X,)  # dashcam only, pending find invalidLkasSetting signal
 
+    # Highland: cooperative steering always on for Tesla installs
+    ret.flags |= TeslaFlags.COOP_STEERING.value
+
     return ret

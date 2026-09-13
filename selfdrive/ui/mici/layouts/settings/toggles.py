@@ -1,12 +1,111 @@
-from cereal import log
+from collections.abc import Callable
 
+from cereal import log
+from openpilot.common.params import Params
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle
-from openpilot.system.ui.lib.application import gui_app
-from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigButton
+from openpilot.system.ui.lib.application import gui_app, MousePos
+from openpilot.selfdrive.ui.layouts.settings.common import (
+  lane_color_label, next_lane_color,
+  onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
+  compass_size_label, next_compass_size,
+  delorean_on, set_delorean, request_delorean_play,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+
+class _ParamCycle(BigButton):
+  def __init__(self, title: str, label_fn, next_fn, apply_fn):
+    super().__init__(title, "")
+    self._params = Params()
+    self._label_fn = label_fn
+    self._next_fn = next_fn
+    self._apply_fn = apply_fn
+    self.refresh()
+
+  def refresh(self):
+    value = self._label_fn(self._params)
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    nxt = self._next_fn(self._params)
+    self._apply_fn(nxt, self._params)
+    self.refresh()
+
+
+class OnroadUiCycle(_ParamCycle):
+  def __init__(self):
+    super().__init__(
+      "onroad UI", onroad_ui_label, next_onroad_ui,
+      lambda nxt, p: set_onroad_ui(nxt, p),
+    )
+
+class CompassSizeCycle(_ParamCycle):
+  def __init__(self):
+    super().__init__(
+      "compass size", compass_size_label, next_compass_size,
+      lambda nxt, p: p.put("CompassSize", nxt, block=True),
+    )
+
+
+class LaneColorCycle(_ParamCycle):
+  def __init__(self):
+    super().__init__(
+      "theme", lane_color_label, next_lane_color,
+      lambda nxt, p: p.put("LaneColor", nxt, block=True),
+    )
+
+
+class DeloreanCycle(BigButton):
+  def __init__(self):
+    super().__init__("delorean", "")
+    self.refresh()
+
+  def refresh(self):
+    value = "on" if delorean_on() else "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    on = not delorean_on()
+    set_delorean(on)
+    self.set_value("on" if on else "off")
+
+
+class DeloreanPreview(BigButton):
+  def __init__(self):
+    super().__init__("delorean preview", "tap")
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    request_delorean_play()
+
+
+class ThemeLayoutMici(NavScroller):
+  def __init__(self):
+    super().__init__()
+    self._onroad_ui = OnroadUiCycle()
+    self._compass_size = CompassSizeCycle()
+    self._lane_color = LaneColorCycle()
+    self._delorean = DeloreanCycle()
+    self._delorean_preview = DeloreanPreview()
+    self._scroller.add_widgets([
+      self._onroad_ui, self._compass_size, self._lane_color,
+      self._delorean, self._delorean_preview,
+    ])
 
 
 class TogglesLayoutMici(NavScroller):

@@ -185,8 +185,14 @@ class MiciHomeLayout(Widget):
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
     self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._trip_at = 0.0
+    self._last_txt = ("Today ", "0mi 0%")
+    self._week_txt = ("Week ", "0mi 0%")
+    self._trip_hit = rl.Rectangle(0, 0, 0, 0)
+    self._on_stats_click: Callable | None = None
 
   def _update_state(self):
+    self._refresh_trip()
     if self.is_pressed and not self._is_pressed_prev:
       self._mouse_down_t = time.monotonic()
     elif not self.is_pressed and self._is_pressed_prev:
@@ -203,6 +209,23 @@ class MiciHomeLayout(Widget):
         self._mouse_down_t = None
         self._did_long_press = True
 
+
+  def _fmt_trip(self, meters: float, eng_m: float) -> str:
+    if ui_state.is_metric:
+      dist, unit = meters / 1000.0, "km"
+    else:
+      dist, unit = meters / 1609.344, "mi"
+    return f"{int(round(dist))}{unit} {engaged_pct(eng_m, meters)}%"
+
+  def _refresh_trip(self):
+    now = time.monotonic()
+    if now - self._trip_at < 1.0:
+      return
+    self._trip_at = now
+    t = stats_view()
+    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0))
+    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0))
+
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
                     max_severity_callback: Callable[[], int | None] | None = None):
@@ -213,6 +236,11 @@ class MiciHomeLayout(Widget):
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self._did_long_press:
+      if (self._on_stats_click and self._trip_hit.width > 0 and
+          rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
+        self._on_stats_click()
+        self._did_long_press = False
+        return
       relative_x = mouse_pos.x - self.rect.x
       has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
       if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
@@ -274,11 +302,31 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+      y2 = version_pos.y + self._date_label.font_size + 7
+      f = gui_app.font(FontWeight.ROMAN)
+      ll, lv = self._last_txt
+      wl, wv = self._week_txt
+      avail_trip = self.rect.width - HOME_PADDING * 2
+      lsz = 36
+      while lsz > 22:
+        vsz = max(18, lsz - 6)
+        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
+             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
+        if w <= avail_trip:
+          break
+        lsz -= 1
+      vsz = max(18, lsz - 6)
+      x = version_pos.x
+      vy = y2 + (lsz - vsz)
+      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, ll, lsz).x
+      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      x += measure_text_cached(f, lv, vsz).x + 16
+      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
+      x += measure_text_cached(f, wl, lsz).x
+      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4,
+                                    min(avail_trip, x - version_pos.x) + 8, lsz + 8)
 
     # ***** Center-aligned bottom section icons *****
     # LONG = openpilot gas/brake. TACC = Tesla cruise. experimental icon only on LONG.

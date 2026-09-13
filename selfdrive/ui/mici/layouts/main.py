@@ -10,6 +10,7 @@ from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.lib.application import gui_app
+from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
 
 
 ONROAD_DELAY = 2.5  # seconds
@@ -70,6 +71,7 @@ class MiciMainLayout(Scroller):
     self._home_layout.set_callbacks(
       on_settings=lambda: gui_app.push_widget(self._settings_layout),
       on_alerts=lambda: self._scroll_to(self._alerts_layout),
+      on_stats=lambda: gui_app.push_widget(self._settings_layout.stats_layout),
       alert_count_callback=self._alerts_layout.active_alerts,
       max_severity_callback=self._alerts_layout.max_severity,
     )
@@ -87,6 +89,7 @@ class MiciMainLayout(Scroller):
     super()._update_state()
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
+    tick_trip()
 
   def _render(self, _):
     if not self._setup:
