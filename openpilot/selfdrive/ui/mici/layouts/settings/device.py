@@ -1,12 +1,12 @@
 import os
 import pyray as rl
 from collections.abc import Callable
+from typing import Union
 
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.ui.widgets.scroller import NavRawScrollPanel, NavScroller
-from openpilot.selfdrive.ui.layouts.settings.common import calib_button_value
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationDialog
 from openpilot.selfdrive.ui.mici.widgets.pairing_dialog import PairingDialog
@@ -22,7 +22,7 @@ from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 
 
 class ReviewTermsPage(TermsPage, NavScroller):
-
+  """TermsPage with NavWidget swipe-to-dismiss for reviewing in device settings."""
   def __init__(self):
     super().__init__(on_accept=self.dismiss, on_decline=self.dismiss)
     self._terms_header.set_visible(False)
@@ -66,6 +66,8 @@ class MiciFccModal(NavRawScrollPanel):
 def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.Texture, exit_on_confirm: bool = True, red: bool = False):
   if not ui_state.engaged:
     def confirm_callback():
+      # Check engaged again in case it changed while the dialog was open
+      # TODO: if true, we stay on the dialog if not exit_on_confirm until normal onroad timeout
       if not ui_state.engaged:
         callback()
 
@@ -76,36 +78,17 @@ def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.T
 
 class EngagedConfirmationCircleButton(BigCircleButton):
   def __init__(self, title: str, icon: rl.Texture, callback: Callable[[], None], exit_on_confirm: bool = True,
-               red: bool = False, icon_offset: tuple[int, int] = (0, 0)):
-    super().__init__(icon, red, icon_offset)
+               red: bool = False, icon_offset: tuple[int, int] = (0, 0), *, description: str = ""):
+    super().__init__(icon, red, icon_offset, description=description, title=title)
     self.set_click_callback(lambda: _engaged_confirmation_click(callback, title, icon, exit_on_confirm=exit_on_confirm, red=red))
 
 
 class EngagedConfirmationButton(BigButton):
   def __init__(self, text: str, action_text: str, icon: rl.Texture, callback: Callable[[], None],
-               exit_on_confirm: bool = True, red: bool = False):
-    super().__init__(text, "", icon)
+               exit_on_confirm: bool = True, red: bool = False, *, description: str = "",
+               description_icon: Union[rl.Texture, None] = None):
+    super().__init__(text, "", icon, description=description, description_icon=description_icon)
     self.set_click_callback(lambda: _engaged_confirmation_click(callback, action_text, icon, exit_on_confirm=exit_on_confirm, red=red))
-
-
-class ResetCalibrationButton(EngagedConfirmationButton):
-
-
-  def __init__(self, icon: rl.Texture, callback: Callable[[], None]):
-    super().__init__("reset calibration", "reset", icon, callback)
-    self._params = Params()
-    self._sub_label.set_font_size(28)
-    self._sub_label.set_line_height(0.92)
-    self.refresh()
-
-  def refresh(self):
-    value = calib_button_value(self._params, compact=True)
-    if value != self.value:
-      self.set_value(value)
-
-  def _update_state(self):
-    super()._update_state()
-    self.refresh()
 
 
 class DeviceInfoLayoutMici(Widget):
@@ -162,6 +145,7 @@ class PairBigButton(BigButton):
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
 
+    # TODO: show ad dialog when clicked if not prime
     if ui_state.prime_state.is_paired():
       return
     dlg: BigDialog | PairingDialog
@@ -193,10 +177,11 @@ class DeviceLayoutMici(NavScroller):
       params.remove("LiveParametersV2")
       params.remove("LiveDelay")
       params.put_bool("OnroadCycleRequested", True, block=True)
-      self._reset_calib_btn.refresh()
 
-    self._reset_calib_btn = ResetCalibrationButton(gui_app.texture("icons_mici/settings/device/lkas.png", 122, 64),
-                                                   reset_calibration_callback)
+    reset_calibration_btn = EngagedConfirmationButton("reset calibration", "reset", gui_app.texture("icons_mici/settings/device/lkas.png", 122, 64),
+                                                      reset_calibration_callback,
+                                                      description="Mount the device within 4° left or right and 5° up or 9° down. openpilot calibrates " +
+                                                                  "continuously; resetting is rarely needed. Resetting clears learned calibration.")
 
     reboot_btn = EngagedConfirmationCircleButton("reboot", gui_app.texture("icons_mici/settings/device/reboot.png", 64, 70),
                                                  reboot_callback, exit_on_confirm=False)
@@ -208,7 +193,8 @@ class DeviceLayoutMici(NavScroller):
     regulatory_btn = BigButton("regulatory info", "", gui_app.texture("icons_mici/settings/device/info.png", 64, 64))
     regulatory_btn.set_click_callback(self._on_regulatory)
 
-    cabin_cam_btn = BigButton("driver\ncamera preview", "", gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64))
+    cabin_cam_btn = BigButton("driver\ncamera preview", "", gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64),
+                              description="Preview the cabin camera to check driver monitoring visibility. The vehicle must be off.")
     cabin_cam_btn.set_click_callback(lambda: gui_app.push_widget(CabinCameraDialog()))
     cabin_cam_btn.set_enabled(lambda: ui_state.is_offroad())
 
@@ -226,14 +212,10 @@ class DeviceLayoutMici(NavScroller):
       cabin_cam_btn,
       terms_btn,
       regulatory_btn,
-      self._reset_calib_btn,
+      reset_calibration_btn,
       reboot_btn,
       self._power_off_btn,
     ])
-
-  def show_event(self):
-    super().show_event()
-    self._reset_calib_btn.refresh()
 
   def _on_regulatory(self):
     if not self._fcc_dialog:

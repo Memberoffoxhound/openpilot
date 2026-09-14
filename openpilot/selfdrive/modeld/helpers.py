@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from openpilot.common.file_chunker import get_manifest_path
-from openpilot.common.hardware.usb import CHESTNUT_FW_VERSION, CHESTNUT_USB_IDS, USB_DEVICES_PATH
+from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
 TG_INPUT_DEVICES_PATH = MODELS_DIR / 'tg_input_devices.json'
@@ -41,7 +41,8 @@ def load_oob(f):
   def buffers():
     while (h := f.read(8)):
       pb = pickle.PickleBuffer(bytearray(struct.unpack('<q', h)[0]))
-      f.readinto(pb)
+      if f.readinto(pb) != pb.raw().nbytes:
+        raise EOFError("incomplete model buffer")
       yield pb
   return pickle.load(io.BytesIO(opcodes), buffers=buffers())
 
@@ -50,7 +51,7 @@ def chestnut_present() -> bool:
     try:
       usb_id = (int((d / "idVendor").read_text(), 16), int((d / "idProduct").read_text(), 16))
       product = (d / "product").read_text().strip()
-      if usb_id in CHESTNUT_USB_IDS and product == f"custom {CHESTNUT_FW_VERSION}-CLEAN":
+      if is_chestnut_usb_id(*usb_id) and product == CHESTNUT_USB_PRODUCT:
         return True
     except Exception:
       pass
