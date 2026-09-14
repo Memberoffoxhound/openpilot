@@ -227,10 +227,12 @@ class MiciHomeLayout(Widget):
     self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
+                    on_stats: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
                     max_severity_callback: Callable[[], int | None] | None = None):
     self._on_settings_click = on_settings
     self._on_alerts_click = on_alerts
+    self._on_stats_click = on_stats
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, max_severity_callback)
 

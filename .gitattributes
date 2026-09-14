@@ -1,4 +1,0 @@
-selfdrive/assets/fonts/TESLA.ttf -filter=lfs -diff=lfs -merge=lfs -text
-selfdrive/assets/icons_mici/tesla_t.png -filter=lfs -diff=lfs -merge=lfs -text
-selfdrive/assets/icons_mici/wheel.png -filter=lfs -diff=lfs -merge=lfs -text
-selfdrive/assets/icons_mici/settings/theme.png -filter=lfs -diff=lfs -merge=lfs -text
