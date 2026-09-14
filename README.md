@@ -2,6 +2,8 @@
 
 Tesla-first fork. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
 
+> **Disclaimer:** This branch is for **Highland Teslas only**. The car is always fingerprinted as a **2025 Tesla Model 3** (`TESLA_MODEL_3`) until we figure out the updated fingerprinting semantics. Do not install on pre-Highland cars or other makes.
+
 Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
 
 Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
@@ -129,6 +131,8 @@ vCruise drop >= 6 mph
 ## Tesla compatibility
 
 Same Tesla platforms as stock comma. **2026 Model 3 Highland is not on comma’s list yet; this fork is driven on one and it works.**
+
+This branch **always fingerprints as a 2025 Tesla Model 3** (`TESLA_MODEL_3`) until Highland fingerprinting semantics are figured out.
 
 | Car | Years | Notes |
 |---|---|---|

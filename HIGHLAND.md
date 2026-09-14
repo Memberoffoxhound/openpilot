@@ -6,6 +6,10 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 
 `master` is an unmodified comma.ai/openpilot mirror.
 
+## Fingerprint
+
+This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs) until updated fingerprinting semantics are figured out. FW is still queried so FSD 14 flags can apply. `FINGERPRINT` is also defaulted in `launch_env.sh`. See the README disclaimer: Highland Teslas only.
+
 ## Params
 
 | Param | Default | Meaning |
@@ -31,7 +35,7 @@ Offroad fold commits leftover overlay into `days[]` and clears `pending`/`live` 
 
 ## Alpha longitudinal (stock)
 
-A 2026 Model 3 Highland fingerprints as `TESLA_MODEL_3`. Stock master sets `alphaLongitudinalAvailable = True`.
+A Highland car is forced to `TESLA_MODEL_3`. Stock master sets `alphaLongitudinalAvailable = True`.
 
 - Visible on development branches (`AlphaLongitudinalEnabled` is `DEVELOPMENT_ONLY`).
 - Can change onroad while not engaged. Cannot while engaged.

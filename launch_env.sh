@@ -20,3 +20,7 @@ if [ -z "$AGNOS_VERSION" ]; then
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+# Highland: always fingerprint as 2025 Tesla Model 3 until updated
+# fingerprinting semantics are figured out. See README disclaimer.
+export FINGERPRINT="${FINGERPRINT:-TESLA_MODEL_3}"
