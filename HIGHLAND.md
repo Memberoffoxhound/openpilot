@@ -6,6 +6,25 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 
 `master` is an unmodified comma.ai/openpilot mirror.
 
+## opendbc pin
+
+`.gitmodules` points `opendbc_repo` at `Memberoffoxhound/TeslaPilot-opendbc` branch `Highland`.
+
+Stock shipping is the **gitlink SHA**, not the branch tip. Bump it the same way comma does:
+
+```bash
+cd opendbc_repo
+git fetch origin Highland
+git checkout 39b54bbd8be3a0d9eda698d16f1d431651131227
+cd ..
+git add opendbc_repo
+git commit -m "opendbc: bump Highland (fingerprint pin + cruise-return jerk)"
+git push origin Highland
+```
+
+Intended pin: `39b54bb` (force `TESLA_MODEL_3` + shallow cruise-return jerk).
+Current gitlink until that commit lands: `0305aeb` (drop FSD set-speed hold).
+
 ## Fingerprint
 
 This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs) until updated fingerprinting semantics are figured out. FW is still queried so FSD 14 flags can apply. `FINGERPRINT` is also defaulted in `launch_env.sh`. See the README disclaimer: Highland Teslas only.
