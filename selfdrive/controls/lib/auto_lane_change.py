@@ -21,7 +21,13 @@ class AutoLaneChangeController:
     self.read_params()
 
   def read_params(self):
-    self.enabled = self.params.get_bool("AutoLaneChangeEnabled")
+    try:
+      self.enabled = self.params.get_bool("AutoLaneChangeEnabled")
+    except Exception:
+      try:
+        self.enabled = open("/data/s3xy/AutoLaneChangeEnabled", encoding="utf-8").read().strip() in ("1", "true")
+      except Exception:
+        self.enabled = False
 
   def update_params(self):
     if self.param_read_counter % 50 == 0:

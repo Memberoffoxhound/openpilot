@@ -3,13 +3,14 @@ from collections.abc import Callable
 from cereal import log
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigButton, BigToggle
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.selfdrive.ui.layouts.settings.common import (
-  lane_color_label, next_lane_color,
+  lane_color_label, next_lane_color, set_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
-  compass_size_label, next_compass_size,
+  compass_size_label, next_compass_size, set_compass_size,
   delorean_on, set_delorean, request_delorean_play,
+  s3xy_get_bool, s3xy_put_bool,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 
@@ -52,7 +53,7 @@ class CompassSizeCycle(_ParamCycle):
   def __init__(self):
     super().__init__(
       "compass size", compass_size_label, next_compass_size,
-      lambda nxt, p: p.put("CompassSize", nxt, block=True),
+      lambda nxt, p: set_compass_size(nxt, p),
     )
 
 
@@ -60,8 +61,24 @@ class LaneColorCycle(_ParamCycle):
   def __init__(self):
     super().__init__(
       "theme", lane_color_label, next_lane_color,
-      lambda nxt, p: p.put("LaneColor", nxt, block=True),
+      lambda nxt, p: set_lane_color(nxt, p),
     )
+
+
+class S3xyBoolControl(BigToggle):
+  """Bool toggle for Highland keys missing from stock params_pyx.so."""
+
+  def __init__(self, text: str, key: str, default: bool = False, toggle_callback=None):
+    self._s3xy_key = key
+    self._s3xy_default = default
+    super().__init__(text, "", initial_state=s3xy_get_bool(key, default), toggle_callback=toggle_callback)
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    s3xy_put_bool(self._s3xy_key, self._checked)
+
+  def refresh(self):
+    self.set_checked(s3xy_get_bool(self._s3xy_key, self._s3xy_default))
 
 
 class DeloreanCycle(BigButton):
@@ -120,7 +137,7 @@ class TogglesLayoutMici(NavScroller):
     record_front = BigParamControl("record & upload driver camera", "RecordFront", toggle_callback=restart_needed_callback)
     record_mic = BigParamControl("record & upload mic audio", "RecordAudio", toggle_callback=restart_needed_callback)
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
-    alc = BigParamControl("auto lane change", "AutoLaneChangeEnabled")
+    alc = S3xyBoolControl("auto lane change", "AutoLaneChangeEnabled", False)
 
     self._scroller.add_widgets([
       self._personality_toggle,
@@ -186,4 +203,7 @@ class TogglesLayoutMici(NavScroller):
 
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
-      item.set_checked(ui_state.params.get_bool(key))
+      if hasattr(item, "refresh") and key == "AutoLaneChangeEnabled":
+        item.refresh()
+      else:
+        item.set_checked(ui_state.params.get_bool(key))

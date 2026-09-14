@@ -45,9 +45,67 @@ def _theme_params(params: Params | None = None) -> Params:
     return Params()
 
 
-def lane_color_mode(params: Params | None = None) -> int:
+# Highland-only keys are in params_keys.h but params_pyx.so is still stock
+# release-mici until on-device rebuild. Fall back to /data/s3xy/* files.
+_S3XY_DIR = "/data/s3xy"
+
+
+def _s3xy_path(key: str) -> str:
+  return f"{_S3XY_DIR}/{key}"
+
+
+def s3xy_get_int(key: str, default: int = 0, params: Params | None = None) -> int:
   params = _theme_params(params)
-  mode = params.get("LaneColor", return_default=True)
+  try:
+    mode = params.get(key, return_default=True)
+    if mode is not None:
+      return int(mode)
+  except Exception:
+    pass
+  try:
+    return int(open(_s3xy_path(key), encoding="utf-8").read().strip())
+  except Exception:
+    return default
+
+
+def s3xy_put_int(key: str, value: int, params: Params | None = None) -> None:
+  params = _theme_params(params)
+  try:
+    params.put(key, int(value), block=True)
+    return
+  except Exception:
+    pass
+  os.makedirs(_S3XY_DIR, exist_ok=True)
+  with open(_s3xy_path(key), "w", encoding="utf-8") as f:
+    f.write(str(int(value)))
+
+
+def s3xy_get_bool(key: str, default: bool = False, params: Params | None = None) -> bool:
+  params = _theme_params(params)
+  try:
+    return bool(params.get_bool(key))
+  except Exception:
+    pass
+  try:
+    return open(_s3xy_path(key), encoding="utf-8").read().strip() in ("1", "true")
+  except Exception:
+    return default
+
+
+def s3xy_put_bool(key: str, value: bool, params: Params | None = None) -> None:
+  params = _theme_params(params)
+  try:
+    params.put_bool(key, bool(value), block=True)
+    return
+  except Exception:
+    pass
+  os.makedirs(_S3XY_DIR, exist_ok=True)
+  with open(_s3xy_path(key), "w", encoding="utf-8") as f:
+    f.write("1" if value else "0")
+
+
+def lane_color_mode(params: Params | None = None) -> int:
+  mode = s3xy_get_int("LaneColor", LANE_COLOR_TESLA, params)
   return LANE_COLOR_TESLA if mode == LANE_COLOR_TESLA else LANE_COLOR_GREEN
 
 
@@ -103,8 +161,7 @@ def custom_onroad_ui(params: Params | None = None) -> bool:
 
 
 def compass_size(params: Params | None = None) -> int:
-  params = params or Params()
-  mode = params.get("CompassSize", return_default=True)
+  mode = s3xy_get_int("CompassSize", COMPASS_SMALL, params)
   return COMPASS_LARGE if mode == COMPASS_LARGE else COMPASS_SMALL
 
 
@@ -114,6 +171,14 @@ def compass_size_label(params: Params | None = None) -> str:
 
 def next_compass_size(params: Params | None = None) -> int:
   return COMPASS_SMALL if compass_size(params) == COMPASS_LARGE else COMPASS_LARGE
+
+
+def set_lane_color(mode: int, params: Params | None = None) -> None:
+  s3xy_put_int("LaneColor", LANE_COLOR_TESLA if int(mode) == LANE_COLOR_TESLA else LANE_COLOR_GREEN, params)
+
+
+def set_compass_size(mode: int, params: Params | None = None) -> None:
+  s3xy_put_int("CompassSize", COMPASS_LARGE if int(mode) == COMPASS_LARGE else COMPASS_SMALL, params)
 
 
 CARDINALS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
