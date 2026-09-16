@@ -4,26 +4,27 @@
 
 Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
-`master` is an unmodified comma.ai/openpilot mirror.
+`master` is an unmodified comma.ai/openpilot mirror. **HighlandStage** is Highland rebased onto current comma master (AGNOS **19.7**, comma tinygrad ONNX/warp).
 
 ## opendbc pin
 
-`.gitmodules` points `opendbc_repo` at `Memberoffoxhound/TeslaPilot-opendbc` branch `Highland`.
+`.gitmodules` points `opendbc_repo` at `Memberoffoxhound/TeslaPilot-opendbc` (same-org sibling, not commaai/opendbc — Tesla 3-bit / coop steering cannot live on comma's SHA).
 
-Stock shipping is the **gitlink SHA**, not the branch tip. Bump it the same way comma does:
+Structure matches comma: gitlink SHA is what ships, not the branch tip. The SHA is **comma openpilot master's opendbc pin plus Tesla-only commits**:
+
+- base: `a3d3b7c6` (commaai/opendbc, the pin in comma/openpilot master)
+- extras: 3-bit `DAS_steeringControlType`, cooperative steering, scroll-wheel cancel, `TESLA_MODEL_3` fingerprint pin, cached EPS FW fallback, shallow cruise-return jerk
 
 ```bash
 cd opendbc_repo
-git fetch origin Highland
-git checkout 39b54bbd8be3a0d9eda698d16f1d431651131227
+git fetch origin
+git checkout <gitlink SHA>
 cd ..
 git add opendbc_repo
-git commit -m "opendbc: bump Highland (fingerprint pin + cruise-return jerk)"
-git push origin Highland
+git commit -m "opendbc: bump Highland (comma pin + Tesla extras)"
 ```
 
-Intended pin: `39b54bb` (force `TESLA_MODEL_3` + shallow cruise-return jerk).
-Current gitlink until that commit lands: `0305aeb` (drop FSD set-speed hold).
+Current gitlink: `43242f0a` (local HighlandStage until TeslaPilot-opendbc is pushed).
 
 ## Fingerprint
 
