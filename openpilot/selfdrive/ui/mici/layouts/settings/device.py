@@ -1,6 +1,7 @@
 import os
 import pyray as rl
 from collections.abc import Callable
+from typing import Union
 
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
@@ -76,15 +77,16 @@ def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.T
 
 class EngagedConfirmationCircleButton(BigCircleButton):
   def __init__(self, title: str, icon: rl.Texture, callback: Callable[[], None], exit_on_confirm: bool = True,
-               red: bool = False, icon_offset: tuple[int, int] = (0, 0)):
-    super().__init__(icon, red, icon_offset)
+               red: bool = False, icon_offset: tuple[int, int] = (0, 0), *, description: str = ""):
+    super().__init__(icon, red, icon_offset, description=description, title=title)
     self.set_click_callback(lambda: _engaged_confirmation_click(callback, title, icon, exit_on_confirm=exit_on_confirm, red=red))
 
 
 class EngagedConfirmationButton(BigButton):
   def __init__(self, text: str, action_text: str, icon: rl.Texture, callback: Callable[[], None],
-               exit_on_confirm: bool = True, red: bool = False):
-    super().__init__(text, "", icon)
+               exit_on_confirm: bool = True, red: bool = False, *, description: str = "",
+               description_icon: Union[rl.Texture, None] = None):
+    super().__init__(text, "", icon, description=description, description_icon=description_icon)
     self.set_click_callback(lambda: _engaged_confirmation_click(callback, action_text, icon, exit_on_confirm=exit_on_confirm, red=red))
 
 
@@ -208,7 +210,8 @@ class DeviceLayoutMici(NavScroller):
     regulatory_btn = BigButton("regulatory info", "", gui_app.texture("icons_mici/settings/device/info.png", 64, 64))
     regulatory_btn.set_click_callback(self._on_regulatory)
 
-    cabin_cam_btn = BigButton("driver\ncamera preview", "", gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64))
+    cabin_cam_btn = BigButton("driver\ncamera preview", "", gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64),
+                              description="Preview the cabin camera to check driver monitoring visibility. The vehicle must be off.")
     cabin_cam_btn.set_click_callback(lambda: gui_app.push_widget(CabinCameraDialog()))
     cabin_cam_btn.set_enabled(lambda: ui_state.is_offroad())
 
