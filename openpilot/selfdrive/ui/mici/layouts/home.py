@@ -21,14 +21,14 @@ from openpilot.common.version import RELEASE_BRANCHES
 
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
-MICI_MICI_WORDMARK_SIZE = 80
+MICI_WORDMARK_SIZE = 80
 LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
-  """S3XYPilot wordmark glyphs from TESLA.ttf (S-E-X-Y-P-I-L-O-T). Falls back to Inter DISPLAY."""
+  """S3XYPilot wordmark glyphs from TESLA.ttf (T-E-S-L-A-P-I-L-O-T). Falls back to Inter DISPLAY."""
   try:
-    chars = "SEXYPILOT"
+    chars = "TESLAPILOT"
     cps = sorted(map(ord, chars))
     buf = rl.ffi.new("int[]", cps)
     with as_file(FONT_DIR) as fs:
@@ -283,8 +283,14 @@ class MiciHomeLayout(Widget):
 
   def _render(self, _):
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 2)
-    wm = 60 if self.rect.width < 1000 else MICI_WORDMARK_SIZE
-    rl.draw_text_ex(self._wordmark_font, "SEXYPILOT", text_pos, wm, 0, LABEL_WHITE)
+    mark = "TESLAPILOT"
+    avail = max(200, self.rect.width - HOME_PADDING * 2)
+    wm = MICI_WORDMARK_SIZE
+    while wm > 28:
+      if measure_text_cached(self._wordmark_font, mark, wm).x <= avail:
+        break
+      wm -= 2
+    rl.draw_text_ex(self._wordmark_font, mark, text_pos, wm, 0, LABEL_WHITE)
 
     if self._version_text is not None:
       release_branch = self._version_text[1] in RELEASE_BRANCHES
