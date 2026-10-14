@@ -422,6 +422,7 @@ def main(demo=False):
     model_execution_time = mt2 - mt1
     if jetlink_adapter.handed_over(model):
       run_count, frame_drop_ratio = 0, 0.
+    jetlink_adapter.publish_live(model, model_execution_time)  # no-op unless Jetlink is attached
 
     if model_output is not None:
       modelv2_send = messaging.new_message('modelV2')
