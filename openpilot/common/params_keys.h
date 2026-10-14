@@ -143,5 +143,13 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"VSlamFilterEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam filter; OP-long only, TACC locks off
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
+    // Jetlink (zoompilot/jetlink): an iPhone / Jetson / Mac runs the large model.
+    // See openpilot/selfdrive/jetlink_adapter/. JetlinkLink: 0 off, 1 usb, 2 ios.
+    // All readers tolerate these keys missing from a stale params_pyx.so.
+    {"AcceleratorProgress", {CLEAR_ON_MANAGER_START, JSON}},
+    {"JetlinkLink", {PERSISTENT | BACKUP, INT, "0"}},
+    {"JetlinkSpec", {PERSISTENT, JSON}},
+    {"JetlinkModelPointers", {PERSISTENT, JSON}},
+    {"JetlinkChargePhone", {PERSISTENT, BOOL, "0"}},
     {"Version", {PERSISTENT, STRING}},
 };
