@@ -128,8 +128,8 @@ class HudRenderer(Widget):
     self._txt_chestnut_green: rl.Texture = gui_app.texture('icons_mici/chestnut_green.png', 60, 44)
     self._txt_chestnut_orange: rl.Texture = gui_app.texture('icons_mici/chestnut_orange.png', 75, 44)
     self._chestnut_icon: rl.Texture | None = None
-    self._txt_jetlink_phone: rl.Texture = gui_app.texture('icons_mici/jetlink_phone.png', 39, 50)
-    self._txt_jetlink_phone_dim: rl.Texture = gui_app.texture('icons_mici/jetlink_phone_dim.png', 39, 50)
+    self._txt_jetlink_phone: rl.Texture = gui_app.texture('icons_mici/jetlink_metal.png', 50, 50)
+    self._txt_jetlink_phone_dim: rl.Texture = gui_app.texture('icons_mici/jetlink_metal_dim.png', 50, 50)
     self._txt_compass_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
     self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
@@ -236,7 +236,7 @@ class HudRenderer(Widget):
     """Jetlink, where the chestnut icon sits: lit (and held, not faded) while
     the phone's big model drives, dim while connected but the small model
     drives (joining, waiting to switch, fell back), hidden when off or no phone.
-    Phone icon in iPhone mode, the chestnut GPU icon in USB mode."""
+    Metal icon in iPhone mode, the chestnut GPU icon in USB mode."""
     try:
       big = bool(ui_state.sm.alive['modelV2'] and ui_state.sm['modelV2'].big)
       snap = jetlink_ui.refresh(True, big)

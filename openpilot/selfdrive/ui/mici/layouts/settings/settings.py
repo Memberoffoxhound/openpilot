@@ -40,7 +40,7 @@ class SettingsLayout(NavScroller):
     vslam_btn.set_click_callback(lambda: gui_app.push_widget(self._vslam_layout))
 
     self._jetlink_layout = JetlinkLayoutMici()
-    jetlink_btn = SettingsBigButton("jetlink", "", gui_app.texture("icons_mici/jetlink_phone.png", 44, 56))
+    jetlink_btn = SettingsBigButton("jetlink", "", gui_app.texture("icons_mici/jetlink_metal.png", 56, 56))
     jetlink_btn.set_click_callback(lambda: gui_app.push_widget(self._jetlink_layout))
 
     network_panel = NetworkLayoutMici()

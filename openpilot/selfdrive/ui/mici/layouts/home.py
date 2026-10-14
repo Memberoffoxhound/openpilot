@@ -186,9 +186,9 @@ class MiciHomeLayout(Widget):
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
     self._chestnut_loading_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
     self._chestnut_failed_icon = IconWidget("icons_mici/chestnut_orange.png", (68, 40))
-    # Jetlink: phone icon for iPhone mode, the chestnut GPU icon for USB mode
-    self._jetlink_phone_icon = IconWidget("icons_mici/jetlink_phone.png", (31, 40))
-    self._jetlink_phone_dim_icon = IconWidget("icons_mici/jetlink_phone_dim.png", (31, 40))
+    # Jetlink: Metal icon for iPhone mode, the chestnut GPU icon for USB mode
+    self._jetlink_phone_icon = IconWidget("icons_mici/jetlink_metal.png", (50, 50))
+    self._jetlink_phone_dim_icon = IconWidget("icons_mici/jetlink_metal_dim.png", (50, 50))
     self._jetlink_gpu_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
     self._jetlink_gpu_dim_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
