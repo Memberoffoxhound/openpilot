@@ -177,6 +177,43 @@ class PythonProcess(ManagerProcess):
     self.shutting_down = False
 
 
+class RestartingPythonProcess(PythonProcess):
+  """A PythonProcess that manager starts again after it dies (ported from
+  zoompilot's sunnypilot/system/manager/processes.py, for jetlinkd).
+
+  PythonProcess.start() leaves a proc that has exited in place for good. One
+  that dies within QUICK_DEATH of its start backs off BACKOFF, doubling to
+  BACKOFF_MAX, so an import error never forks manager twice a second."""
+  QUICK_DEATH = 10.0
+  BACKOFF = 10.0
+  BACKOFF_MAX = 300.0
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.started_at = 0.0
+    self.backoff = 0.0
+    self.next_start = 0.0
+
+  def now(self) -> float:
+    return time.monotonic()
+
+  def start(self) -> None:
+    now = self.now()
+    if self.proc is not None and self.proc.exitcode is not None:
+      if now - self.started_at < self.QUICK_DEATH:
+        self.backoff = min(self.BACKOFF_MAX, 2 * self.backoff or self.BACKOFF)
+        self.next_start = now + self.backoff
+        cloudlog.warning(f"{self.name} died {now - self.started_at:.1f} s after it started, starting it again in {self.backoff:.0f} s")
+      else:
+        self.backoff = 0.0
+      self.stop()  # reaps it, logs the exit code and clears proc
+    if self.proc is None:
+      if now < self.next_start:
+        return
+      self.started_at = now
+    super().start()
+
+
 class DaemonProcess(ManagerProcess):
   """Python process that has to stay running across manager restart.
   This is used for athena so you don't lose SSH access when restarting manager."""

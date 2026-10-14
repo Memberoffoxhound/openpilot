@@ -5,7 +5,8 @@ import platform
 from opendbc.car.structs import car
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
-from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
+from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess, RestartingPythonProcess
+from openpilot.selfdrive import jetlink_adapter
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
@@ -121,6 +122,10 @@ procs = [
   PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "openpilot.system.updated.updated", only_offroad, enabled=not PC),
   PythonProcess("uploader", "openpilot.system.loggerd.uploader", always_run),
+  # Jetlink (iPhone/Jetson/Mac runs the large model). Off unless the Jetlink
+  # setting is on: should_run reads the JetlinkLink file and imports nothing.
+  # Runs onroad too, since it holds the USB gadget for the whole drive.
+  RestartingPythonProcess(jetlink_adapter.OWNER, "openpilot.selfdrive.jetlink_adapter", jetlink_adapter.should_run, enabled=not PC),
 
   # debug procs
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
