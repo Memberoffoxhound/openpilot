@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus, ChestnutState
+from openpilot.selfdrive.ui.jetlink_status import jetlink_ui, ICON_ACTIVE
 from openpilot.selfdrive.ui.layouts.settings.common import (
   custom_onroad_ui, heading_deg, heading_letter, compass_size, COMPASS_LARGE,
   tesla_theme, theme_color, THEME_TESLA_RGB, THEME_LANE_ALPHA,
@@ -127,6 +128,8 @@ class HudRenderer(Widget):
     self._txt_chestnut_green: rl.Texture = gui_app.texture('icons_mici/chestnut_green.png', 60, 44)
     self._txt_chestnut_orange: rl.Texture = gui_app.texture('icons_mici/chestnut_orange.png', 75, 44)
     self._chestnut_icon: rl.Texture | None = None
+    self._txt_jetlink_phone: rl.Texture = gui_app.texture('icons_mici/jetlink_phone.png', 39, 50)
+    self._txt_jetlink_phone_dim: rl.Texture = gui_app.texture('icons_mici/jetlink_phone_dim.png', 39, 50)
     self._txt_compass_bg: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 60, 60)
     self._txt_compass_fan: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_cone.png', 52, 52)
     self._txt_compass_bg90: rl.Texture = gui_app.texture('icons_mici/onroad/driver_monitoring/dm_background.png', 90, 90)
@@ -211,6 +214,9 @@ class HudRenderer(Widget):
     elif ui_state.chestnut_state == ChestnutState.ACTIVE:
       icon = self._txt_chestnut_green
       opacity = 1.0
+    elif ui_state.chestnut_state == ChestnutState.DISCONNECTED:
+      self._draw_jetlink_source(rect)
+      return
     else:
       return
 
@@ -225,6 +231,29 @@ class HudRenderer(Widget):
     pos = rl.Vector2(rect.x + rect.width - 10 - icon.width,
                      rect.y + rect.height - 14 - (self._txt_wheel.height + icon.height) / 2)
     rl.draw_texture_ex(icon, pos, 0.0, 1.0, rl.Color(255, 255, 255, int(255 * opacity * alpha)))
+
+  def _draw_jetlink_source(self, rect: rl.Rectangle) -> None:
+    """Jetlink, where the chestnut icon sits: lit (and held, not faded) while
+    the phone's big model drives, dim while connected but the small model
+    drives (joining, waiting to switch, fell back), hidden when off or no phone.
+    Phone icon in iPhone mode, the chestnut GPU icon in USB mode."""
+    try:
+      big = bool(ui_state.sm.alive['modelV2'] and ui_state.sm['modelV2'].big)
+      snap = jetlink_ui.refresh(True, big)
+    except Exception:
+      return
+    if snap.mode == 'off' or snap.icon is None:
+      return
+    active = snap.icon == ICON_ACTIVE
+    if snap.mode == 'ios':
+      icon = self._txt_jetlink_phone if active else self._txt_jetlink_phone_dim
+      opacity = 1.0
+    else:
+      icon = self._txt_chestnut_green if active else self._txt_chestnut
+      opacity = 1.0 if active else 0.45
+    pos = rl.Vector2(rect.x + rect.width - 10 - icon.width,
+                     rect.y + rect.height - 14 - (self._txt_wheel.height + icon.height) / 2)
+    rl.draw_texture_ex(icon, pos, 0.0, 1.0, rl.Color(255, 255, 255, int(255 * opacity)))
 
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
     wheel_txt = self._txt_wheel_critical if self._show_wheel_critical else self._txt_wheel
