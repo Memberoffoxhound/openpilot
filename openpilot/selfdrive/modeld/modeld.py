@@ -36,6 +36,7 @@ from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.common.file_chunker import open_file_chunked
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
+from openpilot.selfdrive import jetlink_adapter
 from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob
 
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
@@ -230,6 +231,7 @@ def main(demo=False):
   params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.remove("ChestnutActive")
+  jetlink_adapter.prepare(CHESTNUT)  # before going realtime; False unless the Jetlink setting is on
 
   config_realtime_process(7, 54)
 
@@ -278,6 +280,10 @@ def main(demo=False):
   small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False) if model is None or CHESTNUT else None
   if model is None:
     model = small_model
+  # Jetlink: the joining model (small drives until the phone's large model joins)
+  # when prepare() said yes; `model` unchanged otherwise
+  model = jetlink_adapter.attach(model, small_model, vipc_client_main.width, vipc_client_main.height)
+  assert model is not None
   params.put_bool("ChestnutLoading", False)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
@@ -394,6 +400,7 @@ def main(demo=False):
       'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
 
+    model.frame_drop_ratio = frame_drop_ratio
     mt1 = time.perf_counter()
     try:
       send_chestnut = (chestnut_state is not None and
@@ -405,6 +412,7 @@ def main(demo=False):
       # fallback to small model
       cloudlog.exception("big model failed, fall back to small")
       params.put_bool("ChestnutActive", False)
+      assert small_model is not None
       model = small_model
       if chestnut_state is not None:
         chestnut_state.big = False
@@ -412,6 +420,8 @@ def main(demo=False):
       model_output = None
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
+    if jetlink_adapter.handed_over(model):
+      run_count, frame_drop_ratio = 0, 0.
 
     if model_output is not None:
       modelv2_send = messaging.new_message('modelV2')
