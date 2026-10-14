@@ -13,6 +13,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive import jetlink_adapter
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -118,6 +119,40 @@ class DeloreanPreview(BigButton):
     request_delorean_play()
 
 
+# Jetlink setting: JetlinkLink index into jetlink_adapter.MODES ('off', 'usb', 'ios').
+# Tap cycles off -> iphone -> usb -> off. Reads/writes go through the adapter,
+# which falls back to the raw params file if params_pyx.so predates the key,
+# so this can never crash-loop the UI.
+JETLINK_LABELS = {0: "off", 1: "usb", 2: "iphone"}
+JETLINK_NEXT = {0: 2, 2: 1, 1: 0}
+
+
+class JetlinkCycle(BigButton):
+  def __init__(self):
+    super().__init__("jetlink big model", "")
+    self.refresh()
+
+  def refresh(self):
+    try:
+      value = JETLINK_LABELS.get(jetlink_adapter.link_mode(), "off")
+    except Exception:
+      value = "off"
+    if value != self.value:
+      self.set_value(value)
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    try:
+      jetlink_adapter.set_link_mode(JETLINK_NEXT.get(jetlink_adapter.link_mode(), 0))
+    except Exception:
+      pass
+    self.refresh()
+
+
 class ThemeLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -192,10 +227,15 @@ class TogglesLayoutMici(NavScroller):
                                        description="Enable to use S3XYPilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
 
+    # Jetlink: off by default; only changeable while offroad
+    self._jetlink_btn = JetlinkCycle()
+    self._jetlink_btn.set_enabled(lambda: not ui_state.started)
+
     self._scroller.add_widgets([
       self._alc_btn,
       self._personality_toggle,
       self._experimental_btn,
+      self._jetlink_btn,
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
@@ -257,6 +297,7 @@ class TogglesLayoutMici(NavScroller):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+    self._jetlink_btn.refresh()
 
   def _on_alc(self, state: bool):
     if state:
