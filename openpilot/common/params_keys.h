@@ -147,7 +147,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     // See openpilot/selfdrive/jetlink_adapter/. JetlinkLink: 0 off, 1 usb, 2 ios.
     // All readers tolerate these keys missing from a stale params_pyx.so.
     {"AcceleratorProgress", {CLEAR_ON_MANAGER_START, JSON}},
-    {"JetlinkLink", {PERSISTENT | BACKUP, INT, "0"}},
+    {"JetlinkLink", {PERSISTENT, INT, "0"}},
     {"JetlinkSpec", {PERSISTENT, JSON}},
     {"JetlinkModelPointers", {PERSISTENT, JSON}},
     {"JetlinkChargePhone", {PERSISTENT, BOOL, "0"}},
