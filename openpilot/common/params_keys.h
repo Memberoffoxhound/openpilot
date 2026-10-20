@@ -151,5 +151,13 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"JetlinkSpec", {PERSISTENT, JSON}},
     {"JetlinkModelPointers", {PERSISTENT, JSON}},
     {"JetlinkChargePhone", {PERSISTENT, BOOL, "0"}},
+    // Model manager (openpilot/selfdrive/modelmanager, from sunnypilot's): the
+    // big-model catalog and pick, read by jetlink as keys.catalog / keys.big_model.
+    // Readers tolerate these missing from a stale params_pyx.so (raw-file fallback).
+    {"ModelManager_ActiveBundleChestnut", {PERSISTENT, JSON}},
+    {"ModelManager_ModelsCache_Chestnut", {PERSISTENT, JSON}},
+    {"ModelManager_LastSyncTime_Chestnut", {CLEAR_ON_MANAGER_START, INT, "0"}},
+    {"ModelManager_DownloadRef", {CLEAR_ON_MANAGER_START, STRING}},
+    {"ModelManager_Status", {CLEAR_ON_MANAGER_START, JSON}},
     {"Version", {PERSISTENT, STRING}},
 };

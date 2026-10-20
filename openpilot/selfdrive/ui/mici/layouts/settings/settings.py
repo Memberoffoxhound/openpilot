@@ -10,6 +10,7 @@ from openpilot.selfdrive.ui.mici.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.stats import StatsLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.vslam import VSlamLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.jetlink import JetlinkLayoutMici
+from openpilot.selfdrive.ui.mici.layouts.settings.models import ModelsLayoutMici
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 
 
@@ -43,6 +44,10 @@ class SettingsLayout(NavScroller):
     jetlink_btn = SettingsBigButton("jetlink", "", gui_app.texture("icons_mici/jetlink_metal.png", 56, 56))
     jetlink_btn.set_click_callback(lambda: gui_app.push_widget(self._jetlink_layout))
 
+    self._models_layout = ModelsLayoutMici()
+    models_btn = SettingsBigButton("models", "")
+    models_btn.set_click_callback(lambda: gui_app.push_widget(self._models_layout))
+
     network_panel = NetworkLayoutMici()
     network_btn = SettingsBigButton("network", "", gui_app.texture("icons_mici/settings/network/wifi_strength_full.png", 76, 56))
     network_btn.set_click_callback(lambda: gui_app.push_widget(network_panel))
@@ -69,6 +74,7 @@ class SettingsLayout(NavScroller):
       stats_btn,
       vslam_btn,
       jetlink_btn,
+      models_btn,
       network_btn,
       device_btn,
       software_btn,

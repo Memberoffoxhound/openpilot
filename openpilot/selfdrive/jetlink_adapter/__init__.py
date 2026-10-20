@@ -5,8 +5,10 @@ This file is part of zoompilot and is licensed under the MIT License.
 Ported to Highland (Memberoffoxhound/openpilot) from zoompilot develop
 (openpilot/sunnypilot/jetlink_adapter). Highland changes, in short:
   - lives at openpilot/selfdrive/jetlink_adapter (no sunnypilot tree here)
-  - no sunnypilot model manager: Keys.big_model / Keys.catalog are None and
-    catalog_selector is 0, so jetlink runs its own default big model
+  - Highland's model manager (openpilot/selfdrive/modelmanager) is a cut-down
+    port of sunnypilot's: Keys.big_model / Keys.catalog are its params, as on
+    zoompilot, and catalog_selector is its REQUIRED_JSON_VERSION (20). Until
+    it has fetched a catalog, get() answers one listing jetlink's default
   - in_control reads carState/carControl only (no MADS / carControlSP)
   - warp and model constants come from stock selfdrive/modeld
   - get/put/remove fall back to the raw params files when the params library
@@ -49,15 +51,17 @@ OWNER = 'jetlinkd'
 # written out so the panels build the setting without a jetlink checkout
 MODES = ('off', 'usb', 'ios')
 
-# the params jetlink reads and writes, all declared in params_keys.h. Highland
-# has no model manager, so big_model and catalog are None: jetlink then runs
-# its own default big model (jetlink.openpilot.models)
+# the params jetlink reads and writes, all declared in params_keys.h. big_model
+# and catalog are Highland's model manager's (openpilot/selfdrive/modelmanager),
+# the keys zoompilot's adapter names: the pick ({ref, displayName, ...}) and the
+# big-model catalog it caches
 _Keys = namedtuple('_Keys', 'link offroad progress spec pointers big_model catalog charge_phone')
 KEYS = _Keys(link='JetlinkLink', offroad='IsOffroad', progress='AcceleratorProgress', spec='JetlinkSpec',
-             pointers='JetlinkModelPointers', big_model=None, catalog=None, charge_phone='JetlinkChargePhone')
+             pointers='JetlinkModelPointers', big_model='ModelManager_ActiveBundleChestnut',
+             catalog='ModelManager_ModelsCache_Chestnut', charge_phone='JetlinkChargePhone')
 
 # every key this adapter declares in params_keys.h, and its type there
-JSON_KEYS = frozenset({KEYS.progress, KEYS.spec, KEYS.pointers})
+JSON_KEYS = frozenset({KEYS.progress, KEYS.spec, KEYS.pointers, KEYS.big_model, KEYS.catalog})
 INT_KEYS = frozenset({KEYS.link})
 BOOL_KEYS = frozenset({KEYS.charge_phone})
 
@@ -148,9 +152,12 @@ class Adapter:
     # read from hardwared and the UI's threads, which UnknownKeyName (a
     # params library older than the key) must not take down
     try:
-      return self._params().get(key)
+      value = self._params().get(key)
     except Exception:
-      return file_get(key)
+      value = file_get(key)
+    if value is None and key == KEYS.catalog:
+      return default_catalog()
+    return value
 
   def put(self, key: str, value, *, block: bool = False) -> None:
     try:
@@ -194,7 +201,9 @@ class Adapter:
 
   @property
   def catalog_selector(self) -> int:
-    return 0  # no model manager
+    # the model manager's REQUIRED_JSON_VERSION, as zoompilot's adapter returns
+    from openpilot.selfdrive.modelmanager import REQUIRED_JSON_VERSION
+    return REQUIRED_JSON_VERSION
 
   # -- modeld -----------------------------------------------------------------
 
@@ -235,6 +244,19 @@ class Adapter:
 
   def event(self, name: str, **fields) -> None:
     self.log.event(name, **fields)
+
+
+def default_catalog() -> dict | None:
+  """Until the model manager has fetched a catalog (a first boot offline):
+  one listing only jetlink's default big model, so jetlink provisions that as
+  it did before Highland had a model manager rather than waiting for a list."""
+  try:
+    from jetlink.registry.catalog import DEFAULT_BIG_MODEL_NAME, DEFAULT_BIG_MODEL_REF
+    from openpilot.selfdrive.modelmanager import REQUIRED_JSON_VERSION
+  except Exception:
+    return None
+  return {'bundles': [{'ref': DEFAULT_BIG_MODEL_REF, 'display_name': DEFAULT_BIG_MODEL_NAME, 'index': 0,
+                       'minimum_selector_version': str(REQUIRED_JSON_VERSION)}]}
 
 
 # -- params without the params library ---------------------------------------
