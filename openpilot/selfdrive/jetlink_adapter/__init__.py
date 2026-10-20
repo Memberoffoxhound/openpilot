@@ -99,6 +99,10 @@ def owner_config():
 
 def main() -> None:
   """jetlinkd: hold the USB gadget until manager stops this process."""
+  # boot-time guard: AGNOS's ADB gadget (g1) holds the USB controller while
+  # AdbEnabled is set, and jetlink-root.sh refuses to take it from g1, so the
+  # phone never sees a device. jetlinkd only runs with the link on
+  release_adb()
   from jetlink.openpilot.owner import main as run_owner
   run_owner(owner_config())
 
@@ -306,6 +310,61 @@ def set_link_mode(index: int) -> None:
     Params().put(KEYS.link, index, block=True)
   except Exception:
     file_put(KEYS.link, index)
+  if index != 0:
+    release_adb(link_on=True)
+
+
+# -- ADB and the USB port -------------------------------------------------------
+# ADB and Jetlink both need the comma's USB port. As in zoompilot
+# (ui_state_zp._enforce_usb_port): the link on turns ADB off, and the developer
+# panel greys the ADB toggle out. AGNOS tears its ADB gadget down when the
+# param goes false; jetlink's owner retries the port every GADGET_HELD_RETRY
+# (2 s) while that gadget still holds it.
+ADB_KEY = 'AdbEnabled'
+
+
+_adb_blocked_cache: list = [-1e9, False]   # [when read (monotonic), answer]
+
+
+def adb_blocked(max_age: float = 0.0) -> bool:
+  """The link is on, so ADB must stay off. File read only; never raises.
+  max_age > 0 reuses an answer that young, for a per-frame UI check."""
+  try:
+    import time
+    now = time.monotonic()
+    if max_age > 0 and now - _adb_blocked_cache[0] < max_age:
+      return _adb_blocked_cache[1]
+    _adb_blocked_cache[:] = [now, link_mode_file() != 0]
+    return _adb_blocked_cache[1]
+  except Exception:
+    return False
+
+
+def release_adb(link_on: bool = False) -> bool:
+  """With the link on, turn ADB off if it is on. True when it changed
+  AdbEnabled. link_on skips reading the setting back (the toggle just wrote
+  it). Never raises: the UI, the toggle and jetlinkd call it."""
+  try:
+    if not link_on and not adb_blocked():
+      return False
+    try:
+      from openpilot.common.params import Params
+      params = Params()
+      if not params.get_bool(ADB_KEY):
+        return False
+      params.put_bool(ADB_KEY, False, block=True)
+    except Exception:
+      if (_params_dir() / ADB_KEY).read_bytes().strip() not in (b'1', b'true', b'True'):
+        return False
+      file_put(ADB_KEY, b'0')
+    try:
+      from openpilot.common.swaglog import cloudlog
+      cloudlog.warning("jetlink: turned ADB off, Jetlink holds the USB port")
+    except Exception:
+      pass
+    return True
+  except Exception:
+    return False
 
 
 # -- what the hooks call ------------------------------------------------------

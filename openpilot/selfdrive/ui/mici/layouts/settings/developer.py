@@ -6,6 +6,7 @@ from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigInputDialog
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive import jetlink_adapter
 from openpilot.selfdrive.ui.widgets.ssh_key import SshKeyFetcher
 
 
@@ -121,6 +122,8 @@ class DeveloperLayoutMici(NavScroller):
     # Disable toggles that require offroad
     for item in onroad_blocked_toggles:
       item.set_enabled(lambda: ui_state.is_offroad())
+    # Jetlink holds the USB port that ADB needs (zoompilot does the same)
+    self._adb_toggle.set_enabled(lambda: ui_state.is_offroad() and not jetlink_adapter.adb_blocked(max_age=1.0))
 
     # Disable toggles that require not engaged
     for item in engaged_blocked_toggles:

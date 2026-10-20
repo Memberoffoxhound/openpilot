@@ -117,3 +117,53 @@ def test_manager_registers_jetlinkd():
 def test_submodule_pin():
   gm = (ROOT / '.gitmodules').read_text()
   assert 'path = jetlink_repo' in gm and 'zoompilot/jetlink' in gm
+
+
+class FakeParams:
+  """A Params that knows AdbEnabled and JetlinkLink, over one dict."""
+  store: dict = {}
+
+  def get(self, key, *a, **k):
+    return self.store.get(key)
+
+  def get_bool(self, key, *a, **k):
+    return bool(self.store.get(key))
+
+  def put(self, key, value, *a, **k):
+    self.store[key] = value
+
+  def put_bool(self, key, value, *a, **k):
+    self.store[key] = bool(value)
+
+
+def test_link_on_turns_adb_off(params_root, monkeypatch):
+  # AGNOS's ADB gadget (g1) holds the USB controller, and jetlink-root.sh will not take it
+  FakeParams.store = {'AdbEnabled': True}
+  fake = type(sys)('openpilot.common.params')
+  fake.Params = FakeParams
+  monkeypatch.setitem(sys.modules, 'openpilot.common.params', fake)
+  ja.set_link_mode(0)
+  assert FakeParams.store['AdbEnabled'] is True and not ja.adb_blocked()
+  assert ja.release_adb() is False
+  ja.set_link_mode(2)                      # iphone: the toggle turns ADB off
+  assert FakeParams.store['AdbEnabled'] is False
+  ja.file_put('JetlinkLink', 2)            # the link mode as jetlinkd/UI read it
+  assert ja.adb_blocked()
+  FakeParams.store['AdbEnabled'] = True    # turned back on elsewhere
+  assert ja.release_adb() is True and FakeParams.store['AdbEnabled'] is False
+  assert ja.release_adb() is False         # already off: no write
+
+
+def test_release_adb_file_fallback(params_root, monkeypatch):
+  class Broken:
+    def __init__(self):
+      raise RuntimeError('no params library')
+  fake = type(sys)('openpilot.common.params')
+  fake.Params = Broken
+  monkeypatch.setitem(sys.modules, 'openpilot.common.params', fake)
+  ja.file_put('AdbEnabled', b'1')
+  assert ja.release_adb() is False         # link off: ADB left alone
+  assert (params_root / 'AdbEnabled').read_bytes() == b'1'
+  ja.file_put('JetlinkLink', 1)
+  assert ja.release_adb() is True
+  assert (params_root / 'AdbEnabled').read_bytes() == b'0'

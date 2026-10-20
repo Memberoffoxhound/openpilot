@@ -126,6 +126,8 @@ class JetlinkUI:
       if mode == 'off':
         self.snapshot = Snapshot()
       else:
+        # the link holds the USB port: keep ADB off even if it was turned on elsewhere
+        ja.release_adb()
         self.snapshot = evaluate(mode, ja.status(), ja.read_live(), started, model_big)
     except Exception:
       self.snapshot = Snapshot()
