@@ -149,6 +149,9 @@ class ModelState:
 
     self.prev_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
     self.chestnut = chestnut
+    # Jetlink's joining model reads this off the small model at a swap and
+    # modeld writes it every frame. Inference takes the delay from action_t
+    self.lat_delay = 0.0
 
     stride, y_height, uv_height, _ = get_nv12_info(cam_w, cam_h)
     self.frame_copy_size = stride * (y_height + uv_height)
@@ -400,6 +403,7 @@ def main(demo=False):
       'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
 
+    model.lat_delay = lat_delay
     model.frame_drop_ratio = frame_drop_ratio
     mt1 = time.perf_counter()
     try:

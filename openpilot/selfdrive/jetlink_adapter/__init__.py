@@ -508,12 +508,41 @@ def prepare(chestnut: bool) -> bool:
   return not chestnut and link_mode_file() != 0 and _hook('prepare')
 
 
+# What jetlink's joining model (joining.py) reads off the small model that
+# sunnypilot's modeld_v2 keeps on its ModelState and Highland's stock one may
+# not: name -> default. lat_delay is copied onto the large model at the swap
+# (an AttributeError there kept every swap from landing, 2026-10-20); the rest
+# are read through the joining model's properties. Highland's modeld sets
+# lat_delay itself and writes it every frame; this is the net under that.
+# numpy_inputs falls back to the ModelState's own host inputs (npy).
+SMALL_MODEL_DEFAULTS = {'lat_delay': 0.0, 'PLANPLUS_CONTROL': 1.0, 'desire_key': 'desire_pulse'}
+
+
+def fill_small(small) -> list[str]:
+  """Give `small` whatever of SMALL_MODEL_DEFAULTS and numpy_inputs it lacks,
+  so no swap or later read is an AttributeError on modeld's frame thread.
+  Returns the names it set. Never raises."""
+  filled = []
+  try:
+    for name, default in SMALL_MODEL_DEFAULTS.items():
+      if not hasattr(small, name):
+        setattr(small, name, default)
+        filled.append(name)
+    if not hasattr(small, 'numpy_inputs'):
+      small.numpy_inputs = getattr(small, 'npy', {})
+      filled.append('numpy_inputs')
+  except Exception as e:
+    _failed('fill_small', e)
+  return filled
+
+
 def attach(model, small, cam_w: int, cam_h: int):
   """modeld, once the camera is up and `small` is built: the model to run.
   The joining model, `small` driving until the link has joined, when
   prepare() said yes; `model` otherwise."""
   if small is None or link_mode_file() == 0:
     return model
+  fill_small(small)
   joined = _hook('attach', small, cam_w, cam_h)
   return model if joined is None else joined
 
