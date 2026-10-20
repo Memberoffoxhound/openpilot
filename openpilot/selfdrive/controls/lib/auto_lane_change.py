@@ -4,7 +4,7 @@ from openpilot.common.realtime import DT_MDL
 
 # Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot #653).
 # Nudgeless only. Stock nudge is AutoLaneChangeEnabled=False in desire_helper.
-START_DELAY = 0.05
+START_DELAY = 1.0
 BSM_CLEAR_S = 1.0
 
 
