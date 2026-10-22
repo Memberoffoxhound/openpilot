@@ -452,6 +452,37 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.NO_ENTRY: NoEntryAlert("Tesla FSD/Autopilot active"),
   },
 
+  # Jetlink (zoompilot develop events_zp.py:223-245, events_zp.py:50-55): a big
+  # model ready while openpilot is engaged swaps in only once it is not, so the
+  # driver is told once, for 3 s (jetlink events.OFFER_S)
+  EventName.jetlinkBigModelAvailable: {
+    ET.PERMANENT: Alert(
+      "Big Model Ready",
+      "Re-engage to switch",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .2),
+  },
+
+  # the link lost or too slow while engaged: the small model drives on from a
+  # reset history and nothing disengages. As loud as a soft disable for 5 s
+  # (jetlink events.HANDBACK_S), but it says what happened, not TAKE CONTROL
+  EventName.jetlinkBigModelLost: {
+    ET.WARNING: Alert(
+      "Big Model Lost",
+      "Using small model",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.steerRequired, AudibleAlert.warningSoft, .2),
+  },
+
+  # a second after the swap, when the driver can engage on the big model
+  EventName.jetlinkBigModelActive: {
+    ET.PERMANENT: Alert(
+      "Big Model Active",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 2.),
+  },
+
   EventName.dashcamMode: {
     ET.PERMANENT: NormalPermanentAlert("Dashcam Mode",
                                        priority=Priority.LOWEST),

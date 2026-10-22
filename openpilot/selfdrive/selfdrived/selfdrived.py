@@ -18,6 +18,7 @@ from openpilot.common.gps import get_gps_location_service
 
 from openpilot.selfdrive.car.car_events import CarEvents
 from openpilot.selfdrive.car import tesla_step_aside
+from openpilot.selfdrive.selfdrived.jetlink_events import JetlinkEvents
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
@@ -71,6 +72,8 @@ class SelfdriveD:
     self.big_model_active = False
     self.big_model_failed = False
     self.big_model_ready_t = 0.
+    # Jetlink's big model joining mid-drive (jetlink_events.py)
+    self.jetlink_events = JetlinkEvents()
 
     # Setup sockets
     self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents'])
@@ -185,6 +188,7 @@ class SelfdriveD:
       self.big_model_active = True
     if not self.enabled and not model_unavailable:
       self.big_model_active = False
+    self.jetlink_events.update(self.sm, self.enabled, self.events)
 
     if self.sm.recv_frame['lateralManeuverPlan'] > 0:
       self.events.add(EventName.lateralManeuver)
@@ -354,7 +358,7 @@ class SelfdriveD:
 
     # jetlinkd and modelmanagerd are optional: without them the small model drives, so they never block engagement
     not_running = {p.name for p in self.sm['managerState'].processes
-                   if not p.running and p.shouldBeRunning and p.name not in ('jetlinkd', 'modelmanagerd')}
+                   if not p.running and p.shouldBeRunning and p.name not in {'modelmanagerd', *JetlinkEvents.OPTIONAL_PROCESSES}}
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)
@@ -385,7 +389,7 @@ class SelfdriveD:
     has_disable_events = self.events.contains(ET.NO_ENTRY) and (self.events.contains(ET.SOFT_DISABLE) or self.events.contains(ET.IMMEDIATE_DISABLE))
     no_system_errors = (not has_disable_events) or (len(self.events) == num_events)
     warmup_sec = 5.
-    big_model_settling = self.big_model_loading or time.monotonic() < self.big_model_ready_t + warmup_sec
+    big_model_settling = self.big_model_loading or time.monotonic() < self.big_model_ready_t + warmup_sec or self.jetlink_events.settling
     if not self.sm.all_checks() and no_system_errors and not big_model_settling:  # the load holds modelV2 and friends back on purpose
       if not self.sm.all_alive():
         self.events.add(EventName.commIssue)

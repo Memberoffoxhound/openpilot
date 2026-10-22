@@ -392,7 +392,7 @@ def test_manager_registers_modelmanagerd():
 
 def test_selfdrived_never_waits_for_modelmanagerd():
   src = (ROOT / 'openpilot/selfdrive/selfdrived/selfdrived.py').read_text()
-  assert "p.name not in ('jetlinkd', 'modelmanagerd')" in src
+  assert "p.name not in {'modelmanagerd', *JetlinkEvents.OPTIONAL_PROCESSES}" in src
 
 
 def test_modelmanager_imports_light():
