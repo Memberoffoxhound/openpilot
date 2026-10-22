@@ -70,7 +70,8 @@ def _small_reads() -> set[str]:
 
 def test_highland_covers_every_small_model_read():
   reads = _small_reads()
-  assert {'lat_delay', 'PLANPLUS_CONTROL', 'run', 'prev_desire'} <= reads, reads  # the scan still finds them
+  # the scan still finds them; prev_desire left the reads at jetlink b1d7041 (Stock.small_reset)
+  assert {'lat_delay', 'PLANPLUS_CONTROL', 'run'} <= reads, reads
   covered = _highland_model_state_attrs() | set(ja.SMALL_MODEL_DEFAULTS) | {'numpy_inputs'}
   assert reads <= covered, f"jetlink reads {sorted(reads - covered)} off the small model, which Highland lacks"
 
@@ -160,9 +161,16 @@ def _close(state):
   state._thread.join(5)
 
 
-def test_bare_highland_model_fails_the_swap(joining):
-  # the regression as it was on the comma: without lat_delay the swap is caught,
-  # logged, and the small model drives on forever
+def _tolerates_missing_lat_delay(joining) -> bool:
+  """jetlink b1d7041 reads lat_delay off the small model with a getattr
+  default (joining.py:403); 491cf1e read it bare."""
+  return "getattr(self._small, 'lat_delay'" in Path(joining.__file__).read_text()
+
+
+def test_bare_highland_model_swap_matches_jetlink(joining):
+  # the regression as it was on the comma: without lat_delay the swap was
+  # caught, logged, and the small model drove on forever (jetlink 491cf1e).
+  # From b1d7041 jetlink tolerates it and the swap lands
   small = HighlandModel('small')
   log = Log()
   state = _joining_state(joining, small, BigModel(), log)
@@ -172,9 +180,13 @@ def test_bare_highland_model_fails_the_swap(joining):
     while state._joined is None and time.monotonic() < deadline:
       time.sleep(0.002)
     state.in_control = False
-    assert state.run({}, {}, {}) == {'from': 'small'}
-    assert not state.chestnut
-    assert any('could not bring up the large model' in text for _, text in log.lines), log.lines
+    if _tolerates_missing_lat_delay(joining):
+      assert state.run({}, {}, {}) == {'from': 'big'}
+      assert state.chestnut
+    else:
+      assert state.run({}, {}, {}) == {'from': 'small'}
+      assert not state.chestnut
+      assert any('could not bring up the large model' in text for _, text in log.lines), log.lines
   finally:
     _close(state)
 
