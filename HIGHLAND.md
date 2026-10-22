@@ -93,6 +93,17 @@ Hamburger → **Live cameras**. LAN WebRTC viewer for comma 4 feeds.
 - Mic toggle plays `rawAudioData` (16 kHz PCM) over SSE. Onroad only — `micd` is an iscar process.
 - Fullscreen theater for phone screen-share (no separate Rotate control). Same PWA as the rest of deviceweb.
 
+## Jetlink (branch `jetlink`)
+
+Big model on a phone or computer plugged into the comma's USB-C port. Synced with zoompilot develop `632b0b0`:
+
+- `jetlink_repo` pinned at `b1d7041` (untagged; jetlink's `edge` points at it), what zoompilot develop pins.
+- `selfdrive/jetlink_adapter`: jetlink's `Stock` adapter and `Hooks`, behind Highland's lazy gate. With **Settings → models → jetlink** off nothing imports jetlink.
+- selfdrived: `jetlinkBigModelAvailable` / `jetlinkBigModelLost` / `jetlinkBigModelActive` (log.capnp @105–107) plus `bigModelLoading` no-entry for about 1 s after a swap. None of them disengage.
+- hardwared: param `Offroad_AcceleratorUnavailable` (offroad alert "Jetlink unavailable: …"); powers the accelerator off with the comma. `launch_chffrplus.sh` stops charging out of the USB-C port from boot while the link is on.
+- UI, as zoompilot: the link drives the chestnut icons (`ChestnutState.WAITING` shows dim). The models panel holds active model / big model, the off/usb/iOS link toggle and charge phone. The data comes from jetlink's `Status` and its runtime record at `/dev/shm/jetlink/modeld.json`. There is no Highland live file and no Settings → jetlink page.
+- Own additions kept: model manager, ADB released while the link holds the port, Tesla step-aside, `lat_delay` written for the joining model. No LFS for any of it.
+
 ## Safety
 
 Does not touch driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
