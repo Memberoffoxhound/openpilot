@@ -15,7 +15,6 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.selfdrive.ui.jetlink_status import jetlink_ui, ICON_ACTIVE, ICON_PULSE
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import engaged_pct
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.common.version import RELEASE_BRANCHES
@@ -163,7 +162,7 @@ class LongModeBadge(Widget):
     gap = max(0.0, (self.H - sum(s.y for s in sizes)) / (len(letters) + 1))
     lx = x + self.LOGO_W + 2
     cy = y + gap
-    for ch, sz in zip(letters, sizes):
+    for ch, sz in zip(letters, sizes, strict=False):
       rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, LABEL_WHITE)
       cy += sz.y + gap
 
@@ -186,11 +185,6 @@ class MiciHomeLayout(Widget):
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
     self._chestnut_loading_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
     self._chestnut_failed_icon = IconWidget("icons_mici/chestnut_orange.png", (68, 40))
-    # Jetlink: Metal icon for iPhone mode, the chestnut GPU icon for USB mode
-    self._jetlink_phone_icon = IconWidget("icons_mici/jetlink_metal.png", (50, 50))
-    self._jetlink_phone_dim_icon = IconWidget("icons_mici/jetlink_metal_dim.png", (50, 50))
-    self._jetlink_gpu_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
-    self._jetlink_gpu_dim_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._body_icon = IconWidget("icons_mici/body.png", (54, 37))
 
@@ -205,10 +199,6 @@ class MiciHomeLayout(Widget):
       self._chestnut_icon,
       self._chestnut_loading_icon,
       self._chestnut_failed_icon,
-      self._jetlink_phone_icon,
-      self._jetlink_phone_dim_icon,
-      self._jetlink_gpu_icon,
-      self._jetlink_gpu_dim_icon,
       self._body_icon,
       self._mic_icon,
     ], spacing=18)
@@ -273,31 +263,6 @@ class MiciHomeLayout(Widget):
         self._on_alerts_click()
     elif self._on_settings_click:
       self._on_settings_click()
-
-  def _update_jetlink_icons(self, chestnut_state) -> None:
-    """Jetlink on the home status bar: bright when the phone's big model
-    drives, dim when connected and ready, pulsing while preparing; hidden when
-    off or no phone. Never with a chestnut, which has its own icons."""
-    icons = (self._jetlink_phone_icon, self._jetlink_phone_dim_icon, self._jetlink_gpu_icon, self._jetlink_gpu_dim_icon)
-    try:
-      snap = jetlink_ui.refresh(ui_state.started, bool(ui_state.sm['modelV2'].big) if ui_state.started else False)
-    except Exception:
-      snap = None
-    for icon in icons:
-      icon.set_visible(False)
-    if snap is None or snap.mode == 'off' or chestnut_state != ChestnutState.DISCONNECTED:
-      return
-    # a phone on the cable is not a chestnut: don't let the cable light the chestnut icon
-    self._chestnut_icon.set_visible(False)
-    if snap.icon is None:
-      return
-    bright, dim = (icons[0], icons[1]) if snap.mode == 'ios' else (icons[2], icons[3])
-    if snap.icon == ICON_ACTIVE:
-      bright.set_visible(True)
-    else:
-      dim.set_visible(True)
-      pulse = 0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0))
-      dim.set_opacity(pulse if snap.icon == ICON_PULSE else 1.0)
 
   def _get_version_text(self) -> tuple[str, str, str, str] | None:
     version = ui_state.params.get("Version")
@@ -377,14 +342,19 @@ class MiciHomeLayout(Widget):
     usb_connected = ui_state.usb_connected
     usb_unknown = ui_state.usb_unknown
     chestnut_state = ui_state.chestnut_state
+    # zoompilot's chestnut icons (sunnypilot/mici/layouts/home.py _set_chestnut_visibility),
+    # which also show Jetlink: ui_state.chestnut_state is the link's with no chestnut fitted
+    loading = chestnut_state == ChestnutState.LOADING
+    # ready, and only a swap window away: steady rather than the loading pulse,
+    # dim rather than the solid green of a model that is driving
+    waiting = chestnut_state == ChestnutState.WAITING
     self._usb_icon.set_visible(usb_connected and usb_unknown)
-    self._chestnut_icon.set_visible(not usb_unknown and chestnut_state not in
-                                    (ChestnutState.LOADING, ChestnutState.UNCOMPILED, ChestnutState.FAILED) and
-                                    (usb_connected or chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE)))
-    self._chestnut_loading_icon.set_visible(not usb_unknown and chestnut_state == ChestnutState.LOADING)
     self._chestnut_loading_icon.set_opacity(0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0)))
+    self._chestnut_loading_icon.set_visible(not usb_unknown and loading)
+    self._chestnut_icon.set_opacity(0.5 if waiting else 1.0)
+    self._chestnut_icon.set_visible(not usb_unknown and not loading and
+                                    chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE, ChestnutState.WAITING))
     self._chestnut_failed_icon.set_visible(not usb_unknown and chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
-    self._update_jetlink_icons(chestnut_state)
     self._mic_icon.set_visible(ui_state.recording_audio)
     self._body_icon.set_visible(bool(ui_state.is_body))
 

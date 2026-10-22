@@ -15,6 +15,7 @@ from openpilot.common.hardware import HARDWARE, PC
 from openpilot.common.hardware.usb import TYPEC_CC_ORIENTATION_PATH, get_usb_state, is_chestnut_usb_id, read_int
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled
 from openpilot.selfdrive.car import tesla_step_aside
+from openpilot.selfdrive import jetlink_adapter
 
 BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
 PARAM_UPDATE_TIME = 1 / 5.0
@@ -33,6 +34,9 @@ class ChestnutState(Enum):
   LOADING = "loading"
   ACTIVE = "active"
   FAILED = "failed"
+  # onroad, an off-board accelerator only (Jetlink): loaded and waiting for a
+  # window to switch. A board is loaded before the first modelV2 and never sees this
+  WAITING = "waiting"
 
 
 class UIState:
@@ -98,6 +102,14 @@ class UIState:
     self.usb_disconnected_ts: float | None = None
     self.usb_unknown: bool = False
     self.chestnut_state = ChestnutState.DISCONNECTED
+    # Jetlink, as zoompilot's ui_state_zp: jetlink's snapshot (jetlink.openpilot.Status)
+    # from the params pass, None with a chestnut fitted or the link off; the
+    # joining model's state off modeld's runtime record (zoompilot reads it off
+    # modelDataV2SP, which Highland lacks); Jetlink holding the USB port, so ADB
+    # is off and its toggle greyed out
+    self.jetlink = None
+    self.adb_blocked: bool = False
+    self._accelerator_state_name: str = 'none'
     self.started: bool = False
     self.ignition: bool = False
     self.recording_audio: bool = False
@@ -212,7 +224,47 @@ class UIState:
 
       self._started_prev = self.started
 
+  @property
+  def jetlink_view(self):
+    """jetlink's snapshot when the chestnut icon is the link's: no chestnut
+    fitted, and something to show. Presence comes from jetlink: the comma is
+    the gadget and enumerates nothing."""
+    return self.jetlink if self.jetlink is not None and self.jetlink.shown else None
+
+  def _jetlink_state(self, view) -> 'ChestnutState':
+    """ChestnutState for the link: progress and the records offroad, modelV2
+    and the joining model's state onroad (zoompilot ui_state_zp._jetlink_state)."""
+    model_seen = self.sm.recv_frame["modelV2"] > self.started_frame
+    running_big = self.sm.alive["modelV2"] and self.sm["modelV2"].big
+    try:
+      return ChestnutState(view.icon(self.started, model_seen, running_big, self._accelerator_state_name))
+    except Exception:
+      return ChestnutState.DISCONNECTED
+
+  def _update_jetlink(self) -> None:
+    """On the params pass, not per frame in a layout; a fitted chestnut owns
+    chestnut_state. With the link off status() is None without importing jetlink."""
+    try:
+      self.jetlink = None if self.sm['deviceState'].chestnutPresent else jetlink_adapter.status()
+      runtime = jetlink_adapter.runtime() if self.jetlink is not None else None
+      self._accelerator_state_name = (getattr(runtime, 'state', None) or 'none') if runtime is not None else 'none'
+    except Exception:
+      self.jetlink, self._accelerator_state_name = None, 'none'
+    self._enforce_usb_port()
+
+  def _enforce_usb_port(self) -> None:
+    """ADB and Jetlink both need the comma's USB port: the link on turns ADB
+    off, and the developer panel greys its toggle out (zoompilot
+    ui_state_zp._enforce_usb_port). jetlinkd also turns it off at its start."""
+    self.adb_blocked = self.jetlink is not None and bool(self.jetlink.holds_port)
+    if self.adb_blocked:
+      jetlink_adapter.release_adb(link_on=True)
+
   def _update_chestnut_state(self) -> None:
+    if (view := self.jetlink_view) is not None:
+      self.chestnut_state = self._jetlink_state(view)
+      return
+
     detected = self.sm["deviceState"].chestnutPresent
     if not self.started:
       self.chestnut_present = detected
@@ -260,6 +312,11 @@ class UIState:
       self.chestnut_compiled = chestnut_compiled()
     self.chestnut_active = self.params.get("ChestnutActive")
     self.chestnut_loading = self.params.get_bool("ChestnutLoading")
+    self._update_jetlink()
+    # the Jetson configures the gadget ~25 s after a cold boot, after the one-shot
+    # usb_unknown decision; recognising it late still clears "unknown"
+    if (view := self.jetlink_view) is not None and view.present and self.usb_unknown:
+      self.usb_unknown = False
     now = time.monotonic()
     if read_int(TYPEC_CC_ORIENTATION_PATH) != 0:
       self.usb_disconnected_ts = None
@@ -268,7 +325,9 @@ class UIState:
         self.usb_connected_ts = now
         self.usb_unknown = False
       elif self.usb_connected_ts is not None and now - self.usb_connected_ts > 10.:
-        self.usb_unknown = not any(is_chestnut_usb_id(d["vendorId"], d["productId"], True) for d in get_usb_state())
+        # the comma is the gadget for an off-board accelerator and enumerates nothing
+        self.usb_unknown = not (self.jetlink_view is not None or
+                                any(is_chestnut_usb_id(d["vendorId"], d["productId"], True) for d in get_usb_state()))
         self.usb_connected_ts = None
     elif self.usb_connected:
       if self.usb_disconnected_ts is None:

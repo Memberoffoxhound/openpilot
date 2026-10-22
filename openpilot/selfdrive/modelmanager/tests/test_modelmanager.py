@@ -450,13 +450,39 @@ def page(monkeypatch):
   gui = SimpleNamespace(stack=[], push_widget=None, pop_widgets_to=None)
   gui.push_widget = gui.stack.append
   gui.pop_widgets_to = lambda w: gui.stack.clear()
+  class _Info:
+    def __init__(self, *info):
+      self.info = info
+
+    def set_info(self, *info):
+      self.info = info
+
+  class _Link(_Widget):
+    def refresh(self):
+      pass
+
+    def set_visible(self, visible):
+      self.visible = visible
+
+  class _Toggle(_Widget):
+    def __init__(self, text='', *a, initial_state=False, toggle_callback=None, **k):
+      super().__init__(text)
+      self.checked, self.toggle_callback = initial_state, toggle_callback
+
+    def set_checked(self, checked):
+      self.checked = checked
+
+    def set_visible(self, visible):
+      self.visible = visible
+
+  jetlink = SimpleNamespace(active_model=None, standin=None, progress={'stage': 'download', 'frac': 0.5, 'msg': 'train track'})
   fakes = {
-    'openpilot.selfdrive.ui.mici.widgets.button': {'BigButton': _Widget, 'GreyBigButton': _Widget},
-    'openpilot.selfdrive.ui.ui_state': {'ui_state': SimpleNamespace(started=False)},
+    'openpilot.selfdrive.ui.mici.widgets.button': {'BigButton': _Widget, 'GreyBigButton': _Widget, 'BigToggle': _Toggle},
+    'openpilot.selfdrive.ui.mici.layouts.settings.model_widgets': {'CurrentModelInfo': _Info, 'JetlinkLinkToggle': _Link},
+    'openpilot.selfdrive.ui.ui_state': {'ui_state': SimpleNamespace(started=False, jetlink=jetlink, chestnut_present=False,
+                                                                    chestnut_state=SimpleNamespace(value='loading'))},
     'openpilot.system.ui.lib.application': {'gui_app': gui},
     'openpilot.system.ui.widgets.scroller': {'NavScroller': _NavScroller},
-    'openpilot.selfdrive.ui.jetlink_status': {'jetlink_ui': SimpleNamespace(
-      _at=0.0, refresh=lambda started, big: SimpleNamespace(state='off', progress=('download', 0.5, 'train track')))},
   }
   for name, attrs in fakes.items():
     monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(**attrs))
@@ -470,7 +496,8 @@ def test_models_page_picks_and_resets(page):
   store.put(mm.CACHE_BIG, CATALOG)
   p = mod.ModelsLayoutMici()
   p._update_state()
-  assert p._big.value.endswith('(default)') and p._progress.value == 'download 50% train track'
+  assert p._big.value.endswith('(default)') and p._info.info[1:] == ('big model', 'train track 50%')
+  assert p._info.info[0] == mp.SMALL_MODEL.lower()
   assert p._refresh.value.startswith('2 models')
   p._big.cb()                      # the folders
   folders = gui.stack[-1]._scroller.widgets
@@ -495,3 +522,4 @@ def test_models_page_locked_onroad(page):
   p = mod.ModelsLayoutMici()
   mod.ui_state.started = True
   assert not p._big.enabled() and not p._refresh.enabled() and not p._reset.enabled()
+  assert not p._link.enabled() and not p._charge.enabled()

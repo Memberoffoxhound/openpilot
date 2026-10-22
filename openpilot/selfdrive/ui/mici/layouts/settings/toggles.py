@@ -13,7 +13,6 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive import jetlink_adapter
 from openpilot.selfdrive.car import tesla_step_aside
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -120,42 +119,6 @@ class DeloreanPreview(BigButton):
     request_delorean_play()
 
 
-# Jetlink setting: JetlinkLink index into jetlink_adapter.MODES ('off', 'usb', 'ios').
-# Tap cycles off -> iphone -> usb -> off. Turning it on turns ADB off: both need
-# the comma's USB port (set_link_mode -> release_adb). Reads/writes go through the adapter,
-# which falls back to the raw params file if params_pyx.so predates the key,
-# so this can never crash-loop the UI.
-JETLINK_LABELS = {0: "off", 1: "usb", 2: "iphone"}
-JETLINK_NEXT = {0: 2, 2: 1, 1: 0}
-
-
-class JetlinkCycle(BigButton):
-  def __init__(self):
-    super().__init__("jetlink big model", "", description="Runs the big model on an iPhone or USB computer plugged into the comma.\n" +
-                     "Turns off ADB. The small model drives until the big model is ready.")
-    self.refresh()
-
-  def refresh(self):
-    try:
-      value = JETLINK_LABELS.get(jetlink_adapter.link_mode(), "off")
-    except Exception:
-      value = "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    try:
-      jetlink_adapter.set_link_mode(JETLINK_NEXT.get(jetlink_adapter.link_mode(), 0))
-    except Exception:
-      pass
-    self.refresh()
-
-
 class ThemeLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -238,15 +201,10 @@ class TogglesLayoutMici(NavScroller):
                                                  "screen off after a 5 s alert. Back when Tesla is on TACC.")
     self._step_aside_btn.set_enabled(lambda: not ui_state.engaged)
 
-    # Jetlink: off by default; only changeable while offroad
-    self._jetlink_btn = JetlinkCycle()
-    self._jetlink_btn.set_enabled(lambda: not ui_state.started)
-
     self._scroller.add_widgets([
       self._alc_btn,
       self._personality_toggle,
       self._experimental_btn,
-      self._jetlink_btn,
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
@@ -309,7 +267,6 @@ class TogglesLayoutMici(NavScroller):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
-    self._jetlink_btn.refresh()
     self._step_aside_btn.set_checked(tesla_step_aside.enabled(ui_state.params))
 
   def _on_step_aside(self, state: bool):

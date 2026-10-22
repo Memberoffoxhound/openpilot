@@ -1,9 +1,16 @@
-"""Settings -> models: the small model, the Jetlink big-model picker, refresh
-and reset. A port of sunnypilot's mici models panel onto Highland's widgets
-(no icons); the logic is selfdrive/ui/model_picker.py and never raises."""
+"""Settings -> models: zoompilot develop's mici models panel
+(selfdrive/ui/sunnypilot/mici/layouts/models.py) on Highland's widgets. At the
+top the active model and what the big model is doing (CurrentModelInfo), then
+the big-model picker, the jetlink link toggle, refresh and reset; Highland adds
+the phone-charging toggle and the small-model note. The picker's logic is
+selfdrive/ui/model_picker.py, the link's selfdrive/ui/accelerator_link.py, both
+over ui_state.jetlink (jetlink's Status, with modeld's runtime record); none of
+it raises."""
+from openpilot.selfdrive import jetlink_adapter
+from openpilot.selfdrive.ui import accelerator_link as al
 from openpilot.selfdrive.ui import model_picker as mp
-from openpilot.selfdrive.ui.jetlink_status import jetlink_ui
-from openpilot.selfdrive.ui.mici.widgets.button import BigButton, GreyBigButton
+from openpilot.selfdrive.ui.mici.layouts.settings.model_widgets import CurrentModelInfo, JetlinkLinkToggle
+from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigToggle, GreyBigButton
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets.scroller import NavScroller
@@ -16,6 +23,7 @@ def _offroad() -> bool:
 class ModelsLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
+    self._info = CurrentModelInfo(*self._model_info())
     self._small = GreyBigButton("small model", mp.SMALL_MODEL)
     self._small_note = GreyBigButton("", mp.SMALL_NOTE)
     self._big = BigButton("jetlink big model", mp.big_model_label(),
@@ -23,14 +31,20 @@ class ModelsLayoutMici(NavScroller):
                                       "The phone downloads and builds it; the small model drives until it is ready.")
     self._big.set_click_callback(self._show_folders)
     self._big.set_enabled(_offroad)
-    self._progress = GreyBigButton("progress", "-")
+    # the pills follow the param; locked onroad like the model buttons beside it: jetlink switches the link only parked
+    self._link = JetlinkLinkToggle()
+    self._link.set_enabled(_offroad)
+    self._charge = BigToggle("charge phone", initial_state=jetlink_adapter.charge_phone(), toggle_callback=self._on_charge,
+                             description="Charging from the comma made the iPhone link unstable (Jetlink v0.8.4).\n" +
+                                         "Leave this off; use a powered USB 3 hub to charge the phone.")
+    self._charge.set_enabled(_offroad)
     self._refresh = BigButton("refresh models", mp.list_label(), description="Fetches the latest list of big models.")
     self._refresh.set_click_callback(mp.refresh)
     self._refresh.set_enabled(_offroad)
     self._reset = BigButton("reset to default", "", description="Goes back to Jetlink's default big model.")
     self._reset.set_click_callback(mp.reset_to_default)
     self._reset.set_enabled(lambda: _offroad() and mp.picked() is not None)
-    self._scroller.add_widgets([self._big, self._progress, self._refresh, self._reset, self._small, self._small_note])
+    self._scroller.add_widgets([self._info, self._big, self._link, self._charge, self._refresh, self._reset, self._small, self._small_note])
     self._tick = 0
 
   @staticmethod
@@ -86,10 +100,25 @@ class ModelsLayoutMici(NavScroller):
     finally:
       self._pop_to_main()
 
+  @staticmethod
+  def _model_info() -> tuple[str, str, str]:
+    try:
+      return al.model_info(ui_state.jetlink, ui_state.chestnut_state.value, ui_state.chestnut_present,
+                           mp.SMALL_MODEL, mp.big_model_label())
+    except Exception:
+      return mp.SMALL_MODEL, "big model", "-"
+
+  def _on_charge(self, state: bool):
+    try:
+      jetlink_adapter.set_charge_phone(state)
+    except Exception:
+      pass
+
   def show_event(self):
     super().show_event()
-    jetlink_ui._at = 0.0
     self._tick = 0
+    self._link.refresh()
+    self._charge.set_checked(jetlink_adapter.charge_phone())
 
   def _update_state(self):
     super()._update_state()
@@ -99,8 +128,9 @@ class ModelsLayoutMici(NavScroller):
     try:
       self._set(self._big, mp.big_model_label() + (" (queued)" if mp.queued() else ""))
       self._set(self._refresh, mp.list_label())
-      s = jetlink_ui.refresh(ui_state.started, False)
-      p = s.progress
-      self._set(self._progress, f"{p[0]} {p[1] * 100:.0f}% {p[2]}".strip() if p else s.state)
+      self._info.set_info(*self._model_info())
+      self._link.refresh()
+      self._link.set_visible(al.link_toggle_meaningful(ui_state.chestnut_present))
+      self._charge.set_visible(al.link_mode() != "off")
     except Exception:
       pass

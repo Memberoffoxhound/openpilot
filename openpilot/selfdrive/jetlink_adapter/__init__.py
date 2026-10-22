@@ -510,97 +510,10 @@ def jetlink_available() -> bool:
 HOOK_NAMES = (*_Off.ANSWERS, 'reason')
 
 
-# -- live state for the UI (Highland) -------------------------------------------
-# zoompilot carries the joining model's state in modelDataV2SP, which Highland
-# lacks. Instead modeld writes one small JSON file, once a second, and only when
-# the joining model is attached (Jetlink on): tmpfs on the device, so no flash
-# wear and nothing left after a reboot. The UI treats a file older than
-# LIVE_STALE as no live state. Fields: state (STATES name), big, exec_ms_mean,
-# exec_ms_max, over_budget (frames over BUDGET_MS in the window), frames, t.
-
-BUDGET_MS = 50.0
-LIVE_PERIOD = 1.0
-LIVE_STALE = 3.0
-
-
-_logged: dict[str, str] = {}
-
-
-def _log_once(name: str, error: Exception) -> None:
-  text = f"{type(error).__name__}: {error}"
-  if _logged.get(name) != text:
-    _logged[name] = text
-    try:
-      _cloudlog().error("jetlink: %s() failed: %s", name, text)
-    except Exception:
-      pass
-
-
-def live_path() -> Path:
-  override = os.environ.get('JETLINK_LIVE_PATH')
-  if override:
-    return Path(override)
-  base = Path('/dev/shm') if os.path.isdir('/dev/shm') else Path('/tmp')
-  return base / (f"jetlink_live{os.environ.get('OPENPILOT_PREFIX', '')}.json")
-
-
-class _LiveWindow:
-  def __init__(self):
-    self.reset(0.0)
-
-  def reset(self, now: float):
-    self.start, self.n, self.total, self.max, self.over = now, 0, 0.0, 0.0, 0
-
-
-_live = _LiveWindow()
-
-
-def publish_live(model, execution_time: float, now: float | None = None) -> bool:
-  """modeld, after every run(): fold this frame's time into the window and, once
-  a second, write the live file. A no-op (one getattr) unless the joining model
-  is attached. Never raises. True when it wrote."""
-  state = getattr(model, 'big_model_state', None)
-  if state is None:
-    return False
-  try:
-    import time
-    now = time.monotonic() if now is None else now
-    if _live.start == 0.0:
-      _live.reset(now)
-    ms = float(execution_time) * 1000.0
-    _live.n += 1
-    _live.total += ms
-    _live.max = max(_live.max, ms)
-    _live.over += ms > BUDGET_MS
-    if now - _live.start < LIVE_PERIOD:
-      return False
-    import json
-    record = {'state': str(state), 'big': bool(getattr(model, 'chestnut', False)),
-              'exec_ms_mean': round(_live.total / max(_live.n, 1), 1), 'exec_ms_max': round(_live.max, 1),
-              'over_budget': _live.over, 'frames': _live.n, 't': time.monotonic()}
-    _live.reset(now)
-    path = live_path()
-    tmp = path.with_name(f'.{path.name}.{os.getpid()}')
-    tmp.write_text(json.dumps(record))
-    os.replace(tmp, path)
-    return True
-  except Exception as e:
-    _log_once('publish_live', e)
-    return False
-
-
-def read_live(now: float | None = None) -> dict | None:
-  """The live record, or None when missing, unreadable or stale. Never raises."""
-  try:
-    import json
-    import time
-    record = json.loads(live_path().read_text())
-    now = time.monotonic() if now is None else now
-    if not isinstance(record, dict) or now - float(record.get('t', 0)) > LIVE_STALE:
-      return None
-    return record
-  except Exception:
-    return None
+# -- the UI's view (Highland) ----------------------------------------------------
+# As in zoompilot, the UI reads jetlink's own Status (status(), above) and the
+# runtime record modeld's joining model writes (runtime(): jetlink's
+# /dev/shm/jetlink/modeld.json); Highland writes no live file of its own.
 
 
 def charge_phone() -> bool:
