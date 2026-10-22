@@ -280,7 +280,7 @@ def test_a_model_the_new_catalog_lacks_falls_back_to_the_default(monkeypatch):
 
 
 def test_without_jetlink_a_newer_catalogs_pick_is_kept(monkeypatch):
-  monkeypatch.setattr(ja, '_api', lambda: None)  # jetlink could not bind: no newer catalogs
+  monkeypatch.setattr(ja, 'jetlink_available', lambda: False)  # jetlink could not bind: no newer catalogs
   m = manager()
   store.put(mm.ACTIVE_BIG, {'ref': 'e' * 40, 'displayName': 'Train Track'})
   m.step()
@@ -327,9 +327,9 @@ def test_folders_newest_first():
 
 def _jetlink_op():
   pytest.importorskip('jetlink.openpilot.models')
-  a = ja.Adapter.__new__(ja.Adapter)
-  from jetlink.openpilot.interface import Keys
-  a.keys, a.log, a.basedir, a._stores, a._sm = Keys(**ja.KEYS._asdict()), mock.Mock(), ROOT, {}, None
+  a = ja.Adapter()
+  # Stock's cached properties, without swaglog / basedir imports
+  a.__dict__.update(log=mock.Mock(), basedir=ROOT)
   return a
 
 

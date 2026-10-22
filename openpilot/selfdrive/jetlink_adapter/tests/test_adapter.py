@@ -28,19 +28,43 @@ def test_top_level_is_stdlib_only():
   assert out == '[]'
 
 
-def test_off_by_default_never_binds(params_root, monkeypatch):
-  monkeypatch.setattr(ja, '_api', lambda: pytest.fail('jetlink bound with the setting off'))
+@pytest.fixture
+def no_hooks(monkeypatch):
+  monkeypatch.setattr(ja, '_hooks', None)
+  monkeypatch.setattr(ja, 'hooks', lambda: pytest.fail('jetlink imported with the setting off'))
+
+
+def test_off_by_default_never_imports_jetlink(params_root, no_hooks, monkeypatch, tmp_path):
+  monkeypatch.setattr(ja, 'SHUTDOWN_REQUEST', tmp_path / 'no-request')
   assert ja.link_mode_file() == 0
   assert ja.should_run(False, None, None) is False
   assert ja.should_run(True, None, None) is False
   assert ja.prepare(False) is False
   small = object()
   assert ja.attach(small, small, 1344, 760) is small
+  assert ja.status() is None and ja.reason() is None and ja.runtime() is None
+  assert ja.swap_events(0.01) is None
+  assert ja.shutdown_step(False) is False and ja.shutdown_step(True, 'test') is True
+  assert ja.handed_over(small) is False and ja.state(small) == 'none'
 
 
-def test_chestnut_wins(params_root, monkeypatch):
+def test_a_pending_power_off_asks_jetlink_even_with_the_link_off(params_root, monkeypatch, tmp_path):
+  request = tmp_path / 'jetlink-shutdown'
+  request.write_text('x')
+  monkeypatch.setattr(ja, 'SHUTDOWN_REQUEST', request)
+  monkeypatch.setattr(ja, '_hooks', None)
+  asked = []
+  monkeypatch.setattr(ja, 'hooks', lambda: type('H', (), {'shutdown_step': lambda self, w, r='': asked.append(w) or True})())
+  assert ja.shutdown_step(False) is True and asked == [False]
+
+
+def test_shutdown_request_is_jetlinks():
+  gadget = pytest.importorskip('jetlink.comma.gadget')
+  assert gadget.SHUTDOWN_REQUEST == ja.SHUTDOWN_REQUEST
+
+
+def test_chestnut_wins(params_root, no_hooks):
   ja.file_put('JetlinkLink', 2)
-  monkeypatch.setattr(ja, '_api', lambda: pytest.fail('bound beside a chestnut'))
   assert ja.prepare(True) is False
 
 
@@ -93,12 +117,53 @@ def test_api_and_modes_match_jetlink():
   assert interface.MODES == ja.MODES
 
 
-def test_conformance(monkeypatch):
-  pytest.importorskip('jetlink.openpilot')
+def test_conformance():
+  pytest.importorskip('jetlink.openpilot.stock')
   from jetlink.openpilot.interface import Openpilot, conformance
-  a = ja.Adapter.__new__(ja.Adapter)  # without cloudlog/basedir imports
-  a.keys, a.log, a.basedir, a._stores, a._sm = None, None, ROOT, {}, None
+  from jetlink.openpilot.stock import Stock
+  a = ja.Adapter()
+  a.__dict__.update(log=None, basedir=ROOT)  # Stock's cached properties, without swaglog
+  assert isinstance(a, Stock)
   assert conformance(a, Openpilot) == []
+  assert a.keys.progress == 'AcceleratorProgress' and a.keys.big_model == 'ModelManager_ActiveBundleChestnut'
+  assert a.IN_CONTROL_SERVICES == ('carState', 'carControl', 'selfdriveState')  # jetlink's own rule
+  # stock modeld's warp, which Highland's SConscript compiles into selfdrive/modeld/models
+  assert a.warp_path(1344, 760, 512, 256) == ROOT / 'openpilot/selfdrive/modeld/models/driving_warp_1344x760_tinygrad.pkl'
+
+
+def test_jetlinks_adapter_check():
+  testing = pytest.importorskip('jetlink.openpilot.testing')
+  assert testing.check_adapter(ja, heavy=('openpilot.common.params', 'openpilot.common.swaglog', 'openpilot.cereal')) == []
+
+
+def test_the_fallback_answers_as_the_link_off(params_root):
+  testing = pytest.importorskip('jetlink.openpilot.testing')
+  assert testing.check_fallback(ja._Off("jetlink package API 9, this build expects 3"), ja.HOOK_NAMES, link_on=ja._link_on) == []
+  ja.file_put('JetlinkLink', 1)
+  assert ja._Off("why").reason() == "why"
+  ja.file_put('JetlinkLink', 0)
+  assert ja._Off("why").reason() is None
+
+
+def test_the_module_hooks_answer_as_the_link_off_with_it_off(params_root, monkeypatch, tmp_path):
+  testing = pytest.importorskip('jetlink.openpilot.testing')
+  monkeypatch.setattr(ja, 'SHUTDOWN_REQUEST', tmp_path / 'no-request')
+  monkeypatch.setattr(ja, '_hooks', None)
+  # model_state and the catalog are the model manager's and bind with the link off, as jetlink's own
+  names = [n for n in ja.HOOK_NAMES if n not in ('model_state', 'should_extend_catalog', 'extend_catalog')]
+  assert testing.check_fallback(ja, names, link_on=ja._link_on) == []
+  assert ja._hooks is None
+
+
+def test_hooks_without_a_checkout_are_the_link_off(monkeypatch):
+  monkeypatch.setitem(sys.modules, 'jetlink', None)   # import jetlink raises ModuleNotFoundError
+  assert isinstance(ja._guard(), ja._Off)
+
+
+def test_hooks_are_jetlinks_with_a_checkout():
+  pytest.importorskip('jetlink.openpilot.hooks')
+  from jetlink.openpilot.hooks import Hooks
+  assert isinstance(ja._guard(), Hooks)
 
 
 def test_keys_declared():

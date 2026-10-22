@@ -102,7 +102,7 @@ class ModelManager:
     self.failures = 0
     self.report(state="idle", fetched=int(self.wall()), models=len(catalog_bundles(data)), error=None)
     # without jetlink here the newer catalogs' models are missing, not withdrawn
-    if extends or ja._api() is not None:
+    if extends or ja.jetlink_available():
       self.validate_pick(data)
     return True
 

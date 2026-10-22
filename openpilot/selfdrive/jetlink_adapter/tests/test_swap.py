@@ -72,8 +72,14 @@ def test_highland_covers_every_small_model_read():
   reads = _small_reads()
   # the scan still finds them; prev_desire left the reads at jetlink b1d7041 (Stock.small_reset)
   assert {'lat_delay', 'PLANPLUS_CONTROL', 'run'} <= reads, reads
-  covered = _highland_model_state_attrs() | set(ja.SMALL_MODEL_DEFAULTS) | {'numpy_inputs'}
-  assert reads <= covered, f"jetlink reads {sorted(reads - covered)} off the small model, which Highland lacks"
+  joining = pytest.importorskip('jetlink.openpilot.joining')
+  # read with a default (joining.SMALL_READS)
+  covered = _highland_model_state_attrs() | set(getattr(joining, 'SMALL_READS', ()))
+  # PLANPLUS_CONTROL is the joining model's property, read only when modeld reads it
+  # off the model; Highland's stock modeld never does
+  assert 'PLANPLUS_CONTROL' not in MODELD.read_text()
+  missing = reads - covered - {'PLANPLUS_CONTROL'}
+  assert not missing, f"jetlink reads {sorted(missing)} off the small model, which Highland lacks"
 
 
 def test_highland_model_state_sets_lat_delay_and_modeld_writes_it():
@@ -195,16 +201,16 @@ def test_attach_swaps_onto_the_large_model(joining, monkeypatch):
   small = HighlandModel('small')
   big = BigModel()
   log = Log()
-  api = SimpleNamespace(attach=lambda s, w, h: _joining_state(joining, s, big, log))
-  monkeypatch.setattr(ja, '_api', lambda: api)
+  fake = SimpleNamespace(attach=lambda m, s, w, h: _joining_state(joining, s, big, log))
+  monkeypatch.setattr(ja, '_hooks', fake)
+  monkeypatch.setattr(ja, 'hooks', lambda: fake)
   ja.file_put('JetlinkLink', 2)
 
   state = ja.attach(small, small, 1344, 760)
   assert isinstance(state, joining.JoiningModelState)
   try:
-    for name in (*ja.SMALL_MODEL_DEFAULTS, 'numpy_inputs'):
-      assert hasattr(small, name), name
-    assert small.numpy_inputs is small.npy
+    # nothing is filled in on Highland's ModelState any more: jetlink reads with defaults
+    assert not hasattr(small, 'numpy_inputs') and not hasattr(small, 'PLANPLUS_CONTROL')
     assert state.run({}, {}, {}) == {'from': 'small'}  # engaged: the small model drives
 
     assert _swap(state, lat_delay=0.33) == {'from': 'big'}
@@ -215,18 +221,9 @@ def test_attach_swaps_onto_the_large_model(joining, monkeypatch):
     # what modeld and its UI read after the swap
     assert state.vision_input_names == ('img', 'big_img')
     assert state.lat_delay == pytest.approx(0.33)
-    assert state.PLANPLUS_CONTROL == 1.0
-    assert state.desire_key == 'desire_pulse'
+    # (PLANPLUS_CONTROL and desire_key: modeld_v2's, never read by Highland's modeld)
     assert ja.state(state) == 'running'
     state.lat_delay = 0.4
     assert small.lat_delay == big.lat_delay == pytest.approx(0.4)
   finally:
     _close(state)
-
-
-def test_fill_small_keeps_what_is_there_and_never_raises():
-  small = HighlandModel('small')
-  small.lat_delay = 0.25
-  assert 'lat_delay' not in ja.fill_small(small)
-  assert small.lat_delay == 0.25
-  assert ja.fill_small(object()) == []  # cannot set attributes: logged, not raised
