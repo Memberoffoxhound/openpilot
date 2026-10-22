@@ -232,3 +232,14 @@ def test_release_adb_file_fallback(params_root, monkeypatch):
   ja.file_put('JetlinkLink', 1)
   assert ja.release_adb() is True
   assert (params_root / 'AdbEnabled').read_bytes() == b'0'
+
+
+def test_launch_draws_nothing_from_the_port_from_boot():
+  # jetlink docs/porting.md: the launch script, before manager, inside the AGNOS block
+  src = (ROOT / 'launch_chffrplus.sh').read_text()
+  line = 'sudo -n bash jetlink/comma/jetlink-root.sh boot /data/params/d/JetlinkLink &'
+  assert line in src
+  assert src.index('ln -sfn jetlink_repo/jetlink jetlink') < src.index(line) < src.index('agnos_init\n  fi')
+  root_sh = ROOT / 'jetlink_repo/jetlink/comma/jetlink-root.sh'
+  if root_sh.exists():
+    assert 'boot) cmd_boot' in root_sh.read_text()
