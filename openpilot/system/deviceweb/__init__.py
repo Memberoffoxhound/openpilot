@@ -1,1 +1,1 @@
-# LAN UI for S3XYPilot
+# LAN UI for TeslaPilot

@@ -1,4 +1,4 @@
-Version 0.11.23 — S3XYPilot Highland (2026-08-28)
+Version 0.11.23 — TeslaPilot Highland (2026-08-28)
 ========================================
 Tesla fork on openpilot 0.11.2. Reports 0.11.23 to Connect. See README.md.
 
@@ -12,7 +12,7 @@ Tesla fork on openpilot 0.11.2. Reports 0.11.23 to Connect. See README.md.
 * 3s display-hold screenshots
 * Delorean 88mph clip (off by default)
 
-Version 0.11.12 — S3XYPilot Highland (2026-08-22)
+Version 0.11.12 — TeslaPilot Highland (2026-08-22)
 ========================================
 Connect-compatible version. Tesla fork on 0.11.12. See README.md.
 

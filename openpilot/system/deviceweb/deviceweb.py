@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LAN UI for S3XYPilot. No auth — bind on the local network only."""
+"""LAN UI for TeslaPilot. No auth — bind on the local network only."""
 from __future__ import annotations
 
 import json
@@ -46,7 +46,7 @@ def _info() -> dict:
   p = _params()
   tesla = p.get("LaneColor", return_default=True) == 1
   info = {
-    "name": "S3XYPilot",
+    "name": "TeslaPilot",
     "version": p.get("Version") or VERSION,
     "branch": p.get("GitBranch") or "Highland",
     "commit": p.get("GitCommit") or "",
@@ -228,7 +228,7 @@ def _vslam_set_filter(on: bool) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-  server_version = f"S3XYPilot/{VERSION}"
+  server_version = f"TeslaPilot/{VERSION}"
   protocol_version = "HTTP/1.1"
 
   def log_message(self, fmt: str, *args) -> None:

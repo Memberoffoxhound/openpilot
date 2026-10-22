@@ -1,6 +1,6 @@
 > User-facing README: [README.md](README.md). This file is Highland working notes only.
 
-# S3XYPilot — Highland
+# TeslaPilot — Highland
 
 Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comma.ai/Memberoffoxhound/Highland` works.
 
@@ -87,7 +87,7 @@ Hold display 3s → `/data/media/0/screenshots`. `deviceweb` on **8088**, no aut
 Hamburger → **Live cameras**. LAN WebRTC viewer for comma 4 feeds.
 
 - Fcam (`road`) / Ecam (`wideRoad`) / Dcam (`driver`) / Combo (fcam + dcam postage stamp)
-- Tesla-style HUD: speed (IsMetric), upper-right map, S3XYPilot wordmark + Engaged/Disengaged
+- Tesla-style HUD: speed (IsMetric), upper-right map, TeslaPilot wordmark + Engaged/Disengaged
 - Sets `IsLiveStreaming`. `webrtcd` runs when livestreaming (or notcar). Onroad video reuses `encoderd`; `stream_encoderd` only while offroad/livestream or on the body (see `process_config.livestream_encoder`). Signaling is proxied `deviceweb → 127.0.0.1:5001`.
 - Mic toggle plays `rawAudioData` (16 kHz PCM) over SSE. Onroad only — `micd` is an iscar process.
 - Fullscreen theater for phone screen-share (no separate Rotate control). Same PWA as the rest of deviceweb.

@@ -26,7 +26,7 @@ LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
-  """S3XYPilot wordmark glyphs from TESLA.ttf (T-E-S-L-A-P-I-L-O-T). Falls back to Inter DISPLAY."""
+  """TeslaPilot wordmark glyphs from TESLA.ttf (T-E-S-L-A-P-I-L-O-T). Falls back to Inter DISPLAY."""
   try:
     chars = "TESLAPILOT"
     cps = sorted(map(ord, chars))

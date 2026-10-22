@@ -1,4 +1,4 @@
-"""S3XYPilot statistics widgets for the C4."""
+"""TeslaPilot statistics widgets for the C4."""
 from __future__ import annotations
 
 import math
