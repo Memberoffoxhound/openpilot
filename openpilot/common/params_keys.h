@@ -153,6 +153,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"JetlinkSpec", {PERSISTENT, JSON}},
     {"JetlinkModelPointers", {PERSISTENT, JSON}},
     {"JetlinkChargePhone", {PERSISTENT, BOOL, "0"}},
+    // an enabled link that cannot run says why (hardwared, jetlink_adapter.reason()); zoompilot's name
+    {"Offroad_AcceleratorUnavailable", {CLEAR_ON_MANAGER_START, JSON}},
     // Model manager (openpilot/selfdrive/modelmanager, from sunnypilot's): the
     // big-model catalog and pick, read by jetlink as keys.catalog / keys.big_model.
     // Readers tolerate these missing from a stale params_pyx.so (raw-file fallback).

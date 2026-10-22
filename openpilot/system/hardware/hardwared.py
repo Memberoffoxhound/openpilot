@@ -28,6 +28,7 @@ from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.chestnut.monitoring import chestnut_state_thread
 from openpilot.system.hardware.chestnut.status import ChestnutStatus
+from openpilot.system.hardware.jetlink_power import JetlinkPower
 from openpilot.common.version import terms_version, training_version
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 
@@ -246,6 +247,7 @@ def hardware_thread(end_event, hw_queue) -> None:
   fan_controller = FanController(int(1./DT_HW))
   chestnut = Chestnut()
   chestnut_status = ChestnutStatus()
+  jetlink_power = JetlinkPower(log=cloudlog)
   branch = get_short_branch()
 
   while not end_event.is_set():
@@ -316,6 +318,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     chestnut_status.update(started_ts is None, branch, last_hw_state.usb_state, chestnut.failed,
                            params.get_bool("ChestnutLoading"), params.get("ChestnutActive"),
                            chestnut_state if chestnut_valid else None, set_offroad_alert_if_changed)
+    jetlink_power.alerts(set_offroad_alert_if_changed)
     # this subset is only used for offroad
     temp_sources = [
       msg.deviceState.memoryTempC,
@@ -349,6 +352,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     startup_conditions["up_to_date"] = params.get("Offroad_ConnectivityNeeded") is None or params.get_bool("DisableUpdates") or params.get_bool("SnoozeUpdate")
     startup_conditions["no_excessive_actuation"] = params.get("Offroad_ExcessiveActuation") is None
     startup_conditions["not_uninstalling"] = not params.get_bool("DoUninstall")
+    startup_conditions["not_powering_off"] = not jetlink_power.powering_off
     startup_conditions["accepted_terms"] = params.get("HasAcceptedTerms") == terms_version
 
     # with 2% left, we killall, otherwise the phone will take a long time to boot
@@ -435,8 +439,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.somPowerDrawW = som_power_draw
 
     # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
-      cloudlog.warning(f"shutting device down, offroad since {off_ts}")
+    # Jetlink: ask an accelerator on its own supply to power off first (jetlink_power.py)
+    if jetlink_power.shutdown_ready(power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen), off_ts):
       params.put_bool("DoShutdown", True, block=True)
 
     msg.deviceState.started = started_ts is not None
