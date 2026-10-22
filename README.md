@@ -1,4 +1,4 @@
-# S3XYPilot
+# TeslaPilot
 
 Tesla-first fork. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
 
@@ -11,7 +11,7 @@ Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.co
 ## Branches
 
 - **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot) mirror.
-- **`Highland`** — S3XYPilot. Install this.
+- **`Highland`** — TeslaPilot. Install this.
 
 ## Highland
 
@@ -98,7 +98,7 @@ LAN deviceweb (`http://<comma-ip>:8088` → vSlam) mirrors the same two toggles.
 
 #### What each control does
 
-**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in **S3XYPilot WebUI** at `http://<comma-ip>:8088`.
+**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in **TeslaPilot WebUI** at `http://<comma-ip>:8088`.
 
 **vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off/Locked whenever stock Tesla TACC is the longitudinal policy. Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps.
 

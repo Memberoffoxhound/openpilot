@@ -1,6 +1,19 @@
 /* Corner map: MapKit JS / Google Maps JS / Leaflet. Car GPS preferred. */
 (function () {
-  const KEYS = { apple: "sexypilot.mapkit", google: "sexypilot.gmaps", prefer: "sexypilot.mapPrefer" };
+  const KEYS = { apple: "teslapilot.mapkit", google: "teslapilot.gmaps", prefer: "teslapilot.mapPrefer" };
+
+  // One-time migration of saved settings from the pre-rename keys (old name -> TeslaPilot):
+  // the old "sexypilot.*" key is copied when the "teslapilot.*" key is missing. The old key is
+  // left in place, so a browser opening an older build still finds it. Intentional old name.
+  function migrateKey(key) {
+    try {
+      const old = "sexypilot." + key;
+      if (localStorage.getItem("teslapilot." + key) === null && localStorage.getItem(old) !== null) {
+        localStorage.setItem("teslapilot." + key, localStorage.getItem(old));
+      }
+    } catch (e) {}
+  }
+  ["mapkit", "gmaps", "mapPrefer"].forEach(migrateKey);
 
   const M = {
     kind: null,

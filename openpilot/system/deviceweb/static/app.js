@@ -1,4 +1,4 @@
-/* S3XYPilot LAN UI — statistics + vSlam tracker + screenshots */
+/* TeslaPilot LAN UI — statistics + vSlam tracker + screenshots */
 const PAGES = ["home", "live", "vslam", "shots"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -623,7 +623,7 @@ function bindPage() {
 
 function pageHTML() {
   if (S.page === "live") {
-    return (window.LiveView && LiveView.html()) || '<div class="live-empty"><b>S3XYPilot</b><p>Live viewer failed to load.</p></div>';
+    return (window.LiveView && LiveView.html()) || '<div class="live-empty"><b>TESLAPILOT</b><p>Live viewer failed to load.</p></div>';
   }
   if (S.page === "vslam") return S.vslamId ? vslamDetailHTML() : vslamListHTML();
   if (S.page === "shots") return shotsHTML();

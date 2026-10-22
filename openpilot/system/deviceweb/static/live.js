@@ -1,4 +1,4 @@
-/* SEXYPILOT LAN WebRTC viewer */
+/* TeslaPilot LAN WebRTC viewer */
 (function () {
   const FEEDS = [
     { id: "fcam", label: "Fcam", cameras: ["road"] },
@@ -58,7 +58,7 @@
           <span class="pip-lab">DCAM</span>
         </div>
         <div class="live-empty" id="liveEmpty">
-          <b>SEXYPILOT</b>
+          <b>TESLAPILOT</b>
           <p id="liveMsg">Connecting cameras…</p>
         </div>
         <div class="live-hud">
@@ -68,7 +68,7 @@
           </div>
           <div class="live-map" id="liveMap" aria-label="Map"></div>
           <div class="live-mark">
-            <div class="wm">SEXYPILOT</div>
+            <div class="wm">TESLAPILOT</div>
             <div class="st${engaged ? " on" : ""}" id="liveEng">${engaged ? "ENGAGED" : "DISENGAGED"}</div>
           </div>
         </div>
@@ -385,7 +385,7 @@
     const mic = document.getElementById("liveMic");
     if (mic) mic.onclick = () => {
       LV.mic = !LV.mic;
-      localStorage.setItem("sexypilot.mic", LV.mic ? "1" : "0");
+      localStorage.setItem("teslapilot.mic", LV.mic ? "1" : "0");
       if (LV.mic) startMic(); else stopMic();
       rerenderDock();
     };
@@ -412,10 +412,23 @@
     } catch (e) {}
   }
 
+  // One-time migration of saved settings from the pre-rename keys (old name -> TeslaPilot):
+  // the old "sexypilot.*" key is copied when the "teslapilot.*" key is missing. The old key is
+  // left in place, so a browser opening an older build still finds it. Intentional old name.
+  function migrateKey(key) {
+    try {
+      const old = "sexypilot." + key;
+      if (localStorage.getItem("teslapilot." + key) === null && localStorage.getItem(old) !== null) {
+        localStorage.setItem("teslapilot." + key, localStorage.getItem(old));
+      }
+    } catch (e) {}
+  }
+
   function mount() {
     if (LV.mounted) return;
     LV.mounted = true;
-    const saved = localStorage.getItem("sexypilot.mic");
+    migrateKey("mic");
+    const saved = localStorage.getItem("teslapilot.mic");
     LV.mic = saved === "1" || (saved === null && !!LV.live.mic);
     bind();
     paintHud();

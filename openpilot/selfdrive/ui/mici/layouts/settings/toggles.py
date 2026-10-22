@@ -144,11 +144,11 @@ class ExperimentalModeConfirmPage(NavScroller):
     self._scroller.add_widgets([
       GreyBigButton("enabling\nexperimental mode", "scroll to continue",
                     gui_app.texture("icons_mici/setup/warning.png", 64, 64)),
-      GreyBigButton("", "S3XYPilot defaults to driving in chill mode."),
+      GreyBigButton("", "TeslaPilot defaults to driving in chill mode."),
       GreyBigButton("", "Experimental mode enables alpha-level features that aren't ready for chill mode."),
       GreyBigButton("End-to-End Longitudinal Control"),
       GreyBigButton("", "Let the driving model control the gas and brakes."),
-      GreyBigButton("", "S3XYPilot will drive as it thinks a human would, including stopping for red lights and stop signs."),
+      GreyBigButton("", "TeslaPilot will drive as it thinks a human would, including stopping for red lights and stop signs."),
       GreyBigButton("", "The set speed will only act as an upper bound."),
       GreyBigButton("", "This is an alpha quality feature; mistakes should be expected."),
       GreyBigButton("New Driving Visualization"),
@@ -189,15 +189,15 @@ class TogglesLayoutMici(NavScroller):
                                  toggle_callback=restart_needed_callback,
                                  description="Record microphone audio while driving.\n" +
                                              "Audio is included in dashcam videos in comma connect.")
-    enable_openpilot = BigParamControl("enable S3XYPilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback,
-                                       description="Enable to use S3XYPilot driver assistance.\n" +
+    enable_openpilot = BigParamControl("enable TeslaPilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback,
+                                       description="Enable to use TeslaPilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
 
     # Tesla step-aside: default on. Tolerant params helpers, so a stale params library can't crash the UI.
     self._step_aside_btn = BigToggle("step aside for tesla fsd", initial_state=tesla_step_aside.enabled(ui_state.params),
                                      toggle_callback=self._on_step_aside,
                                      description="When Tesla Autosteer or FSD is selected or driving (or Summon),\n" +
-                                                 "S3XYPilot steps aside: relay open, nothing sent,\n" +
+                                                 "TeslaPilot steps aside: relay open, nothing sent,\n" +
                                                  "screen off after a 5 s alert. Back when Tesla is on TACC.")
     self._step_aside_btn.set_enabled(lambda: not ui_state.engaged)
 

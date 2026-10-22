@@ -24,7 +24,7 @@ FILTER_FAQ = (
 LOGGER_FAQ = (
   "Records Tesla cruise dumps of 6+ mph for review.",
   "Doesn't touch gas or brake — observe only.",
-  "View events in S3XYPilot WebUI:",
+  "View events in TeslaPilot WebUI:",
   "http://<comma-ip>:8088",
 )
 

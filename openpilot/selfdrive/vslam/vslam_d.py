@@ -97,7 +97,7 @@ def _reverse(lat: float, lon: float) -> dict:
   })
   req = urllib.request.Request(
     "https://nominatim.openstreetmap.org/reverse?" + q,
-    headers={"User-Agent": "S3XYPilot-vslam/0.11.23 (hobby device)"},
+    headers={"User-Agent": "TeslaPilot-vslam/0.11.23 (hobby device)"},
   )
   try:
     with urllib.request.urlopen(req, timeout=6) as r:
