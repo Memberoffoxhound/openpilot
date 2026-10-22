@@ -12,6 +12,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.car import tesla_step_aside
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -46,6 +47,11 @@ DESCRIPTIONS = {
     "without a turn signal activated while driving over 31 mph (50 km/h)."
   ),
   "AlwaysOnDM": tr_noop("Enable driver monitoring even when openpilot is not engaged."),
+  "TeslaStepAside": tr_noop(
+    "When Tesla Autosteer or FSD is selected or driving (or Summon / Autopark is active), openpilot steps aside: " +
+    "the harness relay stays open and nothing is sent, so Tesla drives untouched. An alert shows for 5 seconds, " +
+    "then the screen turns off until Tesla is back on TACC (touch to wake)."
+  ),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
   "RecordAudio": tr_noop("Record and store microphone audio while driving. The audio will be included in the dashcam video in comma connect."),
@@ -89,6 +95,12 @@ class TogglesLayout(Widget):
         DESCRIPTIONS["IsLdwEnabled"],
         "warning.png",
         False,
+      ),
+      "TeslaStepAside": (
+        lambda: tr("Step Aside for Tesla Autosteer/FSD"),
+        DESCRIPTIONS["TeslaStepAside"],
+        "chffr_wheel.png",
+        True,
       ),
       "AlwaysOnDM": (
         lambda: tr("Always-On Driver Monitoring"),
@@ -153,7 +165,7 @@ class TogglesLayout(Widget):
       toggle = toggle_item(
         title,
         desc,
-        self._params.get_bool(param),
+        self._get_bool(param),
         callback=lambda state, p=param: self._toggle_callback(state, p),
         icon=icon,
       )
@@ -246,7 +258,7 @@ class TogglesLayout(Widget):
     # TODO: make a param control list item so we don't need to manage internal state as much here
     # refresh toggles from params to mirror external changes
     for param in self._toggle_defs:
-      self._toggles[param].action_item.set_state(self._params.get_bool(param))
+      self._toggles[param].action_item.set_state(self._get_bool(param))
 
     # these toggles need restart, block while engaged
     for toggle_def in self._toggle_defs:
@@ -259,6 +271,12 @@ class TogglesLayout(Widget):
 
   def _render(self, rect):
     self._scroller.render(rect)
+
+  def _get_bool(self, param: str) -> bool:
+    # TeslaStepAside reads tolerantly: a params library older than the key must not crash Settings
+    if param == tesla_step_aside.PARAM_ENABLED:
+      return tesla_step_aside.enabled(self._params)
+    return self._params.get_bool(param)
 
   def _update_experimental_mode_icon(self):
     icon = "experimental.png" if self._toggles["ExperimentalMode"].action_item.get_state() else "experimental_white.png"
@@ -292,7 +310,10 @@ class TogglesLayout(Widget):
       self._handle_alc_toggle(state)
       return
 
-    self._params.put_bool(param, state, block=True)
+    if param == tesla_step_aside.PARAM_ENABLED:
+      tesla_step_aside.put_bool(self._params, param, state, block=True)
+    else:
+      self._params.put_bool(param, state, block=True)
     if self._toggle_defs[param][3]:
       self._params.put_bool("OnroadCycleRequested", True, block=True)
 

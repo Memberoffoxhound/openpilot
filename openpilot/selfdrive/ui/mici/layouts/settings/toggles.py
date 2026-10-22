@@ -14,6 +14,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive import jetlink_adapter
+from openpilot.selfdrive.car import tesla_step_aside
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -229,6 +230,14 @@ class TogglesLayoutMici(NavScroller):
                                        description="Enable to use S3XYPilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
 
+    # Tesla step-aside: default on. Tolerant params helpers, so a stale params library can't crash the UI.
+    self._step_aside_btn = BigToggle("step aside for tesla fsd", initial_state=tesla_step_aside.enabled(ui_state.params),
+                                     toggle_callback=self._on_step_aside,
+                                     description="When Tesla Autosteer or FSD is selected or driving (or Summon),\n" +
+                                                 "S3XYPilot steps aside: relay open, nothing sent,\n" +
+                                                 "screen off after a 5 s alert. Back when Tesla is on TACC.")
+    self._step_aside_btn.set_enabled(lambda: not ui_state.engaged)
+
     # Jetlink: off by default; only changeable while offroad
     self._jetlink_btn = JetlinkCycle()
     self._jetlink_btn.set_enabled(lambda: not ui_state.started)
@@ -243,6 +252,7 @@ class TogglesLayoutMici(NavScroller):
       always_on_dm_toggle,
       record_front,
       record_mic,
+      self._step_aside_btn,
       enable_openpilot,
     ])
 
@@ -300,6 +310,11 @@ class TogglesLayoutMici(NavScroller):
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
     self._jetlink_btn.refresh()
+    self._step_aside_btn.set_checked(tesla_step_aside.enabled(ui_state.params))
+
+  def _on_step_aside(self, state: bool):
+    tesla_step_aside.put_bool(ui_state.params, tesla_step_aside.PARAM_ENABLED, state, block=True)
+    restart_needed_callback()
 
   def _on_alc(self, state: bool):
     if state:

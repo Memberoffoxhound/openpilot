@@ -17,6 +17,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.gps import get_gps_location_service
 
 from openpilot.selfdrive.car.car_events import CarEvents
+from openpilot.selfdrive.car import tesla_step_aside
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
@@ -133,12 +134,17 @@ class SelfdriveD:
     self.state_machine = StateMachine()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
+    # Tesla step-aside (card): passive because Tesla's Autosteer/FSD is selected or active
+    self.tesla_stepped_aside = self.CP.brand == "tesla" and self.CP.passive and tesla_step_aside.stepped_aside(self.params)
+
     # Determine startup event
     self.startup_event = EventName.startup if build_metadata.openpilot.comma_remote and build_metadata.tested_channel else EventName.startupMaster
     if HARDWARE.get_device_type() == 'mici':
       self.startup_event = None
     if not car_recognized:
       self.startup_event = EventName.startupNoCar
+    elif car_recognized and self.tesla_stepped_aside:
+      self.startup_event = EventName.teslaStepAside
     elif car_recognized and self.CP.passive:
       self.startup_event = EventName.startupNoControl
     elif self.CP.secOcRequired and not self.CP.secOcKeyAvailable:
@@ -147,7 +153,7 @@ class SelfdriveD:
     if not car_recognized:
       self.events.add(EventName.carUnrecognized, static=True)
       set_offroad_alert("Offroad_CarUnrecognized", True)
-    elif self.CP.passive:
+    elif self.CP.passive and not self.tesla_stepped_aside:
       self.events.add(EventName.dashcamMode, static=True)
 
   def update_events(self, CS):

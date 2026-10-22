@@ -20,6 +20,7 @@ from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
+from openpilot.selfdrive.car import tesla_step_aside
 
 REPLAY = "REPLAY" in os.environ
 
@@ -115,6 +116,25 @@ class Car:
     self.CP.alternativeExperience = 0
     openpilot_enabled_toggle = self.params.get_bool("OpenpilotEnabledToggle")
     controller_available = self.CI.CC is not None and openpilot_enabled_toggle and not self.CP.dashcamOnly
+
+    # Tesla step-aside: while Tesla's Autosteer/FSD is selected or active, go
+    # passive (noOutput) before CarParams is published, so the relay never closes
+    self.tesla_step_aside: tesla_step_aside.TeslaStepAside | None = None
+    if controller_available and self.CP.brand == "tesla" and tesla_step_aside.enabled(self.params):
+      from opendbc.car.tesla.values import TeslaFlags
+      self.tesla_step_aside = tesla_step_aside.TeslaStepAside(self.CI, self.params, time.monotonic(),
+                                                              legacy_steer=bool(self.CP.flags & TeslaFlags.LEGACY_DAS_STEERING))
+      if CI is None:
+        self.tesla_step_aside.observe_startup(
+          lambda: can_capnp_to_list(messaging.drain_sock_raw(self.can_sock, wait_for_one=True)), time.monotonic)
+      if self.tesla_step_aside.stepped_aside:
+        cloudlog.warning("Tesla step-aside: stock Autosteer/FSD selected or active, openpilot passive")
+        controller_available = False
+      self.tesla_step_aside.start(time.monotonic())
+    elif self.CP.brand == "tesla":
+      tesla_step_aside.put_bool(self.params, tesla_step_aside.PARAM_STEPPED, False)
+    self.controls_ready_sent = False
+
     self.CP.passive = not controller_available or self.CP.dashcamOnly
     if self.CP.passive:
       safety_config = structs.CarParams.SafetyConfig()
@@ -171,6 +191,11 @@ class Car:
 
     # Update carState from CAN
     CS = self.CI.update(can_list)
+
+    if self.tesla_step_aside is not None:
+      action = self.tesla_step_aside.update(CS, self.sm['carControl'].enabled, time.monotonic())
+      if action is not None:
+        cloudlog.warning(f"Tesla step-aside: onroad cycle to {action}")
 
     # Update radar tracks from CAN
     RD: structs.RadarDataT | None = self.RI.update(can_list)
@@ -254,6 +279,11 @@ class Car:
                    self.sm.seen['onroadEvents'])
     if not self.CP.passive and initialized:
       self.controls_update(CS, self.sm['carControl'])
+    elif self.CP.passive and initialized and not self.controls_ready_sent and \
+         self.tesla_step_aside is not None and self.tesla_step_aside.stepped_aside:
+      # stepped aside: let pandad apply noOutput (relay open, no TX) instead of staying in ELM327
+      self.params.put_bool("ControlsReady", True)
+      self.controls_ready_sent = True
 
     self.initialized_prev = initialized
     self.CS_prev = CS

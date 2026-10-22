@@ -14,6 +14,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.common.hardware.usb import TYPEC_CC_ORIENTATION_PATH, get_usb_state, is_chestnut_usb_id, read_int
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled
+from openpilot.selfdrive.car import tesla_step_aside
 
 BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
 PARAM_UPDATE_TIME = 1 / 5.0
@@ -106,6 +107,7 @@ class UIState:
     self.is_body: bool | None = False
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
+    self.tesla_stepped_aside: bool = False  # card stepped aside for Tesla Autosteer/FSD
 
     self._params_thread: threading.Thread | None = None
 
@@ -244,6 +246,7 @@ class UIState:
         self.has_longitudinal_control = self.CP.openpilotLongitudinalControl
 
     self.recording_audio = self.params.get_bool("RecordAudio") and self.started
+    self.tesla_stepped_aside = self.started and tesla_step_aside.stepped_aside(self.params)
     self.is_metric = self.params.get_bool("IsMetric")
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
@@ -284,6 +287,7 @@ class Device:
     self._interactive_timeout_callbacks: list[Callable] = []
     self._prev_timed_out = False
     self._awake: bool = True
+    self._stepped_aside_t: float | None = None
 
     self._offroad_brightness: int = BACKLIGHT_OFFROAD
     self._last_brightness: int = 0
@@ -379,7 +383,16 @@ class Device:
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake(ui_state.ignition or not interaction_timeout or PC)
+    # Tesla step-aside: show the alert for ALERT_S, then the display goes off
+    # (burn-in) for as long as Tesla drives; a touch wakes it for the usual timeout
+    if ui_state.tesla_stepped_aside:
+      if self._stepped_aside_t is None:
+        self._stepped_aside_t = time.monotonic()
+    else:
+      self._stepped_aside_t = None
+    step_aside_dark = self._stepped_aside_t is not None and time.monotonic() - self._stepped_aside_t > tesla_step_aside.ALERT_S
+
+    self._set_awake((ui_state.ignition and not step_aside_dark) or not interaction_timeout or PC)
 
   def _set_awake(self, on: bool):
     if on != self._awake:

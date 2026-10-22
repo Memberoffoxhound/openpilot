@@ -445,6 +445,13 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
                                        priority=Priority.HIGH),
   },
 
+  EventName.teslaStepAside: {
+    ET.PERMANENT: NormalPermanentAlert("Tesla FSD/Autopilot active",
+                                       "openpilot stepped aside",
+                                       priority=Priority.MID, duration=5.),
+    ET.NO_ENTRY: NoEntryAlert("Tesla FSD/Autopilot active"),
+  },
+
   EventName.dashcamMode: {
     ET.PERMANENT: NormalPermanentAlert("Dashcam Mode",
                                        priority=Priority.LOWEST),
