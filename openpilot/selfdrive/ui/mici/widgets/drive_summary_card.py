@@ -41,8 +41,8 @@ HEADLINE = "trip complete"
 HEAD_SIZE, HEAD_Y = 62, 2          # alert text1 is 70-82 Inter Bold; 62 leaves room for the stats
 VAL_SIZE, UNIT_SIZE, LBL_SIZE = 46, 24, 22
 VAL_Y, LBL_Y = 80, 130
-TL_Y, TL_H = 162, 12
-TRIP_Y = 186
+TL_Y, TL_H = 161, 18        # 1.5x the first 12 px bar: readable on the small screen; 8 px under the labels
+TRIP_Y = 189
 WHITE = (255, 255, 255)
 VALUE_A, DIM_A = 0.9, 0.65
 SLIDE_S, FADE_S = 0.25, 0.4
@@ -180,13 +180,22 @@ class DriveSummaryCard:
 
   @staticmethod
   def draw_timeline(x: float, y: float, w: float, h: float, codes: str, a: float = 1.0) -> None:
-    rl.draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 0.5, 6, _col(WHITE, 0.15 * a))
+    """connect-style status bar with rounded ends: a round cap in the first / last run's color at
+    each end, then every run drawn square between the caps' centers (so even a run thinner than
+    the cap keeps the pill shape at any thickness)."""
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0, 8, _col(WHITE, 0.15 * a))
     n = len(codes)
     if n == 0:
       return
-    for st, start, length in ds.timeline_runs(codes):
-      x0 = x + w * start / n
-      x1 = x + w * (start + length) / n
-      rl.draw_rectangle_rec(rl.Rectangle(round(x0), y, max(1, round(x1) - round(x0)), h), _col(ds.COLORS[st], a))
-    # connect's status gradient: a little darker toward the bottom
-    rl.draw_rectangle_gradient_v(int(x), int(y), int(w), int(h), _col((0, 0, 0), 0), _col((0, 0, 0), 0.35 * a))
+    runs = ds.timeline_runs(codes)
+    r = h / 2
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, h, h), 1.0, 8, _col(ds.COLORS[runs[0][0]], a))
+    rl.draw_rectangle_rounded(rl.Rectangle(x + w - h, y, h, h), 1.0, 8, _col(ds.COLORS[runs[-1][0]], a))
+    lo, hi = x + r, x + w - r
+    for st, start, length in runs:
+      x0 = max(lo, round(x + w * start / n))
+      x1 = min(hi, round(x + w * (start + length) / n))
+      if x1 > x0:
+        rl.draw_rectangle_rec(rl.Rectangle(x0, y, max(1, x1 - x0), h), _col(ds.COLORS[st], a))
+    # connect's status gradient: a little darker toward the bottom (inset from the rounded ends)
+    rl.draw_rectangle_gradient_v(int(x + r), int(y), int(w - 2 * r), int(h), _col((0, 0, 0), 0), _col((0, 0, 0), 0.35 * a))

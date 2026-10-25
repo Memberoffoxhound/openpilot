@@ -355,6 +355,11 @@ def test_card_v3_layout_rules():
   assert consts["HEAD_SIZE"] > consts["VAL_SIZE"] > consts["LBL_SIZE"]
   assert consts["HEAD_Y"] < consts["VAL_Y"] < consts["LBL_Y"] < consts["TL_Y"] < consts["TRIP_Y"]
   assert consts["TRIP_Y"] + 34 * 1.16 <= consts["CARD_H"]
+  # thicker route bar (1.5x the original 12 px), clear of the labels above and the Today/Week text below
+  assert consts["TL_H"] == 18
+  assert consts["LBL_Y"] + consts["LBL_SIZE"] * 1.16 + 4 <= consts["TL_Y"]
+  assert consts["TL_Y"] + consts["TL_H"] + 6 <= consts["TRIP_Y"]
+  assert "draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0" in src     # rounded ends kept
   assert "FontWeight.DISPLAY" in src and "draw_trip_block(" in src
   assert "draw_circle" not in src.split("def draw_check_badge")[0]      # no dot indicators
   row = (UI / "mici/widgets/trip_row.py").read_text()
