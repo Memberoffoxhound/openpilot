@@ -3,7 +3,7 @@ from openpilot.selfdrive.vslam.store import is_enabled, set_enabled
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.list_view import toggle_item
-from openpilot.system.ui.widgets.scroller import Scroller
+from openpilot.system.ui.widgets.scroller_tici import Scroller
 
 LOGGER_DESC = tr_noop(
   "Records 6+ mph cruise dumps for review (observe-only). "
