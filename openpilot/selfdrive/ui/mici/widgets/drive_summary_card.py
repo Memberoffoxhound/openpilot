@@ -5,7 +5,7 @@ an Inter Bold lowercase headline (alert text1 style) with a check badge in
 the user's theme color to its right (drive_summary.accent_rgb: the fork's
 theme manager, else comma green), then the stats. Shown once per drive
 for SHOW_S after the drive ends (any onroad -> offroad transition, any car). It slides in from the top
-with the alerts' bounce and, after SHOW_S or a tap, slides back up to reveal
+smoothly (no bounce) and, after SHOW_S or a tap, slides back up to reveal
 the home screen (card_slide.py). Going back onroad removes it at once. No
 on-screen timer. Drives under 0.1 mi or 30 s never show.
 

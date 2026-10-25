@@ -9,7 +9,7 @@ Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new 
 | --- | --- |
 | `openpilot/selfdrive/ui/lib/drive_summary.py` | Recorder, timeline buckets, persistence, show rules, formatting. Imports nothing from openpilot except swaglog, plus the two optional swap-ins below. |
 | `openpilot/selfdrive/ui/mici/widgets/drive_summary_card.py` | The home card: opaque, alert-style, 536x240. |
-| `openpilot/selfdrive/ui/mici/widgets/card_slide.py` | Card motion (pure, steppable). Needs `openpilot.common.filter_simple.BounceFilter` (stock). |
+| `openpilot/selfdrive/ui/mici/widgets/card_slide.py` | Card motion (pure, steppable, no imports). |
 | `openpilot/selfdrive/ui/mici/widgets/trip_row.py` | The Today/Week row (home) and block (card). |
 | `openpilot/selfdrive/ui/mici/onroad/streak_icon.py` | The 50 px STREAK circle, bottom-right of the camera view. |
 | `openpilot/selfdrive/ui/tests/test_drive_summary.py` | Tests. Pure Python, no raylib. |
@@ -40,8 +40,8 @@ The keys are read tolerantly: with an older params library, the feature is just 
 - The card shows once per drive (the `shown` flag lives in the param, so screen sleep or a UI restart can't repeat it).
   - Only within 10 min of the drive's end.
   - Only for drives of at least 0.1 mi and 30 s.
-  - Slides in from the top with the onroad alerts' bounce (`BounceFilter`, rc 0.1; `widgets/card_slide.py`).
-  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, it slides back up to reveal the home screen. There's no on-screen timer.
+  - Slides in from the top with a smooth ease-out in `ENTER_S` (0.28 s), with no bounce or overshoot (`widgets/card_slide.py`).
+  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, it eases back up in `EXIT_S` (0.22 s) to reveal the home screen. There's no on-screen timer.
   - Going back onroad removes it at once.
 - The card headline is "trip complete", with the theme check badge to its right.
   - Stat columns are evenly spaced, each value centered over its label.
