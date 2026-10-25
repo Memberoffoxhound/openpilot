@@ -341,3 +341,22 @@ def test_replay_full_rlogs(tmp_path):
       del p
       checked += 1
   assert checked > 0
+
+
+def test_card_path_against_real_tesla_interface():
+  """card builds TeslaStepAside from the real opendbc CarInterface and reads its
+  parsers. Catches opendbc API drift (e.g. a TeslaFlags member the merge dropped)."""
+  from opendbc.car.tesla.interface import CarInterface
+  from openpilot.common.params import Params
+  CP = CarInterface.get_non_essential_params("TESLA_MODEL_3")
+  sa = tsa.TeslaStepAside(CarInterface(CP), Params(), 0.0)
+  assert sa.observe(0.1) in (True, False)
+  assert tsa.read_signals(sa.CI.can_parsers).steer_type == 0
+
+
+def test_card_uses_only_existing_tesla_flags():
+  import re
+  from opendbc.car.tesla.values import TeslaFlags
+  src = (Path(__file__).parents[1] / "card.py").read_text()
+  for name in re.findall(r"TeslaFlags\.(\w+)", src):
+    assert hasattr(TeslaFlags, name), name

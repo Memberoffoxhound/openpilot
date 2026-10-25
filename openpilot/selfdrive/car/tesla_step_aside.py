@@ -66,18 +66,16 @@ class StockSignals:
   acc_state: int = 0
 
 
-def read_signals(can_parsers, legacy_steer: bool = False) -> StockSignals:
+def read_signals(can_parsers) -> StockSignals:
   """The stock signals from Tesla's CarInterface parsers (opendbc Bus keys
   'party' and 'ap_party'). Every message read here is one carstate reads, so
   the parsers already track them."""
   party = can_parsers["party"] if "party" in can_parsers else _by_value(can_parsers, "party")
   ap = can_parsers["ap_party"] if "ap_party" in can_parsers else _by_value(can_parsers, "ap_party")
-  steer_type = int(ap.vl["DAS_steeringControl"]["DAS_steeringControlType"])
-  if legacy_steer:
-    steer_type >>= 1
+  # comma's 3-bit DAS_steeringControlType (opendbc tesla.dbc); legacy 2-bit cars are not supported
   return StockSignals(
     ap_state=int(ap.vl["DAS_status"]["DAS_autopilotState"]),
-    steer_type=steer_type,
+    steer_type=int(ap.vl["DAS_steeringControl"]["DAS_steeringControlType"]),
     autopark_state=int(party.vl["DI_state"]["DI_autoparkState"]),
     acc_state=int(ap.vl["DAS_control"]["DAS_accState"]),
   )
@@ -214,10 +212,9 @@ def is_park(gear) -> bool:
 class TeslaStepAside:
   """card's handle: startup detection, then the onroad-cycle requests."""
 
-  def __init__(self, CI, params, now: float, legacy_steer: bool = False) -> None:
+  def __init__(self, CI, params, now: float) -> None:
     self.CI = CI
     self.params = params
-    self.legacy_steer = legacy_steer
     self.detector = StockDetector()
     self.stepped_aside = stepped_aside(params)   # sticky across an onroad cycle we asked for
     self.startup_owned = False
@@ -225,7 +222,7 @@ class TeslaStepAside:
     self._start_t = now
 
   def observe(self, now: float) -> bool:
-    return self.detector.update(read_signals(self.CI.can_parsers, self.legacy_steer), now)
+    return self.detector.update(read_signals(self.CI.can_parsers), now)
 
   def observe_startup(self, recv, clock, duration: float = STARTUP_OBSERVE_S) -> bool:
     """Feed CAN through CI.update for `duration` s before CarParams goes out.
