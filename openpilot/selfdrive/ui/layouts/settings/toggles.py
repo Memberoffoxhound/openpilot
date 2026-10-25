@@ -60,8 +60,7 @@ DESCRIPTIONS = {
     "off and on resets it. Every Park splits the route, and openpilot needs " +
     "several seconds to be ready again after D/R. Parked offroad with the car on, uploads and updates run as " +
     "they do offroad, and the shutdown timer starts only once the car powers off. Summon and Autopark keep it " +
-    "offroad (relay open); FSD from Park goes through Step Aside as today. Also turns on the drive summary card " +
-    "and the onroad engaged-streak icon."
+    "offroad (relay open); FSD from Park goes through Step Aside as today. Also turns on the drive summary card."
   ),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),

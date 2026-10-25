@@ -1,17 +1,16 @@
 # Porting TeslaPilot additions to other forks
 
-## Drive summary card + engaged-streak icon (any car, any fork)
+## Drive summary card (any car, any fork)
 
 Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new assets (everything is drawn in code).
 
 ### Files (copy as is)
 | File | What |
 | --- | --- |
-| `openpilot/selfdrive/ui/lib/drive_summary.py` | Recorder, timeline buckets, persistence, show rules, formatting. Imports nothing from openpilot except swaglog, plus the two optional swap-ins below. |
+| `openpilot/selfdrive/ui/lib/drive_summary.py` | Recorder, timeline buckets, persistence, show rules, formatting. Imports nothing from openpilot except swaglog, plus the optional swap-in below. |
 | `openpilot/selfdrive/ui/mici/widgets/drive_summary_card.py` | The home card: opaque, alert-style, 536x240. |
 | `openpilot/selfdrive/ui/mici/widgets/card_slide.py` | Card motion (pure, steppable, no imports). |
 | `openpilot/selfdrive/ui/mici/widgets/trip_row.py` | The Today/Week row (home) and block (card). |
-| `openpilot/selfdrive/ui/mici/onroad/streak_icon.py` | The streak pill (50 px tall, the wheel icon's height), bottom-right of the camera view. |
 | `openpilot/selfdrive/ui/tests/test_drive_summary.py` | Tests. Pure Python, no raylib. |
 
 ### Params (one place: `common/params_keys.h`)
@@ -21,7 +20,7 @@ Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new 
 ```
 The keys are read tolerantly: with an older params library, the feature is just off. This fork sets `DriveSummary` from the "Go Offroad in Park" toggle. Elsewhere, add a `BigParamControl("drive summary", "DriveSummary")` toggle, or set the param.
 
-### Hooks (all in the mici main layout, except the streak icon; plus imports)
+### Hooks (all in the mici main layout, plus imports)
 1. Stats at drive end: in `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
    - It records while `ui_state.started` and saves the summary when offroad lasts 3 s. Shorter onroad cycles count as the same drive.
    - It works with any offroad cause: ignition off, park-offroad, onroad cycle, always-offroad.
@@ -42,13 +41,9 @@ The keys are read tolerantly: with an older params library, the feature is just 
    - The offroad branch never pops the nav stack (stock).
 4. Tap: add `_handle_mouse_release` with `if self._drive_summary.dismiss_on_tap(): return` before `super()`.
    - Also add `and not self._drive_summary.visible` to the scroller's `set_scrolling_enabled`, so nothing swipes under the card.
-5. Streak icon: in `AugmentedRoadView`, construct a `StreakIcon()` and call `self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)` right after the HUD render, inside the scissor. The content rect excludes the confidence-ball side panel.
-   - `engaged_alpha` is a small property on `HudRenderer` that returns the steering wheel icon's alpha filter, normalized to 0..1. Add it on another fork, or pass any 0..1 engaged fade.
-   - Layout keeps clear of stock mici HUD items: `drive_summary.torque_bar_bounds()` mirrors `TorqueBar._render`'s geometry (radius, 14..56 px thickness, 22..26 px offset, `TORQUE_ANGLE_SPAN`, end caps), and `pill_rect()` stops the pill 4 px short of it and of the wheel. If a fork changes the torque bar, update the `TB_*` constants; `test_torque_bar_bounds_match_the_real_torque_bar` checks them against `torque_bar.py`.
 
-### Swap-ins (in `drive_summary.py`, try/except imports, nothing to do on a fork without them)
-- **`accent_rgb()`, theme color:** used by the card's check badge and the streak pill's progress bar. It returns the fork's theme color from `openpilot.selfdrive.ui.layouts.settings.common.theme_rgb()`, which here is TeslaPilot's theme (Tesla blue or openpilot green). If that import fails (no theme manager), it returns **comma green** `#178645`, connect's engagedGreen, the same as the timeline's engaged color. To use another fork's theme manager, change this one function.
-- **`fork_record_m()`, streak record:** the lifetime longest engaged stretch, in meters. Here it is `trip_stats.load_stats()["max_streak_m"]`. Without it the value is 0, and the record `drive_summary` keeps itself (`DriveSummaryLast.record_m`, the max best stretch of saved drives) is used.
+### Swap-in (in `drive_summary.py`, try/except import, nothing to do on a fork without them)
+- **`accent_rgb()`, theme color:** used by the card's check badge. It returns the fork's theme color from `openpilot.selfdrive.ui.layouts.settings.common.theme_rgb()`, which here is TeslaPilot's theme (Tesla blue or openpilot green). If that import fails (no theme manager), it returns **comma green** `#178645`, connect's engagedGreen, the same as the timeline's engaged color. To use another fork's theme manager, change this one function.
 
 ### Behavior
 - The card hops in at the onroad -> offroad edge, over the onroad page, before home. Only when it's due:
@@ -66,15 +61,6 @@ The keys are read tolerantly: with an older params library, the feature is just 
 - The card headline is "trip complete", with the theme check badge to its right.
   - Stat columns are evenly spaced, each value centered over its label.
   - Best stretch drops if the four columns don't fit.
-- Streak pill:
-  - It shows only while engaged, fading in and out with the steering wheel icon (shared alpha, no timing of its own).
-  - There's no disengaged state: after a disengage it keeps the last value while the fade runs out.
-  - The number is the current engaged stretch in the user's unit: one decimal under 10 (floored), whole numbers from 10.
-  - It starts at 0 on every engagement: the recorder zeroes it on any disengaged frame, including a restart after an onroad cycle.
-  - Shape: a pill 50 px tall (same height and 14 px bottom margin as the steering wheel icon), 10 px from the right edge, growing left. Big number (Inter Bold 30 px, shrinks to fit, min 20), a progress bar under it and the unit at the bar's right end.
-  - Width: up to 92 px, clamped so it never touches the torque bar's largest extent (full span, max torque, both directions) or the wheel; on the default 476 px view that is ~70 px. Narrower than 60 px (the 275 px view beside the navigation panel) and it is not drawn at all.
-  - The bar shows progress toward the streak record, filled in the accent color, and is full once the record is reached or beaten.
-  - With no record yet (under 1 m), only the neutral track shows, never a misleading full bar.
 - The timeline is 160 constant-memory time buckets, using comma connect's palette:
   - green #178645 engaged
   - blue #175886 manual

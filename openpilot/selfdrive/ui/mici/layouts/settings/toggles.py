@@ -54,7 +54,7 @@ class ParkOffroadConfirmPage(NavScroller):
       "Parked offroad with the car on, uploads and updates run as offroad.",
       "The shutdown timer starts only once the car powers off.",
       "Summon and Autopark keep it offroad, relay open. FSD from Park goes through step aside.",
-      "Also turns on the drive summary card and the engaged-streak icon.",
+      "Also turns on the drive summary card.",
     ], on_confirm)
 
 
@@ -192,7 +192,7 @@ class TogglesLayoutMici(NavScroller):
     self._park_offroad_btn = BigToggle("go offroad in park", initial_state=park_offroad.enabled(ui_state.params),
                                        toggle_callback=self._on_park_offroad,
                                        description="Offroad after Park is held 3 s, back onroad on D/R.\n" +
-                                                   "Adds the drive summary card and streak icon.")
+                                                   "Adds the drive summary card.")
 
     self._scroller.add_widgets([
       self._alc_btn,

@@ -1,6 +1,6 @@
 """Drive summary (selfdrive/ui/lib/drive_summary.py): recorder math, the
 connect-style timeline buckets, persistence, show-once rules, Today/Week and
-streak fallbacks, and the card / streak-icon formatting. No raylib needed."""
+day-streak fallbacks, and the card formatting. No raylib needed."""
 import json
 from datetime import date, datetime
 from pathlib import Path
@@ -124,9 +124,8 @@ def test_recorder_is_brand_free():
   """No car-brand or fork imports, and no brand names in code (docstring aside)."""
   import ast
   tree = ast.parse((UI / "lib/drive_summary.py").read_text())
-  # optional swap-ins: fork imports only inside try/except in these two functions (fallbacks tested below)
-  swap = {"accent_rgb": "openpilot.selfdrive.ui.layouts.settings.common",
-          "fork_record_m": "openpilot.selfdrive.ui.layouts.settings.trip_stats"}
+  # optional swap-in: fork import only inside try/except in this function (fallback tested below)
+  swap = {"accent_rgb": "openpilot.selfdrive.ui.layouts.settings.common"}
   for fn in [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in swap]:
     tries = [t for t in ast.walk(fn) if isinstance(t, ast.Try)]
     assert tries and any(isinstance(i, ast.ImportFrom) and i.module == swap[fn.name] for i in tries[0].body), fn.name
@@ -230,47 +229,10 @@ def test_timeline_runs():
   assert ds.timeline_runs("") == []
 
 
-def test_streak_number_drops_decimal_from_ten():
-  assert ds.fmt_streak(0) == "0.0" and ds.fmt_streak(3.24) == "3.2" and ds.fmt_streak(9.94) == "9.9"
-  assert ds.fmt_streak(9.97) == "9.9"           # floored: never "10.0", never a jump back to "9"
-  assert ds.fmt_streak(10.0) == "10" and ds.fmt_streak(12.3) == "12" and ds.fmt_streak(12.7) == "12"
-  assert ds.fmt_streak(105.9) == "105" and ds.fmt_streak(-1) == "0.0"
-  prev = -1.0
-  for i in range(2000):                      # monotonic: the number never goes backwards
-    v = float(ds.fmt_streak(i / 100))
-    assert v >= prev
-    prev = v
-
-
-def test_streak_ring_is_progress_to_record():
-  assert ds.streak_record_frac(0, 0) is None and ds.streak_record_frac(500, 0.5) is None   # no record yet
-  assert ds.streak_record_frac(0, 8000) == 0.0
-  assert ds.streak_record_frac(2000, 8000) == pytest.approx(0.25)
-  assert ds.streak_record_frac(8000, 8000) == 1.0
-  assert ds.streak_record_frac(12000, 8000) == 1.0            # beaten: stays full
-
-
-def test_record_kept_and_fork_record_swap_in(monkeypatch):
+def test_record_kept():
   data = ds.add_drive(None, {"id": "a", "m": 9000, "e": 8000, "best_m": 3000, "end": 1.7e9})
   data = ds.add_drive(data, {"id": "b", "m": 4000, "e": 2000, "best_m": 1200, "end": 1.7e9})
   assert ds.own_record_m(data) == 3000 and ds.own_record_m(None) == 0 and ds.own_record_m({"record_m": "x"}) == 0
-  monkeypatch.setattr(ds, "get_json", lambda params, key: data)
-  monkeypatch.setattr(ds, "fork_record_m", lambda: 5000.0)
-  assert ds.streak_record_m(object()) == 5000.0
-  monkeypatch.setattr(ds, "fork_record_m", lambda: 0.0)
-  assert ds.streak_record_m(object()) == 3000
-
-
-def test_fork_record_without_trip_stats_is_zero(monkeypatch):
-  import builtins
-  real = builtins.__import__
-
-  def no_stats(name, *a, **k):
-    if name.endswith("trip_stats"):
-      raise ImportError(name)
-    return real(name, *a, **k)
-  monkeypatch.setattr(builtins, "__import__", no_stats)
-  assert ds.fork_record_m() == 0.0
 
 
 def test_accent_uses_theme_else_comma_green(monkeypatch):
@@ -325,9 +287,9 @@ def test_ui_hooks_present():
   assert "_drive_summary" not in home and "DriveSummaryCard" not in home     # the card lives in the main layout now
   assert "draw_trip_row(" in home and "measure_text_cached(f, ll" not in home   # row code lives in trip_row.py only
   arv = (UI / "mici/onroad/augmented_road_view.py").read_text()
-  assert "self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)" in arv
-
-
+  assert "streak" not in arv.lower()                                         # streak pill removed
+  assert not (UI / "mici/onroad/streak_icon.py").exists()
+  assert "engaged_alpha" not in (UI / "mici/onroad/hud_renderer.py").read_text()
 
 
 def test_card_v3_layout_rules():
@@ -364,97 +326,6 @@ def test_card_v3_layout_rules():
   assert "draw_circle" not in src.split("def draw_check_badge")[0]      # no dot indicators
   row = (UI / "mici/widgets/trip_row.py").read_text()
   assert "def draw_trip_block(" in row and "BLOCK_VALUE = 34" in row and "BLOCK_LABEL = 30" in row
-
-
-def test_streak_pill_placement():
-  src = (UI / "mici/onroad/streak_icon.py").read_text()
-  assert "ds.pill_rect(rect.x, rect.y, rect.width, rect.height, keep_out(rect))" in src
-  assert "ds.torque_bar_bounds(rect.x, rect.y, rect.width, rect.height)" in src
-  assert "if pill is None:\n      return" in src                      # no room: not drawn
-  for gone in ("draw_ring", "label_fits", "LABEL", "icon_pos", "SIZE = 50"):
-    assert gone not in src, gone                                    # the circle is gone
-  # the hook passes the content rect, which excludes the confidence-ball side panel
-  assert "self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)" in (UI / "mici/onroad/augmented_road_view.py").read_text()
-  assert "ds.streak_record_frac(" in src and "ds.accent_rgb()" in src and "ds.streak_record_m(" in src
-  assert "ds.fmt_streak(dist)" in src and '"km" if metric else "mi"' in src
-  assert "streak_tier" not in src and "TESLA_BLUE" not in src and "tesla" not in src.lower()
-  # same height and bottom margin as the 50 px steering wheel icon
-  hud = (UI / "mici/onroad/hud_renderer.py").read_text()
-  assert "gui_app.texture('icons_mici/wheel.png', 50, 50)" in hud and "rect.y + rect.height - 14 - wheel_txt.height / 2" in hud
-  assert ds.PILL_H == 50 and ds.PILL_BOTTOM == 14
-
-
-def _real_arc_bar_pts():
-  """arc_bar_pts from mici/onroad/torque_bar.py, pulled out with ast (the module needs the whole UI stack)."""
-  import ast
-  import math
-  import numpy as np
-  src = (UI / "mici/onroad/torque_bar.py").read_text()
-  tree = ast.parse(src)
-  keep = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("quantized_lru_cache", "arc_bar_pts")]
-  for n in keep:
-    n.decorator_list = []
-  ns = {"np": np, "math": math, "DEBUG": False, "OrderedDict": dict, "wraps": None, "time": None, "rl": None}
-  exec(compile(ast.Module(body=keep, type_ignores=[]), "torque_bar", "exec"), ns)
-  return ns["arc_bar_pts"], src
-
-
-def test_torque_bar_bounds_match_the_real_torque_bar():
-  import numpy as np
-  arc_bar_pts, src = _real_arc_bar_pts()
-  # the constants mirrored in drive_summary are the ones TorqueBar._render uses
-  assert f"TORQUE_ANGLE_SPAN = {ds.TB_SPAN_DEG}" in src and f"rect.width / {ds.TB_REF_W}" in src
-  assert f"cap_radius: float = {ds.TB_CAP}" in src and f"torque_line_radius = {ds.TB_RADIUS}" in src and f"+ {ds.TB_DX}  # offset" in src
-  assert f"[0.5, 1], [{ds.TB_OFFSET[0]}, {ds.TB_OFFSET[1]}])" in src and f"[0.5, 1], [{ds.TB_H[0]}, {ds.TB_H[1]}])" in src
-  for w in (476, 536 - 261, 400):
-    bx, by, bw, bh = ds.torque_bar_bounds(0, 0, w, 240)
-    span = ds.TB_SPAN_DEG * w / ds.TB_REF_W
-    for t in np.linspace(0, 1, 21):                       # every torque, full span (alpha 1)
-      hgt = np.interp(t, [0.5, 1], ds.TB_H)
-      off = np.interp(t, [0.5, 1], ds.TB_OFFSET)
-      pts = arc_bar_pts(ds.TB_RADIUS + hgt / 2, hgt, -90 - span / 2, -90 + span / 2) + np.array([w / 2 + ds.TB_DX, 240 + ds.TB_RADIUS - off])
-      assert pts[:, 0].min() >= bx - 0.5 and pts[:, 0].max() <= bx + bw + 0.5, (w, t)
-      assert pts[:, 1].min() >= by - 0.5 and pts[:, 1].max() <= by + bh + 0.5, (w, t)
-
-
-def _keep_out(x, y, w, h):
-  wheel = (x + 21, y + h - 14 - 50, 50, 50)
-  return [ds.torque_bar_bounds(x, y, w, h), wheel]
-
-
-def test_streak_pill_never_overlaps_torque_bar_wheel_or_side_panel():
-  H = 240
-  for screen_w, side in ((536, 60), (536, 261)):           # confidence-ball side panel / navigation panel
-    w = screen_w - side
-    pill = ds.pill_rect(0, 0, w, H, _keep_out(0, 0, w, H))
-    panel = (w, 0, side, H)
-    if pill is None:
-      continue
-    assert pill[3] == 50                                   # the wheel icon's height
-    assert pill[0] + pill[2] <= w and pill[1] + pill[3] <= H
-    for ko in _keep_out(0, 0, w, H) + [panel]:
-      assert not ds.rects_overlap(pill, ko), (screen_w, side, pill, ko)
-    bar = ds.torque_bar_bounds(0, 0, w, H)
-    assert pill[0] >= bar[0] + bar[2] + ds.PILL_GAP
-  # the normal view has room; the narrow one beside the navigation panel does not (hidden, not overlapping)
-  normal = ds.pill_rect(0, 0, 476, H, _keep_out(0, 0, 476, H))
-  assert normal is not None and normal[2] >= ds.PILL_MIN_W
-  assert normal[0] + normal[2] == 476 - ds.PILL_RIGHT and normal[1] + normal[3] == H - ds.PILL_BOTTOM
-  assert ds.pill_rect(0, 0, 275, H, _keep_out(0, 0, 275, H)) is None
-  # sweep view widths and offsets: never an overlap
-  for w in range(200, 537, 7):
-    for x0 in (0, 13):
-      pill = ds.pill_rect(x0, 5, w, H, _keep_out(x0, 5, w, H))
-      if pill is not None:
-        assert all(not ds.rects_overlap(pill, ko) for ko in _keep_out(x0, 5, w, H) + [(x0 + w, 5, 60, H)])
-
-
-def test_pill_rect_clamps_width():
-  assert ds.pill_rect(0, 0, 476, 240)[2] == ds.PILL_W                         # nothing in the way: preferred width
-  r = ds.pill_rect(0, 0, 476, 240, [(300, 200, 80, 10)])
-  assert r[0] == 380 + ds.PILL_GAP and r[0] + r[2] == 476 - ds.PILL_RIGHT                             # stops PILL_GAP short
-  assert ds.pill_rect(0, 0, 476, 240, [(300, 0, 150, 20)])[2] == ds.PILL_W   # above the pill: ignored
-  assert ds.pill_rect(0, 0, 476, 240, [(400, 200, 10, 10)]) is None           # under 60 px left: hidden
 
 
 # -- card motion: alert-style bounce in, slide back up to the home screen ------
@@ -744,44 +615,7 @@ def test_main_layout_hooks():
     assert word not in "\n".join(ln for ln in main.splitlines() if "_drive_summary" in ln or "DriveSummaryCard" in ln).lower()
 
 
-# -- streak icon: engaged only, fades with the engaged HUD, resets per engagement ----
-
-def test_streak_icon_engaged_only_with_shared_fade():
-  src = (UI / "mici/onroad/streak_icon.py").read_text()
-  for gone in ("GREY", "HOLD_S", "FADE_S", "on: bool", "state_on"):
-    assert gone not in src, gone                                   # no disengaged state or timing of its own
-  assert "ds.streak_view(engaged, alpha," in src and "def render(self, rect: rl.Rectangle, alpha: float" in src
-  hud = (UI / "mici/onroad/hud_renderer.py").read_text()
-  prop = hud.split("def engaged_alpha(self)")[1].split("def ")[0]
-  assert "self._wheel_alpha_filter.x" in prop                      # the steering wheel's own filter
-  assert "self._wheel_alpha_filter.update(self._wheel_on_alpha)" in hud
-  assert "self._wheel_alpha_filter.update(0)" in hud.split("UIStatus.DISENGAGED")[1][:200]   # 0 when disengaged
-
-
-def test_streak_view_visibility():
-  # disengaged from the start: never drawn, whatever the fade says
-  assert ds.streak_view(False, 1.0, 0.0, None) == (None, None)
-  # engagement starts: fade comes up from 0, value is the live stretch from 0
-  shown, held = ds.streak_view(True, 0.0, 0.0, None)
-  assert shown is None and held == 0.0
-  shown, held = ds.streak_view(True, 0.4, 25.0, held)
-  assert shown == 25.0
-  shown, held = ds.streak_view(True, 1.0, 900.0, held)
-  assert shown == 900.0
-  # disengage: recorder drops cur_m to 0, the icon keeps 900 while the shared fade runs out
-  shown, held = ds.streak_view(False, 0.6, 0.0, held)
-  assert shown == 900.0
-  shown, held = ds.streak_view(False, 0.005, 0.0, held)
-  assert shown is None and held is None
-  # stays hidden while disengaged (e.g. a critical wheel alert holding the wheel alpha up)
-  assert ds.streak_view(False, 1.0, 0.0, held) == (None, None)
-  # next engagement starts at 0 again
-  shown, held = ds.streak_view(True, 0.0, 0.0, held)
-  shown, held = ds.streak_view(True, 0.5, 3.0, held)
-  assert shown == 3.0
-
-
-def test_streak_resets_on_every_engagement_and_record_keeps_best():
+def test_best_stretch_resets_on_every_engagement_and_record_keeps_best():
   r = ds.DriveRecorder()
   t = 0.0
 

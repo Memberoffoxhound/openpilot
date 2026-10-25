@@ -22,16 +22,14 @@ src/theme.js palette.states + src/colors.js):
   prompt    #da6f25 alertOrange (orange50), alertStatus userPrompt
   critical  #c92231 alertRed (red100), alertStatus critical
   standby   #919b95 engagedGrey: stopped and not engaged
-Swap-ins (try/except imports, safe on any fork): accent_rgb() (theme color,
-else comma green) and fork_record_m() (lifetime streak record, else the
-record kept here).
+Swap-in (try/except import, safe on any fork): accent_rgb() (theme color,
+else comma green).
 Params: DriveSummary (toggle), DriveSummaryLast (JSON). Read tolerantly, so
 a params library built before these keys only loses the feature.
 """
 from __future__ import annotations
 
 import json
-import math
 import os
 import time
 from datetime import date, datetime, timedelta
@@ -304,7 +302,7 @@ class HomeHandoff:
     return False
 
 
-# -- card and streak-icon formatting (pure, shared with the widgets) ---------
+# -- card formatting (pure, shared with the widgets) ---------
 
 def fmt_dist(meters: float, metric: bool) -> tuple[str, str]:
   d = meters / 1000.0 if metric else meters / 1609.344
@@ -356,109 +354,12 @@ def timeline_runs(codes: str) -> list[tuple[int, int, int]]:
   return runs
 
 
-def fmt_streak(dist: float) -> str:
-  """Streak icon number in the user's unit: one decimal under 10 (floored, so 9.97 reads 9.9, never 10.0),
-  whole numbers from 10 (12.7 reads 12)."""
-  dist = max(0.0, float(dist))
-  return f"{int(dist * 10) / 10:.1f}" if dist < 10 else str(int(dist))
-
-
-def streak_view(engaged: bool, alpha: float, cur_m: float, held_m: float | None) -> tuple[float | None, float | None]:
-  """Streak icon, engaged only. alpha is the shared engaged-UI fade (0..1, the HUD wheel's filter).
-  Returns (meters to show, or None = not drawn; new held value, None = faded out).
-  While engaged it shows the live current stretch (the recorder resets it to 0 on every disengaged
-  frame, so each engagement starts at 0). After a disengage it keeps the last engaged value while
-  the shared fade runs out, then stays hidden until the next engagement."""
-  if engaged:
-    held_m = cur_m
-  if held_m is None or alpha <= 0.01:
-    return None, (cur_m if engaged else None)
-  return held_m, held_m
-
-
-# -- streak pill layout (mici onroad), pure geometry: rects are (x, y, w, h) -----------------
-PILL_H = 50                  # same height as the steering wheel icon in the opposite (bottom-left) corner
-PILL_BOTTOM = 14             # same bottom margin as the wheel
-PILL_RIGHT = 10              # same edge margin as the model-source icon in this corner
-PILL_W = 92                  # preferred width, clamped to the free space left of the corner
-PILL_MIN_W = 60              # narrower than this: the pill is not drawn at all
-PILL_GAP = 4                 # minimum clearance to anything in keep_out (torque bar, wheel)
-
-# The mici torque bar (mici/onroad/torque_bar.py TorqueBar._render): an arc of radius 1200 under the
-# bottom edge, 8 px right of center, 14..56 px thick and 22..26 px up as |torque| goes 0.5 -> 1, spanning
-# TORQUE_ANGLE_SPAN degrees on the 476 px view (scaled by the view width) at full alpha, plus its end caps.
-TB_RADIUS = 1200
-TB_H = (14, 56)
-TB_OFFSET = (22, 26)
-TB_DX = 8
-TB_SPAN_DEG = 12.7
-TB_REF_W = 476
-TB_CAP = 7                   # arc_bar_pts' rounded end caps reach up to this far past the angle span
-
-
-def torque_bar_bounds(x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
-  """Bounding box of the torque bar at its largest (full span, any torque) in a w x h camera view."""
-  half = math.radians(TB_SPAN_DEG * w / TB_REF_W / 2)
-  cx = x + w / 2 + TB_DX
-  r_out = TB_RADIUS + TB_H[1]
-  dx = r_out * math.sin(half) + TB_CAP * math.cos(half)
-  top = y + h - TB_OFFSET[1] - TB_H[1]                                    # outer edge, center, max torque
-  bottom = y + h - TB_OFFSET[0] + TB_RADIUS * (1 - math.cos(half)) + TB_CAP * math.sin(half)   # inner edge at the ends
-  return cx - dx, top, 2 * dx, bottom - top
-
-
-def rects_overlap(a, b) -> bool:
-  return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
-
-
-def pill_rect(x: float, y: float, w: float, h: float, keep_out=(), want_w: float = PILL_W):
-  """Streak pill in the bottom-right corner of the camera view, PILL_H tall, growing left up to want_w
-  but stopping PILL_GAP short of every keep_out rect it would run into. None when less than PILL_MIN_W
-  is free (e.g. the narrow view beside the navigation panel): better hidden than overlapping."""
-  right = x + w - PILL_RIGHT
-  top = y + h - PILL_BOTTOM - PILL_H
-  left = x
-  for kx, ky, kw, kh in keep_out:
-    if ky < top + PILL_H and ky + kh > top and kx < right:
-      left = max(left, kx + kw + PILL_GAP)
-  pw = min(want_w, right - left)
-  if pw < PILL_MIN_W:
-    return None
-  return right - pw, top, pw, PILL_H
-
-
-RECORD_MIN_M = 1.0           # below this there is no record yet
-
-
-def streak_record_frac(cur_m: float, record_m: float) -> float | None:
-  """Streak pill progress bar: progress of the current engaged stretch toward the record (best stretch ever).
-  1.0 = record reached or beaten (the bar stays full while a new record is being set).
-  None = no record yet: the pill shows only the neutral track, no fill."""
-  if record_m < RECORD_MIN_M:
-    return None
-  return max(0.0, min(1.0, float(cur_m) / float(record_m)))
-
-
 def own_record_m(data: dict | None) -> float:
   """The record drive_summary keeps itself (DriveSummaryLast.record_m, max best stretch of saved drives)."""
   try:
     return float((data or {}).get("record_m") or 0.0)
   except (TypeError, ValueError):
     return 0.0
-
-
-def fork_record_m() -> float:
-  """Swap-in: the fork's lifetime longest engaged stretch, when it keeps one (here: trip_stats
-  max_streak_m, live drive included). Forks without it: 0, and only own_record_m counts."""
-  try:
-    from openpilot.selfdrive.ui.layouts.settings.trip_stats import load_stats
-    return float(load_stats().get("max_streak_m") or 0.0)
-  except Exception:
-    return 0.0
-
-
-def streak_record_m(params) -> float:
-  return max(own_record_m(get_json(params, PARAM_LAST)), fork_record_m())
 
 
 COMMA_GREEN = (0x17, 0x86, 0x45)   # comma connect's engagedGreen, same as the timeline's engaged color
