@@ -11,6 +11,7 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
 from openpilot.selfdrive.ui.lib import drive_summary
+from openpilot.selfdrive.ui.lib.park_card import early_event   # TeslaPilot: card at Park
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
 from openpilot.system.ui.lib.application import gui_app, MousePos
@@ -36,7 +37,7 @@ class MiciMainLayout(Scroller):
     self._settings_layout = SettingsLayout()
     self._car_onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked)
     self._body_onroad_layout = BodyLayout()
-    self._drive_summary = DriveSummaryCard(stats_fn=stats_view)   # trip-complete hop before home (portable)
+    self._drive_summary = DriveSummaryCard(stats_fn=stats_view, early_fn=early_event)   # trip-complete hop before home (portable)
 
     # Initialize widget rects
     for widget in (self._home_layout, self._alerts_layout, self._settings_layout,
@@ -131,6 +132,8 @@ class MiciMainLayout(Scroller):
       if ui_state.started:
         self._drive_summary.cancel()
         self._onroad_time_delay = rl.get_time()
+        if ui_state.park_return:   # back from park-offroad on R/D: straight to the camera, no ONROAD_DELAY
+          self._onroad_time_delay -= ONROAD_DELAY
       elif not self._drive_summary.hold_home():   # trip card due: it hops in first, scroll to home after
         self._scroll_to(self._home_layout)
 

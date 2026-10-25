@@ -15,6 +15,12 @@ position), sideways like home sliding in today. No exit animation of its own. Wh
 at once (stock). Going back onroad removes it at once and cancels the hand-off.
 Smooth entry, no bounce (card_slide.py), no on-screen timer.
 
+Optional early_fn (like stats_fn): polled every tick while onroad. "show" puts the
+card up ahead of the offroad edge (TeslaPilot: the moment the car is shifted into
+Park, lib/park_card.py), "cut" takes it down again if the trip goes on. The offroad
+edge then keeps the card that is already up, with its SHOW_S clock. A tap while
+it is up early is kept for the offroad edge. Without early_fn: as before.
+
   trip complete (check)
    6.8mi      81%         4         1.2mi            evenly spaced columns, each value
    driven   engaged   day streak best stretch        centered over its label (best only if it fits)
@@ -82,8 +88,13 @@ class DriveSummaryCard:
   hooks: hold_home() on the offroad edge, release_home() every tick, cancel() on the onroad
   edge, render(rect) after the scroller, dismiss_on_tap() in its tap handler."""
 
-  def __init__(self, stats_fn: Callable[[], dict] | None = None):
+  def __init__(self, stats_fn: Callable[[], dict] | None = None, early_fn: Callable[[], str | None] | None = None):
     self._stats_fn = stats_fn
+    # optional: called every tick while onroad, returns "show" (the trip is ending: put the card up
+    # now, ahead of the offroad edge), "cut" (it isn't after all: take it down) or None
+    self._early_fn = early_fn
+    self._early = False           # up ahead of the offroad edge (still onroad)
+    self._early_tap = False       # tapped while early: leave with the scroll as soon as offroad comes
     self._drive: dict | None = None
     self._shown_at: float | None = None
     self._cols: list[tuple[str, str, str]] = []
@@ -96,7 +107,7 @@ class DriveSummaryCard:
   @property
   def visible(self) -> bool:
     """On screen: entering, shown, or sliding away."""
-    return self._slide.drawn and not ui_state.started
+    return self._slide.drawn and (self._early or not ui_state.started)
 
   @property
   def holding(self) -> bool:
@@ -112,7 +123,10 @@ class DriveSummaryCard:
   def dismiss_on_tap(self) -> bool:
     """Main layout's tap hook: a tap while the card is on screen only dismisses it."""
     if self.visible:
-      self.dismiss()
+      if self._early:
+        self._early_tap = True    # still onroad: nothing to scroll to yet, leave at the offroad edge
+      else:
+        self.dismiss()
       return True
     return False
 
@@ -121,11 +135,30 @@ class DriveSummaryCard:
   def hold_home(self) -> bool:
     """Offroad edge. True: the card is hopping in, hold the stock scroll to home.
     False: not due (toggle off, short trip, still moving, ...): stock, scroll now."""
-    shown = self._begin()
+    if self._early:
+      # already up since the early trigger: keep it (and its SHOW_S clock); a tap meanwhile -> leave now
+      self._early = False
+      shown = self._slide.state == SHOWN and not self._early_tap
+      if self._early_tap:
+        self._early_tap = False
+        self.dismiss()
+    else:
+      shown = self._begin()
     return not self._handoff.offroad(shown)
 
   def release_home(self) -> bool:
-    """Every tick. True once, when the card goes away: scroll to home now."""
+    """Every tick. True once, when the card goes away: scroll to home now.
+    Also polls early_fn while onroad (the card up ahead of the offroad edge)."""
+    if self._early_fn is not None and ui_state.started:
+      try:
+        ev = self._early_fn()
+      except Exception:
+        ev = None
+      if ev == "show" and not self._slide.drawn and self._begin():
+        self._early = True
+      elif ev == "cut" and self._early:
+        self.cancel()
+        ds.recorder.shown = False   # the trip goes on; the card comes back at its real end
     return self._handoff.release(self.holding)
 
   def cancel(self) -> None:
@@ -133,6 +166,7 @@ class DriveSummaryCard:
     self._handoff.onroad()
     self._slide.cut()
     self._shown_at = None
+    self._early = self._early_tap = False
 
   def _begin(self) -> bool:
     try:
@@ -170,7 +204,8 @@ class DriveSummaryCard:
   def render(self, rect: rl.Rectangle, page_x: float | None = None) -> None:
     """page_x: the onroad page's current x in the main layout's scroller. Once dismissed, the card
     rides it, so it leaves with the stock scroll to home."""
-    if ui_state.started:
+    ds.card_on_screen = self.visible and not ui_state.started
+    if ui_state.started and not self._early:
       self.cancel()
       return
     if self._shown_at is not None and time.monotonic() - self._shown_at >= ds.SHOW_S:

@@ -450,6 +450,7 @@ def mark_shown(params, drive_id: str) -> None:
 # -- UI hook ---------------------------------------------------------------------
 
 recorder = DriveRecorder()
+card_on_screen = False       # set by the card every frame (on screen offroad); read by ui_state's Device
 _enabled_cache = (0.0, False)
 _route_t = 0.0
 _logged = False
