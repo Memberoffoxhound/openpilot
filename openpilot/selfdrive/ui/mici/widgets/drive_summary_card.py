@@ -9,10 +9,11 @@ else comma green), then the stats.
 The main layout draws it as an overlay above its scroller. On the onroad ->
 offroad edge, when the trip is due (toggle on, recorded drive, stopped,
 >= 0.1 mi and 30 s), it slides in from the top over the onroad page, and the
-stock scroll to home waits. After SHOW_S, or a tap, it slides back up as the
-stock scroll to home runs underneath. When it isn't due, the scroll happens
+stock scroll to home waits. After SHOW_S, or a tap, the stock scroll to home
+runs and the card moves with the onroad page (attached to its scroller
+position), sideways like home sliding in today. No exit animation of its own. When it isn't due, the scroll happens
 at once (stock). Going back onroad removes it at once and cancels the hand-off.
-Smooth motion, no bounce (card_slide.py), no on-screen timer.
+Smooth entry, no bounce (card_slide.py), no on-screen timer.
 
   trip complete (check)
    6.8mi      81%         4         1.2mi            evenly spaced columns, each value
@@ -34,7 +35,7 @@ from collections.abc import Callable
 import pyray as rl
 
 from openpilot.selfdrive.ui.lib import drive_summary as ds
-from openpilot.selfdrive.ui.mici.widgets.card_slide import SHOWN, CardSlide
+from openpilot.selfdrive.ui.mici.widgets.card_slide import SHOWN, CardSlide, attached_dx
 from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_block, fmt_trip
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -105,7 +106,7 @@ class DriveSummaryCard:
             time.monotonic() - self._shown_at < ds.SHOW_S)
 
   def dismiss(self) -> None:
-    """Slide away (timeout or tap); the main layout then scrolls to home."""
+    """Dismiss (timeout or tap): the main layout scrolls to home and the card rides the onroad page off."""
     self._slide.hide()
 
   def dismiss_on_tap(self) -> bool:
@@ -166,19 +167,21 @@ class DriveSummaryCard:
 
   # -- drawing ---------------------------------------------------------------
 
-  def render(self, rect: rl.Rectangle) -> None:
+  def render(self, rect: rl.Rectangle, page_x: float | None = None) -> None:
+    """page_x: the onroad page's current x in the main layout's scroller. Once dismissed, the card
+    rides it, so it leaves with the stock scroll to home."""
     if ui_state.started:
       self.cancel()
       return
     if self._shown_at is not None and time.monotonic() - self._shown_at >= ds.SHOW_S:
       self.dismiss()
-    self._slide.height = rect.height   # slides its own full height: fully off-screen at both ends
-    dy = self._slide.step()
-    if dy is None:
+    self._slide.height, self._slide.width = rect.height, rect.width   # fully off-screen at both ends
+    pos = self._slide.step(attached_dx(rect.x if page_x is None else page_x, rect.x))
+    if pos is None:
       self._shown_at = None
       return
     if self._drive is not None:
-      self.draw(rect.x, rect.y + dy, rect.width, rect.height, 1.0)
+      self.draw(rect.x + pos[0], rect.y + pos[1], rect.width, rect.height, 1.0)
 
   def draw(self, x: float, y: float, w: float, h: float = CARD_H, alpha: float = 1.0) -> None:
     a = alpha

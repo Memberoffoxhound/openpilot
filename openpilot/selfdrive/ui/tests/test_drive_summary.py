@@ -385,7 +385,7 @@ FPS = 60
 
 def _slide():
   from openpilot.selfdrive.ui.mici.widgets.card_slide import CardSlide
-  return CardSlide(240, 1 / FPS)
+  return CardSlide(240, 1 / FPS, width=536)
 
 
 def test_show_time_is_ten_seconds():
@@ -394,56 +394,65 @@ def test_show_time_is_ten_seconds():
   assert "#" in line and "change" in line.lower()
 
 
+def _ys(sl, n, page_dx=0.0):
+  out = []
+  for _ in range(n):
+    pos = sl.step(page_dx)
+    out.append(None if pos is None else pos[1])
+  return out
+
+
 def test_card_enters_from_off_screen_smoothly_no_overshoot():
   from openpilot.selfdrive.ui.mici.widgets import card_slide
-  assert 0.25 <= card_slide.ENTER_S <= 0.3 and 0.2 <= card_slide.EXIT_S <= 0.25
+  assert 0.25 <= card_slide.ENTER_S <= 0.3
+  assert not hasattr(card_slide, "EXIT_S")         # no exit animation of its own
   sl = _slide()
   assert sl.step() is None and not sl.drawn       # nothing before show()
   assert sl.offset == -240                        # starts fully above the screen
   sl.show()
-  ys = [sl.step() for _ in range(int(1.0 * FPS))]
+  ys = _ys(sl, FPS)
   assert ys[0] < -0.4 * 240                       # first frame still mostly above the screen
   assert all(b >= a for a, b in zip(ys, ys[1:], strict=False))   # monotonic: only ever moves down
   assert max(ys) <= 0.0                           # no overshoot: never past rect.y
   n = next(i for i, y in enumerate(ys) if y == 0.0) + 1
   assert abs(n / FPS - card_slide.ENTER_S) <= 1.5 / FPS                 # settled in ENTER_S
-  for _ in range(int(ds.SHOW_S * FPS)):           # stays put while shown
-    assert sl.step() == 0.0
+  for _ in range(int(ds.SHOW_S * FPS)):           # stays put while shown, ignoring the page
+    assert sl.step(123.0) == (0.0, 0.0)
 
 
-def test_card_exit_slides_fully_off_then_stops_drawing():
+def test_card_leaves_with_the_page_no_vertical_exit():
+  from openpilot.selfdrive.ui.mici.widgets.card_slide import attached_dx
+  assert attached_dx(536.0 + 10, 10) == 536.0 and attached_dx(0, 0) == 0.0
+  sl = _slide()
+  sl.show()
+  _ys(sl, FPS)
+  sl.hide()
+  for dx in (0.0, 0.0, 40.0, 180.0, 400.0, 535.0):   # wherever the scroller has the onroad page
+    assert sl.step(dx) == (dx, 0.0)                 # x rides the page, y never moves
+  assert sl.step(535.6) is None and not sl.drawn    # page fully out of view: stop drawing
+  assert sl.step(0.0) is None                       # stays gone
+
+
+def test_card_leave_failsafe_when_no_scroll():
   from openpilot.selfdrive.ui.mici.widgets import card_slide
   sl = _slide()
   sl.show()
-  for _ in range(FPS):
-    sl.step()
   sl.hide()
-  ys = []
-  for _ in range(3 * FPS):
-    y = sl.step()
-    if y is None:
-      break
-    ys.append(y)
-  assert ys and y is None and not sl.drawn        # finished, nothing left on the home screen
-  assert all(b < a for a, b in zip(ys, ys[1:], strict=False))     # monotonic: only ever moves up
-  assert all(-240 < y <= 0.0 for y in ys)         # every drawn frame still partly on screen, never below rect.y
-  assert abs((len(ys) + 1) / FPS - card_slide.EXIT_S) <= 1.5 / FPS     # gone after EXIT_S
-  assert sl.step() is None                        # stays gone
+  n = 0
+  while sl.step(0.0) is not None:
+    n += 1
+    assert n < 5 * FPS
+  assert abs(n / FPS - card_slide.LEAVE_MAX_S) <= 2 / FPS
 
 
 def test_card_tap_mid_entry_and_onroad_cut():
   sl = _slide()
   sl.show()
-  for _ in range(5):
-    sl.step()
-  y0 = sl.offset
-  sl.hide()                                       # tap while still entering: reverses from there, no jump
-  n, prev = 0, y0
-  while (y := sl.step()) is not None:
-    assert y < prev and prev - y < 0.25 * 240
-    prev = y
-    n += 1
-    assert n < 3 * FPS
+  ys = _ys(sl, 5)
+  sl.hide()                                       # tap while still entering: finishes the drop, rides the page
+  pos = sl.step(30.0)
+  assert pos[0] == 30.0 and ys[-1] < pos[1] <= 0.0
+  assert sl.step(536.0) is None
   sl.show()
   sl.step()
   sl.cut()                                        # onroad resumed: gone this frame
@@ -461,7 +470,7 @@ def test_card_uses_the_slide():
   assert "ds.due_summary(" in src.split("def _begin(self)")[1].split("def ")[0]
   assert "def _poll" not in src and "mark_shown" not in src     # only the hand-off shows it
   render = src.split("def render(self")[1].split("def draw(self")[0]
-  assert "ds.SHOW_S" in render and "rect.y + dy" in render and "FADE_S" not in src
+  assert "ds.SHOW_S" in render and "attached_dx(" in render and "rect.x + pos[0]" in render and "FADE_S" not in src
   slide = (UI / "mici/widgets/card_slide.py").read_text()
   assert "Bounce" not in slide and "pyray" not in slide
 
@@ -508,15 +517,28 @@ def test_recorder_tracks_last_speed():
   assert r.last_v == 12.0
 
 
+def _stock_scroll_rc() -> float:
+  import re
+  src = (UI.parents[1] / "system/ui/widgets/scroller.py").read_text()
+  assert "self._scrolling_to_filter = FirstOrderFilter(0.0, SCROLL_RC, 1 / gui_app.target_fps)" in src
+  return float(re.search(r"^SCROLL_RC = ([0-9.]+)", src, re.M).group(1))
+
+
 class _MainSim:
-  """Mirrors MiciMainLayout._handle_transitions + DriveSummaryCard (holding / render) with the pure
-  pieces, stepped at 60 fps. scrolls counts stock scroll-to-home calls."""
+  """Mirrors MiciMainLayout._handle_transitions + DriveSummaryCard (holding / render) + the stock
+  scroller's smooth scroll_to (FirstOrderFilter(SCROLL_RC), snap within 1 px), stepped at 60 fps.
+  page_dx is the onroad page's x: 0 on the onroad page, W once home is in place."""
+  W = 536.0
+
   def __init__(self, due: bool):
+    from openpilot.common.filter_simple import FirstOrderFilter
     from openpilot.selfdrive.ui.mici.widgets.card_slide import CardSlide, SHOWN
     self.SHOWN = SHOWN
-    self.slide, self.h = CardSlide(240, 1 / FPS), ds.HomeHandoff()
+    self.slide, self.h = CardSlide(240, 1 / FPS, width=self.W), ds.HomeHandoff()
     self.due, self.t, self.started, self.prev, self.shown_at = due, 0.0, True, True, None
-    self.scrolls, self.scroll_t, self.ys = 0, None, []
+    self.scrolls, self.scroll_t, self.ys, self.xs, self.pages = 0, None, [], [], []
+    self.scroll = FirstOrderFilter(0.0, _stock_scroll_rc(), 1 / FPS)
+    self.target: float | None = None
 
   def holding(self):
     return self.slide.state == self.SHOWN and self.shown_at is not None and self.t - self.shown_at < ds.SHOW_S
@@ -537,19 +559,27 @@ class _MainSim:
           self._scroll()
     if self.h.release(self.holding()):
       self._scroll()
+    if self.target is not None:               # stock scroller layout (before the card overlay)
+      self.scroll.update(self.target)
+      if abs(self.scroll.x - self.target) < 1:
+        self.scroll.x, self.target = self.target, None
+    page_dx = self.scroll.x
     if tap and self.slide.drawn:              # main tap hook
       self.slide.hide()
     if self.shown_at is not None and self.t - self.shown_at >= ds.SHOW_S:   # card.render
       self.slide.hide()
-    y = None if self.started else self.slide.step()
-    if y is None:
+    pos = None if self.started else self.slide.step(page_dx)
+    if pos is None:
       self.shown_at = None
-    self.ys.append(y)
+    self.ys.append(None if pos is None else pos[1])
+    self.xs.append(None if pos is None else pos[0])
+    self.pages.append(page_dx)
     self.t += 1 / FPS
 
   def _scroll(self):
     self.scrolls += 1
     self.scroll_t = self.t
+    self.target = self.W
 
 
 def test_not_due_is_stock_immediate_scroll():
@@ -560,11 +590,10 @@ def test_not_due_is_stock_immediate_scroll():
   assert sim.scrolls == 1 and sim.scroll_t == pytest.approx(1 / FPS)    # same frame as the edge
   for _ in range(15 * FPS):
     sim.frame()
-  assert sim.scrolls == 1 and all(y is None for y in sim.ys)
+  assert sim.scrolls == 1 and all(y is None for y in sim.ys) and sim.pages[-1] == sim.W
 
 
-def test_due_card_first_then_scroll_to_home():
-  from openpilot.selfdrive.ui.mici.widgets import card_slide
+def test_due_card_first_then_leaves_with_the_stock_scroll():
   sim = _MainSim(due=True)
   sim.frame()
   sim.started = False
@@ -573,18 +602,22 @@ def test_due_card_first_then_scroll_to_home():
   assert sim.scrolls == 0 and sim.ys[-1] is not None and sim.ys[-1] < -100   # card slides in, no scroll yet
   for _ in range(int((ds.SHOW_S - 0.1) * FPS)):
     sim.frame()
-  assert sim.scrolls == 0 and sim.ys[-1] == 0.0                               # up for SHOW_S, scroll held
+  assert sim.scrolls == 0 and sim.ys[-1] == 0.0 and sim.xs[-1] == 0.0       # up for SHOW_S over the onroad page
   while sim.scrolls == 0:
     sim.frame()
   assert sim.scroll_t - edge == pytest.approx(ds.SHOW_S, abs=2 / FPS)         # hand-off at SHOW_S
-  n = 0
-  while sim.ys[-1] is not None:                                               # card slides out as home scrolls in
+  start = len(sim.ys)
+  while sim.ys[-1] is not None:
     sim.frame()
-    n += 1
-  assert n <= card_slide.EXIT_S * FPS + 2
+    assert sim.ys[-1] in (0.0, None)                                          # no vertical exit
+    if sim.xs[-1] is not None:
+      assert sim.xs[-1] == sim.pages[-1]                                      # rides the onroad page exactly
+  leave = sim.xs[start - 1:-1]
+  assert all(b >= a for a, b in zip(leave, leave[1:], strict=False))         # sideways, home's direction
+  assert sim.pages[-1] >= sim.W - 0.5                                         # gone the frame home is in place
   for _ in range(5 * FPS):
     sim.frame()
-  assert sim.scrolls == 1 and sim.ys[-1] is None                              # once, and nothing left drawn
+  assert sim.scrolls == 1 and sim.ys[-1] is None and sim.pages[-1] == sim.W
 
 
 def test_tap_hands_off_early():
@@ -613,7 +646,7 @@ def test_onroad_resume_cancels_card_and_hand_off():
   assert sim.ys[-1] is None and not sim.slide.drawn
   for _ in range(15 * FPS):
     sim.frame()
-  assert sim.scrolls == 0                                                     # never scrolls to home; stock onroad logic runs
+  assert sim.scrolls == 0 and sim.pages[-1] == 0.0                            # never scrolls to home
 
 
 def test_main_layout_hooks():
@@ -625,7 +658,7 @@ def test_main_layout_hooks():
   assert "self._onroad_time_delay = rl.get_time()" in trans and "ONROAD_DELAY" in trans     # stock onroad untouched
   assert "pop_widgets_to" not in trans.split("hold_home")[1].split("FIXME")[0]               # offroad never pops the nav stack
   render = main.split("def _render(self")[1].split("\n  def ")[0]
-  assert render.index("super()._render(self._rect)") < render.index("self._drive_summary.render(self._rect)")
+  assert render.index("super()._render(self._rect)") < render.index("self._drive_summary.render(self._rect, self._onroad_layout.rect.x)")
   assert "self._drive_summary.dismiss_on_tap()" in main.split("def _handle_mouse_release")[1]
   assert "not self._drive_summary.visible" in main                                            # no swiping under the card
   for word in ("tesla", "jetlink", "park"):

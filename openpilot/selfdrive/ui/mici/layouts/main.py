@@ -111,7 +111,7 @@ class MiciMainLayout(Scroller):
 
     # Render
     super()._render(self._rect)
-    self._drive_summary.render(self._rect)   # overlay above the onroad page / scroll
+    self._drive_summary.render(self._rect, self._onroad_layout.rect.x)   # overlay riding the onroad page
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if self._drive_summary.dismiss_on_tap():   # a tap on the trip card only dismisses it

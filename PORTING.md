@@ -25,7 +25,7 @@ The keys are read tolerantly: with an older params library, the feature is just 
 1. Stats at drive end: in `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
    - It records while `ui_state.started` and saves the summary when offroad lasts 3 s. Shorter onroad cycles count as the same drive.
    - It works with any offroad cause: ignition off, park-offroad, onroad cycle, always-offroad.
-2. Card: in `__init__`, add `self._drive_summary = DriveSummaryCard(stats_fn=None)`. At the end of `_render`, after `super()._render(...)`, add `self._drive_summary.render(self._rect)`: an overlay above the scroller.
+2. Card: in `__init__`, add `self._drive_summary = DriveSummaryCard(stats_fn=None)`. At the end of `_render`, after `super()._render(...)`, add `self._drive_summary.render(self._rect, self._onroad_layout.rect.x)`: an overlay above the scroller that rides the onroad page once dismissed.
    - `stats_fn` is optional: a callable returning `today_m/today_e/week_m/week_e/streak_days`. TeslaPilot passes its `stats_view`. Without it, the card uses the 14 days of totals it keeps itself.
 3. The hop, in `_handle_transitions`. The trip card shows first, then stock's scroll to home:
    ```python
@@ -55,7 +55,10 @@ The keys are read tolerantly: with an older params library, the feature is just 
   - The car is stopped on the last onroad frame. An onroad cycle while moving stays stock.
 - Motion and timing:
   - Slides in from the top with a smooth ease-out in `ENTER_S` (0.28 s), with no bounce or overshoot (`widgets/card_slide.py`).
-  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, it eases back up in `EXIT_S` (0.22 s) as the stock scroll to home runs underneath. There's no on-screen timer.
+  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, the stock scroll to home runs.
+    - The card has no exit animation of its own: it rides the onroad page's scroller position (`attached_dx`), so it slides sideways exactly like home coming in today.
+    - It stops drawing once home is in place, with a 2 s failsafe if no scroll happens.
+    - There's no on-screen timer.
   - Going back onroad removes it at once and cancels the hand-off.
   - If onroad resumes within the 3 s merge window, the trip goes on and the card comes back at the real end.
 - The card headline is "trip complete", with the theme check badge to its right.
