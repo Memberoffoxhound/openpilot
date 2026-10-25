@@ -17,7 +17,6 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
 from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_row, fmt_trip
-from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
 from openpilot.common.version import RELEASE_BRANCHES
 
 HOME_PADDING = 8
@@ -208,8 +207,6 @@ class MiciHomeLayout(Widget):
     self._week_txt = ("Week ", "0mi 0%")
     self._trip_hit = rl.Rectangle(0, 0, 0, 0)
     self._on_stats_click: Callable | None = None
-    # drive summary card (DriveSummary param): one render hook + one tap hook below
-    self._drive_summary = DriveSummaryCard(stats_fn=stats_view)
 
   def _update_state(self):
     self._refresh_trip()
@@ -237,8 +234,6 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_alert_count_callback(alert_count_callback, alert_icon_callback)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if self._drive_summary.dismiss_on_tap():
-      return
     if (self._on_stats_click and self._trip_hit.width > 0 and
         rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
       self._on_stats_click()
@@ -327,5 +322,3 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_position(self.rect.x + self.rect.width - self._alerts_pill.rect.width - HOME_PADDING,
                                    self.rect.y + self.rect.height - self._alerts_pill.rect.height)
     self._alerts_pill.render()
-
-    self._drive_summary.render(self.rect)

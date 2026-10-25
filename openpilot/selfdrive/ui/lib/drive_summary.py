@@ -131,6 +131,8 @@ class DriveRecorder:
     self._t: float | None = None
     self._off_since: float | None = None
     self._off_wall = 0.0
+    self.last_v = 0.0               # vEgo on the last onroad frame: a trip ends stopped
+    self.shown = False              # the card already hopped in for this drive
 
   def update(self, started: bool, now: float, wall: float, v_ego: float, enabled: bool,
              state: str = "", alert_status: str = "normal", gas_pressed: bool = False,
@@ -153,6 +155,7 @@ class DriveRecorder:
         self.drive_id = drive_id    # CurrentRoute shows up a moment after onroad
       dt = 0.0 if self._t is None else min(1.0, max(0.0, now - self._t))
       self._t = now
+      self.last_v = v_ego
       d = v_ego * dt if v_ego > MOVING_V else 0.0
       self.m += d
       self.dur += dt
@@ -178,7 +181,7 @@ class DriveRecorder:
     return {
       "id": self.drive_id, "start": self.start_wall, "end": end_wall, "dur": round(self.dur, 1),
       "m": round(self.m, 1), "e": round(self.e, 1), "best_m": round(self.best_m, 1),
-      "tl": self.timeline.codes(), "shown": False,
+      "tl": self.timeline.codes(), "shown": self.shown,
     }
 
 
@@ -251,12 +254,53 @@ def day_streak(data: dict | None, today: date | None = None) -> int:
   return n
 
 
+def eligible(drive: dict | None) -> bool:
+  """Long enough for a card: >= 0.1 mi and >= 30 s."""
+  return bool(drive) and float(drive.get("m") or 0) >= MIN_SHOW_M and float(drive.get("dur") or 0) >= MIN_SHOW_S
+
+
 def should_show(drive: dict | None, now_wall: float) -> bool:
-  if not drive or drive.get("shown"):
-    return False
-  if float(drive.get("m") or 0) < MIN_SHOW_M or float(drive.get("dur") or 0) < MIN_SHOW_S:
+  if not drive or drive.get("shown") or not eligible(drive):
     return False
   return 0 <= now_wall - float(drive.get("end") or 0) <= SHOW_WITHIN_S
+
+
+def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
+  """At the onroad -> offroad edge: the trip that just ended, when the card should hop in before
+  home (toggle on, a recorded drive, stopped, long enough). None = stock behavior.
+  The recorder still merges a short offroad gap into the same drive; if onroad comes back,
+  the main layout cancels the card and the drive goes on."""
+  rec = recorder if rec is None else rec
+  if not enabled(params) or not rec.active or rec.last_v > MOVING_V:
+    return None
+  drive = rec.summary(wall_now())
+  return drive if eligible(drive) else None
+
+
+class HomeHandoff:
+  """The main layout's hop: on the offroad edge, hold the stock scroll to home while the card is
+  up, then hand off to it. Pure; the main layout calls offroad() / onroad() on the edges and
+  release() every tick.
+
+    offroad(card_shown) -> True: scroll to home now (stock, no card)
+    release(card_holding) -> True once: the card is going away, scroll to home now
+    onroad(): onroad is back, nothing is pending (stock onroad logic takes over)
+  """
+  def __init__(self) -> None:
+    self.waiting = False
+
+  def offroad(self, card_shown: bool) -> bool:
+    self.waiting = bool(card_shown)
+    return not self.waiting
+
+  def onroad(self) -> None:
+    self.waiting = False
+
+  def release(self, card_holding: bool) -> bool:
+    if self.waiting and not card_holding:
+      self.waiting = False
+      return True
+    return False
 
 
 # -- card and streak-icon formatting (pure, shared with the widgets) ---------

@@ -11,7 +11,9 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
 from openpilot.selfdrive.ui.lib import drive_summary
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
+from openpilot.system.ui.lib.application import gui_app, MousePos
 
 
 ONROAD_DELAY = 2.5  # seconds
@@ -34,6 +36,7 @@ class MiciMainLayout(Scroller):
     self._settings_layout = SettingsLayout()
     self._car_onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked)
     self._body_onroad_layout = BodyLayout()
+    self._drive_summary = DriveSummaryCard(stats_fn=stats_view)   # trip-complete hop before home (portable)
 
     # Initialize widget rects
     for widget in (self._home_layout, self._alerts_layout, self._settings_layout,
@@ -50,7 +53,7 @@ class MiciMainLayout(Scroller):
     self._scroller.set_reset_scroll_at_show(False)
 
     # Disable scrolling when onroad is interacting with bookmark
-    self._scroller.set_scrolling_enabled(lambda: not self._car_onroad_layout.is_swiping_left())
+    self._scroller.set_scrolling_enabled(lambda: not self._car_onroad_layout.is_swiping_left() and not self._drive_summary.visible)
 
     # Set callbacks
     self._setup_callbacks()
@@ -108,6 +111,12 @@ class MiciMainLayout(Scroller):
 
     # Render
     super()._render(self._rect)
+    self._drive_summary.render(self._rect)   # overlay above the onroad page / scroll
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    if self._drive_summary.dismiss_on_tap():   # a tap on the trip card only dismisses it
+      return
+    super()._handle_mouse_release(mouse_pos)
 
   def _handle_transitions(self):
     # Don't pop if onboarding
@@ -120,9 +129,13 @@ class MiciMainLayout(Scroller):
       # onroad: after delay, pop nav stack and scroll to onroad
       # offroad: immediately scroll to home, but don't pop nav stack (can stay in settings)
       if ui_state.started:
+        self._drive_summary.cancel()
         self._onroad_time_delay = rl.get_time()
-      else:
+      elif not self._drive_summary.hold_home():   # trip card due: it hops in first, scroll to home after
         self._scroll_to(self._home_layout)
+
+    if self._drive_summary.release_home():   # trip card dismissed: now the stock scroll to home
+      self._scroll_to(self._home_layout)
 
     # FIXME: these two pops can interrupt user interacting in the settings
     if self._onroad_time_delay is not None and rl.get_time() - self._onroad_time_delay >= ONROAD_DELAY:

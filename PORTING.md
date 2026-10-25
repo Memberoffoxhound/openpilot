@@ -21,28 +21,43 @@ Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new 
 ```
 The keys are read tolerantly: with an older params library, the feature is just off. This fork sets `DriveSummary` from the "Go Offroad in Park" toggle. Elsewhere, add a `BigParamControl("drive summary", "DriveSummary")` toggle, or set the param.
 
-### Hooks (4 lines of call sites, plus imports)
-1. Stats at drive end: in the mici main layout's `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
+### Hooks (all in the mici main layout, except the streak icon; plus imports)
+1. Stats at drive end: in `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
    - It records while `ui_state.started` and saves the summary when offroad lasts 3 s. Shorter onroad cycles count as the same drive.
    - It works with any offroad cause: ignition off, park-offroad, onroad cycle, always-offroad.
-2. Render hook: in the mici home layout, add the card to `__init__` and draw it at the end of `_render`:
-   - `__init__`: `self._drive_summary = DriveSummaryCard(stats_fn=None)`
-   - end of `_render`: `self._drive_summary.render(self.rect)`
-   - `stats_fn` is optional: a callable returning `today_m/today_e/week_m/week_e/streak_days`. TeslaPilot passes its home `stats_view`. Without it, the card uses the 14 days of totals it keeps itself.
-3. Tap: at the top of the home `_handle_mouse_release`, add `if self._drive_summary.dismiss_on_tap(): return`.
-4. Streak icon: in `AugmentedRoadView`, construct a `StreakIcon()` and call `self._streak_icon.render(self._content_rect)` right after the HUD render, inside the scissor. The content rect excludes the confidence-ball side panel.
+2. Card: in `__init__`, add `self._drive_summary = DriveSummaryCard(stats_fn=None)`. At the end of `_render`, after `super()._render(...)`, add `self._drive_summary.render(self._rect)`: an overlay above the scroller.
+   - `stats_fn` is optional: a callable returning `today_m/today_e/week_m/week_e/streak_days`. TeslaPilot passes its `stats_view`. Without it, the card uses the 14 days of totals it keeps itself.
+3. The hop, in `_handle_transitions`. The trip card shows first, then stock's scroll to home:
+   ```python
+   if ui_state.started:
+     self._drive_summary.cancel()                 # onroad wins, nothing pending
+     self._onroad_time_delay = rl.get_time()      # stock
+   elif not self._drive_summary.hold_home():      # card due: hold the scroll
+     self._scroll_to(self._home_layout)           # stock
+
+   if self._drive_summary.release_home():         # card dismissed: stock scroll now
+     self._scroll_to(self._home_layout)
+   ```
+   - Not due (toggle off, short trip, still moving): exactly stock.
+   - The offroad branch never pops the nav stack (stock).
+4. Tap: add `_handle_mouse_release` with `if self._drive_summary.dismiss_on_tap(): return` before `super()`.
+   - Also add `and not self._drive_summary.visible` to the scroller's `set_scrolling_enabled`, so nothing swipes under the card.
+5. Streak icon: in `AugmentedRoadView`, construct a `StreakIcon()` and call `self._streak_icon.render(self._content_rect)` right after the HUD render, inside the scissor. The content rect excludes the confidence-ball side panel.
 
 ### Swap-ins (in `drive_summary.py`, try/except imports, nothing to do on a fork without them)
 - **`accent_rgb()`, theme color:** used by the card's check badge and the streak ring. It returns the fork's theme color from `openpilot.selfdrive.ui.layouts.settings.common.theme_rgb()`, which here is TeslaPilot's theme (Tesla blue or openpilot green). If that import fails (no theme manager), it returns **comma green** `#178645`, connect's engagedGreen, the same as the timeline's engaged color. To use another fork's theme manager, change this one function.
 - **`fork_record_m()`, streak record:** the lifetime longest engaged stretch, in meters. Here it is `trip_stats.load_stats()["max_streak_m"]`. Without it the value is 0, and the record `drive_summary` keeps itself (`DriveSummaryLast.record_m`, the max best stretch of saved drives) is used.
 
 ### Behavior
-- The card shows once per drive (the `shown` flag lives in the param, so screen sleep or a UI restart can't repeat it).
-  - Only within 10 min of the drive's end.
-  - Only for drives of at least 0.1 mi and 30 s.
+- The card hops in at the onroad -> offroad edge, over the onroad page, before home. Only when it's due:
+  - `DriveSummary` is on.
+  - The trip was recorded and is at least 0.1 mi and 30 s long.
+  - The car is stopped on the last onroad frame. An onroad cycle while moving stays stock.
+- Motion and timing:
   - Slides in from the top with a smooth ease-out in `ENTER_S` (0.28 s), with no bounce or overshoot (`widgets/card_slide.py`).
-  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, it eases back up in `EXIT_S` (0.22 s) to reveal the home screen. There's no on-screen timer.
-  - Going back onroad removes it at once.
+  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, it eases back up in `EXIT_S` (0.22 s) as the stock scroll to home runs underneath. There's no on-screen timer.
+  - Going back onroad removes it at once and cancels the hand-off.
+  - If onroad resumes within the 3 s merge window, the trip goes on and the card comes back at the real end.
 - The card headline is "trip complete", with the theme check badge to its right.
   - Stat columns are evenly spaced, each value centered over its label.
   - Best stretch drops if the four columns don't fit.
