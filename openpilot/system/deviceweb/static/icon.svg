@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:a09b47828ed5245901738702ee136c9ec01bd341a94ccb4cb438c52e0668cdba
-size 275
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" rx="40" fill="#000"/>
+  <text x="90" y="112" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="72" font-weight="700" fill="#f3f3f4">S</text>
+</svg>

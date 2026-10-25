@@ -243,3 +243,20 @@ def test_launch_draws_nothing_from_the_port_from_boot():
   root_sh = ROOT / 'jetlink_repo/jetlink/comma/jetlink-root.sh'
   if root_sh.exists():
     assert 'boot) cmd_boot' in root_sh.read_text()
+
+
+# zoompilot develop (93b6ca9) TestModeld: a Jetson/iPhone on the port reads as a chestnut
+# cable to cable_connected(), so modeld asks the adapter (jetlink docs/porting.md)
+@pytest.mark.parametrize('cable,link,counted', [(False, False, False), (True, False, True), (True, True, False)])
+def test_the_cable_counts_only_with_the_link_off(monkeypatch, cable, link, counted):
+  from openpilot.common.hardware import usb
+  monkeypatch.setattr(usb, 'cable_connected', lambda: cable)
+  monkeypatch.setattr(ja, '_link_on', lambda: link)
+  assert ja.chestnut_cable() is counted
+
+
+def test_modeld_asks_the_adapter_about_the_cable():
+  from openpilot.common.basedir import BASEDIR
+  source = (Path(BASEDIR) / 'openpilot/selfdrive/modeld/modeld.py').read_text()
+  assert 'jetlink_adapter.chestnut_cable()' in source
+  assert 'cable_connected' not in source
