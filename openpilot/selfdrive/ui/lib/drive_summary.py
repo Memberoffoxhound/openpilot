@@ -31,6 +31,7 @@ a params library built before these keys only loses the feature.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from datetime import date, datetime, timedelta
@@ -375,13 +376,64 @@ def streak_view(engaged: bool, alpha: float, cur_m: float, held_m: float | None)
   return held_m, held_m
 
 
+# -- streak pill layout (mici onroad), pure geometry: rects are (x, y, w, h) -----------------
+PILL_H = 50                  # same height as the steering wheel icon in the opposite (bottom-left) corner
+PILL_BOTTOM = 14             # same bottom margin as the wheel
+PILL_RIGHT = 10              # same edge margin as the model-source icon in this corner
+PILL_W = 92                  # preferred width, clamped to the free space left of the corner
+PILL_MIN_W = 60              # narrower than this: the pill is not drawn at all
+PILL_GAP = 4                 # minimum clearance to anything in keep_out (torque bar, wheel)
+
+# The mici torque bar (mici/onroad/torque_bar.py TorqueBar._render): an arc of radius 1200 under the
+# bottom edge, 8 px right of center, 14..56 px thick and 22..26 px up as |torque| goes 0.5 -> 1, spanning
+# TORQUE_ANGLE_SPAN degrees on the 476 px view (scaled by the view width) at full alpha, plus its end caps.
+TB_RADIUS = 1200
+TB_H = (14, 56)
+TB_OFFSET = (22, 26)
+TB_DX = 8
+TB_SPAN_DEG = 12.7
+TB_REF_W = 476
+TB_CAP = 7                   # arc_bar_pts' rounded end caps reach up to this far past the angle span
+
+
+def torque_bar_bounds(x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
+  """Bounding box of the torque bar at its largest (full span, any torque) in a w x h camera view."""
+  half = math.radians(TB_SPAN_DEG * w / TB_REF_W / 2)
+  cx = x + w / 2 + TB_DX
+  r_out = TB_RADIUS + TB_H[1]
+  dx = r_out * math.sin(half) + TB_CAP * math.cos(half)
+  top = y + h - TB_OFFSET[1] - TB_H[1]                                    # outer edge, center, max torque
+  bottom = y + h - TB_OFFSET[0] + TB_RADIUS * (1 - math.cos(half)) + TB_CAP * math.sin(half)   # inner edge at the ends
+  return cx - dx, top, 2 * dx, bottom - top
+
+
+def rects_overlap(a, b) -> bool:
+  return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+
+
+def pill_rect(x: float, y: float, w: float, h: float, keep_out=(), want_w: float = PILL_W):
+  """Streak pill in the bottom-right corner of the camera view, PILL_H tall, growing left up to want_w
+  but stopping PILL_GAP short of every keep_out rect it would run into. None when less than PILL_MIN_W
+  is free (e.g. the narrow view beside the navigation panel): better hidden than overlapping."""
+  right = x + w - PILL_RIGHT
+  top = y + h - PILL_BOTTOM - PILL_H
+  left = x
+  for kx, ky, kw, kh in keep_out:
+    if ky < top + PILL_H and ky + kh > top and kx < right:
+      left = max(left, kx + kw + PILL_GAP)
+  pw = min(want_w, right - left)
+  if pw < PILL_MIN_W:
+    return None
+  return right - pw, top, pw, PILL_H
+
+
 RECORD_MIN_M = 1.0           # below this there is no record yet
 
 
 def streak_record_frac(cur_m: float, record_m: float) -> float | None:
-  """Streak icon ring: progress of the current engaged stretch toward the record (best stretch ever).
-  1.0 = record reached or beaten (the ring stays full while a new record is being set).
-  None = no record yet: the icon shows only the neutral track, no fill."""
+  """Streak pill progress bar: progress of the current engaged stretch toward the record (best stretch ever).
+  1.0 = record reached or beaten (the bar stays full while a new record is being set).
+  None = no record yet: the pill shows only the neutral track, no fill."""
   if record_m < RECORD_MIN_M:
     return None
   return max(0.0, min(1.0, float(cur_m) / float(record_m)))

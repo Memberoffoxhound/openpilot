@@ -366,16 +366,95 @@ def test_card_v3_layout_rules():
   assert "def draw_trip_block(" in row and "BLOCK_VALUE = 34" in row and "BLOCK_LABEL = 30" in row
 
 
-def test_streak_icon_v2_placement():
+def test_streak_pill_placement():
   src = (UI / "mici/onroad/streak_icon.py").read_text()
-  assert 'LABEL = "STREAK"' in src and "RIGHT = 21" in src and "BOTTOM = 14" in src
-  assert "rect.x + rect.width - RIGHT - SIZE" in src      # bottom-right of the camera content rect
+  assert "ds.pill_rect(rect.x, rect.y, rect.width, rect.height, keep_out(rect))" in src
+  assert "ds.torque_bar_bounds(rect.x, rect.y, rect.width, rect.height)" in src
+  assert "if pill is None:\n      return" in src                      # no room: not drawn
+  for gone in ("draw_ring", "label_fits", "LABEL", "icon_pos", "SIZE = 50"):
+    assert gone not in src, gone                                    # the circle is gone
   # the hook passes the content rect, which excludes the confidence-ball side panel
   assert "self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)" in (UI / "mici/onroad/augmented_road_view.py").read_text()
-  # STREAK at size 7 Inter Bold is ~34 px wide; the chord 9 px above center of a 20 px circle is ~35.7 px
-  assert 2 * (20 ** 2 - 9 ** 2) ** 0.5 > 34
   assert "ds.streak_record_frac(" in src and "ds.accent_rgb()" in src and "ds.streak_record_m(" in src
+  assert "ds.fmt_streak(dist)" in src and '"km" if metric else "mi"' in src
   assert "streak_tier" not in src and "TESLA_BLUE" not in src and "tesla" not in src.lower()
+  # same height and bottom margin as the 50 px steering wheel icon
+  hud = (UI / "mici/onroad/hud_renderer.py").read_text()
+  assert "gui_app.texture('icons_mici/wheel.png', 50, 50)" in hud and "rect.y + rect.height - 14 - wheel_txt.height / 2" in hud
+  assert ds.PILL_H == 50 and ds.PILL_BOTTOM == 14
+
+
+def _real_arc_bar_pts():
+  """arc_bar_pts from mici/onroad/torque_bar.py, pulled out with ast (the module needs the whole UI stack)."""
+  import ast
+  import math
+  import numpy as np
+  src = (UI / "mici/onroad/torque_bar.py").read_text()
+  tree = ast.parse(src)
+  keep = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("quantized_lru_cache", "arc_bar_pts")]
+  for n in keep:
+    n.decorator_list = []
+  ns = {"np": np, "math": math, "DEBUG": False, "OrderedDict": dict, "wraps": None, "time": None, "rl": None}
+  exec(compile(ast.Module(body=keep, type_ignores=[]), "torque_bar", "exec"), ns)
+  return ns["arc_bar_pts"], src
+
+
+def test_torque_bar_bounds_match_the_real_torque_bar():
+  import numpy as np
+  arc_bar_pts, src = _real_arc_bar_pts()
+  # the constants mirrored in drive_summary are the ones TorqueBar._render uses
+  assert f"TORQUE_ANGLE_SPAN = {ds.TB_SPAN_DEG}" in src and f"rect.width / {ds.TB_REF_W}" in src
+  assert f"cap_radius: float = {ds.TB_CAP}" in src and f"torque_line_radius = {ds.TB_RADIUS}" in src and f"+ {ds.TB_DX}  # offset" in src
+  assert f"[0.5, 1], [{ds.TB_OFFSET[0]}, {ds.TB_OFFSET[1]}])" in src and f"[0.5, 1], [{ds.TB_H[0]}, {ds.TB_H[1]}])" in src
+  for w in (476, 536 - 261, 400):
+    bx, by, bw, bh = ds.torque_bar_bounds(0, 0, w, 240)
+    span = ds.TB_SPAN_DEG * w / ds.TB_REF_W
+    for t in np.linspace(0, 1, 21):                       # every torque, full span (alpha 1)
+      hgt = np.interp(t, [0.5, 1], ds.TB_H)
+      off = np.interp(t, [0.5, 1], ds.TB_OFFSET)
+      pts = arc_bar_pts(ds.TB_RADIUS + hgt / 2, hgt, -90 - span / 2, -90 + span / 2) + np.array([w / 2 + ds.TB_DX, 240 + ds.TB_RADIUS - off])
+      assert pts[:, 0].min() >= bx - 0.5 and pts[:, 0].max() <= bx + bw + 0.5, (w, t)
+      assert pts[:, 1].min() >= by - 0.5 and pts[:, 1].max() <= by + bh + 0.5, (w, t)
+
+
+def _keep_out(x, y, w, h):
+  wheel = (x + 21, y + h - 14 - 50, 50, 50)
+  return [ds.torque_bar_bounds(x, y, w, h), wheel]
+
+
+def test_streak_pill_never_overlaps_torque_bar_wheel_or_side_panel():
+  H = 240
+  for screen_w, side in ((536, 60), (536, 261)):           # confidence-ball side panel / navigation panel
+    w = screen_w - side
+    pill = ds.pill_rect(0, 0, w, H, _keep_out(0, 0, w, H))
+    panel = (w, 0, side, H)
+    if pill is None:
+      continue
+    assert pill[3] == 50                                   # the wheel icon's height
+    assert pill[0] + pill[2] <= w and pill[1] + pill[3] <= H
+    for ko in _keep_out(0, 0, w, H) + [panel]:
+      assert not ds.rects_overlap(pill, ko), (screen_w, side, pill, ko)
+    bar = ds.torque_bar_bounds(0, 0, w, H)
+    assert pill[0] >= bar[0] + bar[2] + ds.PILL_GAP
+  # the normal view has room; the narrow one beside the navigation panel does not (hidden, not overlapping)
+  normal = ds.pill_rect(0, 0, 476, H, _keep_out(0, 0, 476, H))
+  assert normal is not None and normal[2] >= ds.PILL_MIN_W
+  assert normal[0] + normal[2] == 476 - ds.PILL_RIGHT and normal[1] + normal[3] == H - ds.PILL_BOTTOM
+  assert ds.pill_rect(0, 0, 275, H, _keep_out(0, 0, 275, H)) is None
+  # sweep view widths and offsets: never an overlap
+  for w in range(200, 537, 7):
+    for x0 in (0, 13):
+      pill = ds.pill_rect(x0, 5, w, H, _keep_out(x0, 5, w, H))
+      if pill is not None:
+        assert all(not ds.rects_overlap(pill, ko) for ko in _keep_out(x0, 5, w, H) + [(x0 + w, 5, 60, H)])
+
+
+def test_pill_rect_clamps_width():
+  assert ds.pill_rect(0, 0, 476, 240)[2] == ds.PILL_W                         # nothing in the way: preferred width
+  r = ds.pill_rect(0, 0, 476, 240, [(300, 200, 80, 10)])
+  assert r[0] == 380 + ds.PILL_GAP and r[0] + r[2] == 476 - ds.PILL_RIGHT                             # stops PILL_GAP short
+  assert ds.pill_rect(0, 0, 476, 240, [(300, 0, 150, 20)])[2] == ds.PILL_W   # above the pill: ignored
+  assert ds.pill_rect(0, 0, 476, 240, [(400, 200, 10, 10)]) is None           # under 60 px left: hidden
 
 
 # -- card motion: alert-style bounce in, slide back up to the home screen ------
