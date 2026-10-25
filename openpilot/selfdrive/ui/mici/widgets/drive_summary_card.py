@@ -3,10 +3,11 @@
 Looks like a normal-status alert: opaque black over the whole home screen,
 an Inter Bold lowercase headline (alert text1 style) with a check badge in
 the user's theme color to its right (drive_summary.accent_rgb: the fork's
-theme manager, else comma green), then the stats. Shown once per drive for SHOW_S after the drive
-ends (any onroad -> offroad transition, any car). Tap, timeout or going back
-onroad dismisses it; the timeout has no on-screen indicator, the card just
-fades out over its last FADE_S. Drives under 0.1 mi or 30 s never show.
+theme manager, else comma green), then the stats. Shown once per drive
+for SHOW_S after the drive ends (any onroad -> offroad transition, any car). It slides in from the top
+with the alerts' bounce and, after SHOW_S or a tap, slides back up to reveal
+the home screen (card_slide.py). Going back onroad removes it at once. No
+on-screen timer. Drives under 0.1 mi or 30 s never show.
 
   trip complete (check)
    6.8mi      81%         4         1.2mi            evenly spaced columns, each value
@@ -28,6 +29,7 @@ from collections.abc import Callable
 import pyray as rl
 
 from openpilot.selfdrive.ui.lib import drive_summary as ds
+from openpilot.selfdrive.ui.mici.widgets.card_slide import CardSlide
 from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_block, fmt_trip
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -45,7 +47,6 @@ TL_Y, TL_H = 161, 18        # 1.5x the first 12 px bar: readable on the small sc
 TRIP_Y = 189
 WHITE = (255, 255, 255)
 VALUE_A, DIM_A = 0.9, 0.65
-SLIDE_S, FADE_S = 0.25, 0.4
 POLL_S = 2.0
 ASCENT = 0.80              # Inter baseline as a fraction of the raylib font size (x FONT_SCALE in draw)
 
@@ -80,17 +81,19 @@ class DriveSummaryCard:
     self._today = ("Today ", "")
     self._week = ("Week ", "")
     self._accent: tuple[int, int, int] = ds.COMMA_GREEN
+    self._slide = CardSlide(CARD_H, 1 / gui_app.target_fps)
 
   @property
   def visible(self) -> bool:
-    return (self._shown_at is not None and not ui_state.started and
-            time.monotonic() - self._shown_at < ds.SHOW_S)
+    """On screen: entering, shown, or sliding away."""
+    return self._slide.drawn and not ui_state.started
 
   def dismiss(self) -> None:
-    self._shown_at = None
+    """Slide away to the home screen (timeout or tap)."""
+    self._slide.hide()
 
   def dismiss_on_tap(self) -> bool:
-    """Home's tap hook: a tap while the card is up only dismisses it."""
+    """Home's tap hook: a tap while the card is on screen only dismisses it."""
     if self.visible:
       self.dismiss()
       return True
@@ -100,6 +103,7 @@ class DriveSummaryCard:
     now = time.monotonic()
     if ui_state.started:
       self._shown_at = None
+      self._slide.cut()            # onroad again: gone at once
       return
     if self._shown_at is not None or now - self._poll_at < POLL_S:
       return
@@ -115,6 +119,7 @@ class DriveSummaryCard:
     self._drive = drive
     self._load_texts(data)
     self._shown_at = now
+    self._slide.show()
 
   def _load_texts(self, data: dict | None) -> None:
     metric = bool(ui_state.is_metric)
@@ -135,13 +140,15 @@ class DriveSummaryCard:
 
   def render(self, rect: rl.Rectangle) -> None:
     self._poll()
-    if not self.visible or self._drive is None or self._shown_at is None:
+    if self._shown_at is not None and time.monotonic() - self._shown_at >= ds.SHOW_S:
+      self.dismiss()
+    self._slide.height = rect.height   # slides its own full height: fully off-screen at both ends
+    dy = self._slide.step()
+    if dy is None:
+      self._shown_at = None         # done: next poll may show the next trip
       return
-    t = time.monotonic() - self._shown_at
-    slide = min(1.0, t / SLIDE_S)
-    y0 = rect.y - 50 * (1.0 - slide) ** 2
-    alpha = min(1.0, slide * 2.0, max(0.0, (ds.SHOW_S - t) / FADE_S))
-    self.draw(rect.x, y0, rect.width, rect.height, alpha)
+    if self._drive is not None:
+      self.draw(rect.x, rect.y + dy, rect.width, rect.height, 1.0)
 
   def draw(self, x: float, y: float, w: float, h: float = CARD_H, alpha: float = 1.0) -> None:
     a = alpha

@@ -376,3 +376,82 @@ def test_streak_icon_v2_placement():
   assert 2 * (20 ** 2 - 9 ** 2) ** 0.5 > 34
   assert "ds.streak_record_frac(" in src and "ds.accent_rgb()" in src and "ds.streak_record_m(" in src
   assert "streak_tier" not in src and "TESLA_BLUE" not in src and "tesla" not in src.lower()
+
+
+# -- card motion: alert-style bounce in, slide back up to the home screen ------
+
+FPS = 60
+
+
+def _slide():
+  from openpilot.selfdrive.ui.mici.widgets.card_slide import CardSlide
+  return CardSlide(240, 1 / FPS)
+
+
+def test_show_time_is_ten_seconds():
+  assert ds.SHOW_S == 10.0
+  line = [ln for ln in (UI / "lib/drive_summary.py").read_text().splitlines() if ln.startswith("SHOW_S =")][0]
+  assert "#" in line and "change" in line.lower()
+
+
+def test_card_enters_from_off_screen_and_settles_with_bounce():
+  from openpilot.selfdrive.ui.mici.widgets import card_slide
+  assert card_slide.RC == 0.1                     # the alert band's BounceFilter(0, 0.1, 1 / fps)
+  sl = _slide()
+  assert sl.step() is None and not sl.drawn       # nothing before show()
+  sl.show()
+  ys = [sl.step() for _ in range(int(1.5 * FPS))]
+  assert ys[0] < -0.8 * 240                       # first frame: still (almost) fully above the screen
+  assert max(ys) > 0.5                            # bounce: overshoots down past rect.y like the alerts
+  assert all(abs(y) < 0.5 for y in ys[-10:])      # settled at rect.y within 1.5 s
+  for _ in range(int(ds.SHOW_S * FPS)):           # stays put while shown
+    assert abs(sl.step()) < 0.5
+
+
+def test_card_exit_slides_fully_off_then_stops_drawing():
+  sl = _slide()
+  sl.show()
+  for _ in range(2 * FPS):
+    sl.step()
+  sl.hide()
+  ys = []
+  for _ in range(3 * FPS):
+    y = sl.step()
+    if y is None:
+      break
+    ys.append(y)
+  assert ys and y is None and not sl.drawn        # finished, nothing left on the home screen
+  assert len(ys) < 1.2 * FPS                      # gone in about a second
+  assert all(-240 < y < 1.0 for y in ys)          # every drawn frame still partly on screen, never below rect.y
+  assert ys[-1] < -0.5 * 240
+  assert sl.step() is None                        # stays gone
+
+
+def test_card_tap_mid_entry_and_onroad_cut():
+  sl = _slide()
+  sl.show()
+  for _ in range(5):
+    sl.step()
+  sl.hide()                                       # tap while still entering: slides back up
+  n = 0
+  while sl.step() is not None:
+    n += 1
+    assert n < 3 * FPS
+  sl.show()
+  sl.step()
+  sl.cut()                                        # onroad resumed: gone this frame
+  assert sl.step() is None and not sl.drawn
+  sl.hide()                                       # hide when hidden is a no-op
+  assert sl.step() is None
+
+
+def test_card_uses_the_slide():
+  src = (UI / "mici/widgets/drive_summary_card.py").read_text()
+  assert "CardSlide(CARD_H, 1 / gui_app.target_fps)" in src
+  assert "self._slide.hide()" in src.split("def dismiss(self)")[1].split("def ")[0]
+  assert "self._slide.cut()" in src.split("def _poll(self)")[1].split("def ")[0]
+  assert "self._slide.show()" in src.split("def _poll(self)")[1].split("def ")[0]
+  render = src.split("def render(self")[1].split("def draw(self")[0]
+  assert "ds.SHOW_S" in render and "rect.y + dy" in render and "FADE_S" not in src
+  slide = (UI / "mici/widgets/card_slide.py").read_text()
+  assert "from openpilot.common.filter_simple import BounceFilter" in slide and "pyray" not in slide
