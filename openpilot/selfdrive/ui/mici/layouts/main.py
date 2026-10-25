@@ -10,6 +10,7 @@ from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
+from openpilot.selfdrive.ui.lib import drive_summary
 from openpilot.system.ui.lib.application import gui_app
 
 
@@ -95,6 +96,7 @@ class MiciMainLayout(Scroller):
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
     tick_trip()
+    drive_summary.tick(ui_state)
 
   def _render(self, _):
     if not self._setup:

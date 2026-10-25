@@ -40,6 +40,8 @@ This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs)
 | `VSlamEnabled` | on | Green-pill logger toggle. Off stops detect + log + toast. File `/data/vslam/enabled`. |
 | `VSlamFilterEnabled` | on* | *Unfinished / observe-only.* Param + UI storage exist, but no planner consumer yet — Filter toggle hidden in WebUI/C4 until wired. Requires openpilot long (`AlphaLongitudinalEnabled`); locked off on TACC. File `/data/vslam/filter`. |
 | `TeslaStepAside` | on | While Tesla Autosteer/FSD is selected (not TACC) or Autopilot/FSD/Summon is active, openpilot goes passive before CarParams: `noOutput`, relay never closes. 5 s alert, then display off (touch wakes). Back via onroad cycle once Tesla is idle on TACC 3 s and in P or cruise off. `TeslaSteppedAside` (cleared on ignition) is the per-drive state. See `selfdrive/car/tesla_step_aside.py`. |
+| `DriveSummary` | off | Home "trip complete" card for 15 s after each trip ≥ 0.1 mi / 30 s, plus the onroad STREAK circle (bottom-right; ring = progress to your best stretch `max_streak_m`; theme color). Any car. `selfdrive/ui/lib/drive_summary.py`; see PORTING.md. |
+| `DriveSummaryLast` | — | JSON: last drive (distance, engaged, best stretch, timeline codes, shown flag) + 14 days of totals + `record_m`. |
 | Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
 
 ## Trip files

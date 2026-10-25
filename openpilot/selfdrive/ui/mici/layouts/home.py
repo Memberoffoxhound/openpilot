@@ -15,8 +15,9 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.selfdrive.ui.layouts.settings.trip_seed import engaged_pct
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_row, fmt_trip
+from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
 from openpilot.common.version import RELEASE_BRANCHES
 
 HOME_PADDING = 8
@@ -207,16 +208,14 @@ class MiciHomeLayout(Widget):
     self._week_txt = ("Week ", "0mi 0%")
     self._trip_hit = rl.Rectangle(0, 0, 0, 0)
     self._on_stats_click: Callable | None = None
+    # drive summary card (DriveSummary param): one render hook + one tap hook below
+    self._drive_summary = DriveSummaryCard(stats_fn=stats_view)
 
   def _update_state(self):
     self._refresh_trip()
 
   def _fmt_trip(self, meters: float, eng_m: float) -> str:
-    if ui_state.is_metric:
-      dist, unit = meters / 1000.0, "km"
-    else:
-      dist, unit = meters / 1609.344, "mi"
-    return f"{int(round(dist))}{unit} {engaged_pct(eng_m, meters)}%"
+    return fmt_trip(meters, eng_m, ui_state.is_metric)
 
   def _refresh_trip(self):
     now = time.monotonic()
@@ -238,6 +237,8 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_alert_count_callback(alert_count_callback, alert_icon_callback)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
+    if self._drive_summary.dismiss_on_tap():
+      return
     if (self._on_stats_click and self._trip_hit.width > 0 and
         rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
       self._on_stats_click()
@@ -296,29 +297,9 @@ class MiciHomeLayout(Widget):
 
       y2 = version_pos.y + self._date_label.font_size + 7
       f = gui_app.font(FontWeight.ROMAN)
-      ll, lv = self._last_txt
-      wl, wv = self._week_txt
       avail = self.rect.width - HOME_PADDING * 2
-      lsz = 36
-      while lsz > 22:
-        vsz = max(18, lsz - 6)
-        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
-             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
-        if w <= avail:
-          break
-        lsz -= 1
-      vsz = max(18, lsz - 6)
-      x = version_pos.x
-      vy = y2 + (lsz - vsz)
-      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
-      x += measure_text_cached(f, ll, lsz).x
-      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
-      x += measure_text_cached(f, lv, vsz).x + 16
-      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
-      x += measure_text_cached(f, wl, lsz).x
-      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
-      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4,
-                                    min(avail, x - version_pos.x) + 8, lsz + 8)
+      row_w, lsz = draw_trip_row(f, version_pos.x, y2, avail, self._last_txt, self._week_txt)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz + 8)
 
     # ***** Center-aligned bottom section icons *****
     usb_connected = ui_state.usb_connected
@@ -346,3 +327,5 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_position(self.rect.x + self.rect.width - self._alerts_pill.rect.width - HOME_PADDING,
                                    self.rect.y + self.rect.height - self._alerts_pill.rect.height)
     self._alerts_pill.render()
+
+    self._drive_summary.render(self.rect)

@@ -147,6 +147,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"VSlamEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam detector/logger; C4 green-pill toggle
     {"TeslaStepAside", {PERSISTENT, BOOL, "1"}},  // step aside (noOutput, relay open) while Tesla Autosteer/FSD is selected or active
     {"TeslaSteppedAside", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},  // card: this drive is stepped aside
+    // Drive summary card + streak icon (portable); see PORTING.md.
+    {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // home drive-summary card + onroad engaged-streak icon
+    {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui: last drive's summary + timeline, and 14 days of totals
     {"VSlamFilterEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam filter; OP-long only, TACC locks off
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
