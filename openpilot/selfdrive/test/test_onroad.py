@@ -76,6 +76,7 @@ PROCS = {
   "openpilot.system.qcomgpsd.qcomgpsd": 1.0,
   "openpilot.system.ubloxd.ubloxd": 2.0,
   "openpilot.system.ubloxd.pigeond": 5.0,
+  "openpilot.common.hardware.comma.modem": 10.0,
 }
 
 TIMINGS = {
