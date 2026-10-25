@@ -18,7 +18,7 @@ Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new 
 {"DriveSummary", {PERSISTENT, BOOL, "0"}},
 {"DriveSummaryLast", {PERSISTENT, JSON}},
 ```
-The keys are read tolerantly: with an older params library, the feature is just off. To turn it on, add a `BigParamControl("drive summary", "DriveSummary")` toggle, or set the param.
+The keys are read tolerantly: with an older params library, the feature is just off. This fork sets `DriveSummary` from the "Go Offroad in Park" toggle. Elsewhere, add a `BigParamControl("drive summary", "DriveSummary")` toggle, or set the param.
 
 ### Hooks (4 lines of call sites, plus imports)
 1. Stats at drive end: in the mici main layout's `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
@@ -56,3 +56,18 @@ The keys are read tolerantly: with an older params library, the feature is just 
   - red #c92231 critical
   - grey #919b95 stopped and disengaged
 - Engagement % is distance-based (engaged meters / meters).
+
+## Park-offroad (Tesla; another brand needs one decoder)
+
+| Piece | Where |
+| --- | --- |
+| State machine, decoders, hooks, `parkd` main | `openpilot/selfdrive/car/park_offroad.py` |
+| Swap-in detection | `PARK_SOURCES = {"tesla": ParkSource(addrs, sample)}`. A brand adds `(frames) -> (gear, autopark)`. parkd idles for brands without a source (brand from `CarParamsPersistent`). |
+| Onroad condition | hardwared: `onroad_conditions["not_parked"] = park_offroad.not_parked(params)`. This is a no-op unless `ParkOffroad` is on and parkd holds `ParkOffroadActive`. Offroad then goes through the normal transition: route end, NO_OUTPUT with the relay open, uploads. |
+| Shutdown timing | hardwared: `off_ts = park_timer.update(...)`. After a park-offroad, the shutdown timer restarts at ignition off. |
+| Process | `RestartingPythonProcess("parkd", ..., park_offroad.should_run)`. It runs onroad and offroad while the toggle is on. |
+| Params | `ParkOffroad {PERSISTENT, BOOL, "0"}`, `ParkOffroadActive {CLEAR_ON_MANAGER_START, BOOL}`. Do not add CLEAR_ON_IGNITION_ON: manager's ignition-on clear would drop the latch on an ignitionCan blip. |
+| Toggles | Both `toggles.py` files, with a warning confirm. They also set `DriveSummary`. |
+| Tests | `openpilot/selfdrive/car/tests/test_park_offroad.py`. CAN fixtures, plus a parkd main-loop smoke test with simulated hardwared/manager routes. |
+
+It only ever removes an onroad condition and sends nothing on CAN. Panda safety is unchanged.

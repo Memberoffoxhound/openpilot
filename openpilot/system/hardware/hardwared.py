@@ -29,6 +29,7 @@ from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.chestnut.monitoring import chestnut_state_thread
 from openpilot.system.hardware.chestnut.status import ChestnutStatus
 from openpilot.system.hardware.jetlink_power import JetlinkPower
+from openpilot.selfdrive.car import park_offroad
 from openpilot.common.version import terms_version, training_version
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 
@@ -253,6 +254,7 @@ def hardware_thread(end_event, hw_queue) -> None:
   chestnut = Chestnut()
   chestnut_status = ChestnutStatus()
   jetlink_power = JetlinkPower(log=cloudlog)
+  park_timer = park_offroad.OffroadTimer()
   branch = get_short_branch()
 
   while not end_event.is_set():
@@ -266,6 +268,8 @@ def hardware_thread(end_event, hw_queue) -> None:
       params.put_bool("OnroadCycleRequested", False, block=True)
       offroad_cycle_count = sm.frame
     onroad_conditions["not_onroad_cycle"] = (sm.frame - offroad_cycle_count) >= ONROAD_CYCLE_TIME * SERVICE_LIST['pandaStates'].frequency
+    # Park-offroad (Tesla, ParkOffroad toggle): only ever removes an onroad condition; see park_offroad.py
+    onroad_conditions["not_parked"] = park_offroad.not_parked(params)
 
     if sm.updated['pandaStates'] and len(pandaStates) > 0:
 
@@ -433,6 +437,10 @@ def hardware_thread(end_event, hw_queue) -> None:
       started_ts = None
       if off_ts is None:
         off_ts = time.monotonic()
+
+    # Park-offroad: the shutdown timer starts at ignition off, as without it
+    off_ts = park_timer.update(onroad_conditions["not_parked"], started_ts is not None, onroad_conditions["ignition"],
+                               off_ts, time.monotonic())
 
     # Offroad power monitoring
     voltage = None if peripheralState.pandaType == log.PandaState.PandaType.unknown else peripheralState.voltage

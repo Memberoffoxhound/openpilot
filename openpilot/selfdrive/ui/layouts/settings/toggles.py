@@ -12,7 +12,8 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import DialogResult
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.car import tesla_step_aside
+from openpilot.selfdrive.car import tesla_step_aside, park_offroad
+from openpilot.selfdrive.ui.lib import drive_summary
 from openpilot.selfdrive.ui.layouts.settings.initial_cruise_speed import InitialCruiseSpeedControl
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -52,6 +53,15 @@ DESCRIPTIONS = {
     "When Tesla Autosteer or FSD is selected or driving (or Summon / Autopark is active), openpilot steps aside: " +
     "the harness relay stays open and nothing is sent, so Tesla drives untouched. An alert shows for 5 seconds, " +
     "then the screen turns off until Tesla is back on TACC (touch to wake)."
+  ),
+  "ParkOffroad": tr_noop(
+    "Tesla: go offroad when the car is in Park for 3 seconds. Only Drive or Reverse brings it back onroad, " +
+    "as a new route; the car staying on does not. Ignition starts openpilot as before, and turning the car " +
+    "off and on resets it. Every Park splits the route, and openpilot needs " +
+    "several seconds to be ready again after D/R. Parked offroad with the car on, uploads and updates run as " +
+    "they do offroad, and the shutdown timer starts only once the car powers off. Summon and Autopark keep it " +
+    "offroad (relay open); FSD from Park goes through Step Aside as today. Also turns on the drive summary card " +
+    "and the onroad engaged-streak icon."
   ),
   'RecordFront': tr_noop("Upload data from the cabin camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
@@ -95,6 +105,12 @@ class TogglesLayout(Widget):
         DESCRIPTIONS["TeslaStepAside"],
         "chffr_wheel.png",
         True,
+      ),
+      "ParkOffroad": (
+        lambda: tr("Go Offroad in Park"),
+        DESCRIPTIONS["ParkOffroad"],
+        "warning.png",
+        False,
       ),
       "AlwaysOnDM": (
         lambda: tr("Always-On Driver Monitoring"),
@@ -242,11 +258,16 @@ class TogglesLayout(Widget):
     # TeslaStepAside reads tolerantly: a params library older than the key must not crash Settings
     if param == tesla_step_aside.PARAM_ENABLED:
       return tesla_step_aside.enabled(self._params)
+    if param == park_offroad.PARAM_ENABLED:
+      return park_offroad.enabled(self._params)
     return self._params.get_bool(param)
 
   def _toggle_callback(self, state: bool, param: str):
     if param == "AutoLaneChangeEnabled":
       self._handle_alc_toggle(state)
+      return
+    if param == park_offroad.PARAM_ENABLED:
+      self._handle_park_offroad_toggle(state)
       return
 
     if param == tesla_step_aside.PARAM_ENABLED:
@@ -272,6 +293,25 @@ class TogglesLayout(Widget):
       gui_app.push_widget(dlg)
     else:
       self._params.put_bool("AutoLaneChangeEnabled", False, block=True)
+
+  def _handle_park_offroad_toggle(self, state: bool):
+    def apply(on: bool):
+      park_offroad.put_bool(self._params, park_offroad.PARAM_ENABLED, on, block=True)
+      drive_summary.put_bool(self._params, drive_summary.PARAM_ENABLED, on)  # the summary rides on the same toggle
+
+    if state:
+      def confirm_callback(result: DialogResult):
+        if result == DialogResult.CONFIRM:
+          apply(True)
+        else:
+          self._toggles["ParkOffroad"].action_item.set_state(False)
+
+      content = (f"<h1>{tr('Go Offroad in Park')}</h1><br>" +
+                 f"<p>{tr(DESCRIPTIONS['ParkOffroad'])}</p>")
+      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
+      gui_app.push_widget(dlg)
+    else:
+      apply(False)
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)

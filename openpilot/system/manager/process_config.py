@@ -7,6 +7,7 @@ from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess, RestartingPythonProcess
 from openpilot.selfdrive import jetlink_adapter
+from openpilot.selfdrive.car import park_offroad
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
@@ -131,6 +132,9 @@ procs = [
   # setting is on: should_run reads the JetlinkLink file and imports nothing.
   # Runs onroad too, since it holds the USB gadget for the whole drive.
   RestartingPythonProcess(jetlink_adapter.OWNER, "openpilot.selfdrive.jetlink_adapter", jetlink_adapter.should_run, enabled=not PC),
+  # Tesla park-offroad (ParkOffroad toggle): watches DI_gear on bus 0 onroad and offroad, and only
+  # sets ParkOffroadActive, which hardwared turns into an onroad condition. Idle unless the toggle is on.
+  RestartingPythonProcess("parkd", "openpilot.selfdrive.car.park_offroad", park_offroad.should_run, enabled=not PC),
   # the big-model catalog and pick (from sunnypilot's model manager); offroad only
   RestartingPythonProcess("modelmanagerd", "openpilot.selfdrive.modelmanager.manager", only_offroad, enabled=not PC),
 

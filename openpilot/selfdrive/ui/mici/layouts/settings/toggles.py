@@ -13,7 +13,8 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.car import tesla_step_aside
+from openpilot.selfdrive.car import tesla_step_aside, park_offroad
+from openpilot.selfdrive.ui.lib import drive_summary
 from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -39,6 +40,21 @@ class AutoLaneChangeConfirmPage(NavScroller):
       "to check for a vehicle in the adjacent lane prior to merging.",
       "You are still responsible for ensuring the lane of travel is clear",
       "and agree to intervene as necessary.",
+    ], on_confirm)
+
+
+class ParkOffroadConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    _wire_confirm(self, "enabling\ngo offroad in park", [
+      "Tesla: TeslaPilot goes offroad after Park is held 3 s.",
+      "Only D or R brings it back onroad, as a new route. The car staying on does not.",
+      "Ignition starts TeslaPilot as before. Turning the car off and on resets it.",
+      "Every Park splits the route. After D/R, TeslaPilot needs several seconds to be ready.",
+      "Parked offroad with the car on, uploads and updates run as offroad.",
+      "The shutdown timer starts only once the car powers off.",
+      "Summon and Autopark keep it offroad, relay open. FSD from Park goes through step aside.",
+      "Also turns on the drive summary card and the engaged-streak icon.",
     ], on_confirm)
 
 
@@ -172,6 +188,12 @@ class TogglesLayoutMici(NavScroller):
                                                  "screen off after a 5 s alert. Back when Tesla is on TACC.")
     self._step_aside_btn.set_enabled(lambda: not ui_state.engaged)
 
+    # Park-offroad + drive summary: one toggle, confirmation first
+    self._park_offroad_btn = BigToggle("go offroad in park", initial_state=park_offroad.enabled(ui_state.params),
+                                       toggle_callback=self._on_park_offroad,
+                                       description="Offroad after Park is held 3 s, back onroad on D/R.\n" +
+                                                   "Adds the drive summary card and streak icon.")
+
     self._scroller.add_widgets([
       self._alc_btn,
       self._personality_toggle,
@@ -182,6 +204,7 @@ class TogglesLayoutMici(NavScroller):
       record_front,
       record_mic,
       self._step_aside_btn,
+      self._park_offroad_btn,
       enable_openpilot,
     ])
 
@@ -234,10 +257,23 @@ class TogglesLayoutMici(NavScroller):
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
     self._step_aside_btn.set_checked(tesla_step_aside.enabled(ui_state.params))
+    self._park_offroad_btn.set_checked(park_offroad.enabled(ui_state.params))
 
   def _on_step_aside(self, state: bool):
     tesla_step_aside.put_bool(ui_state.params, tesla_step_aside.PARAM_ENABLED, state, block=True)
     restart_needed_callback()
+
+  def _on_park_offroad(self, state: bool):
+    def apply(on: bool):
+      park_offroad.put_bool(ui_state.params, park_offroad.PARAM_ENABLED, on, block=True)
+      drive_summary.put_bool(ui_state.params, drive_summary.PARAM_ENABLED, on)  # the summary rides on the same toggle
+      self._park_offroad_btn.set_checked(on)
+
+    if state:
+      self._park_offroad_btn.set_checked(False)
+      gui_app.push_widget(ParkOffroadConfirmPage(lambda: apply(True)))
+    else:
+      apply(False)
 
   def _on_alc(self, state: bool):
     if state:
