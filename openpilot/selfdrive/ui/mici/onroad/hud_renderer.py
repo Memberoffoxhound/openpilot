@@ -134,12 +134,19 @@ class HudRenderer(Widget):
     self._compass_letter: str | None = None
 
     self._wheel_alpha_filter = FirstOrderFilter(0, 0.05, 1 / gui_app.target_fps)
+    self._wheel_on_alpha = 255 * 0.9    # the wheel's engaged alpha target, for engaged_alpha
     self._wheel_y_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps)
     self._heading_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps, initialized=False)
     self._compass_fade = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
 
     self._set_speed_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
     self._chestnut_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
+
+  @property
+  def engaged_alpha(self) -> float:
+    """0..1 fade of the engaged-only HUD (the steering wheel icon's alpha filter), for overlays that
+    fade in and out with it (the streak icon)."""
+    return max(0.0, min(1.0, self._wheel_alpha_filter.x / max(1.0, self._wheel_on_alpha)))
 
   def set_wheel_critical_icon(self, critical: bool):
     """Set the wheel icon to critical or normal state."""
@@ -235,7 +242,8 @@ class HudRenderer(Widget):
         self._wheel_alpha_filter.update(0)
         self._wheel_y_filter.update(wheel_txt.height / 2)
       else:
-        self._wheel_alpha_filter.update(255 * (THEME_LANE_ALPHA if tesla else 0.9))
+        self._wheel_on_alpha = 255 * (THEME_LANE_ALPHA if tesla else 0.9)
+        self._wheel_alpha_filter.update(self._wheel_on_alpha)
         self._wheel_y_filter.update(0)
 
     pos_x = int(rect.x + 21 + wheel_txt.width / 2)

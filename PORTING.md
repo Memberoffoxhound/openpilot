@@ -42,7 +42,8 @@ The keys are read tolerantly: with an older params library, the feature is just 
    - The offroad branch never pops the nav stack (stock).
 4. Tap: add `_handle_mouse_release` with `if self._drive_summary.dismiss_on_tap(): return` before `super()`.
    - Also add `and not self._drive_summary.visible` to the scroller's `set_scrolling_enabled`, so nothing swipes under the card.
-5. Streak icon: in `AugmentedRoadView`, construct a `StreakIcon()` and call `self._streak_icon.render(self._content_rect)` right after the HUD render, inside the scissor. The content rect excludes the confidence-ball side panel.
+5. Streak icon: in `AugmentedRoadView`, construct a `StreakIcon()` and call `self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)` right after the HUD render, inside the scissor. The content rect excludes the confidence-ball side panel.
+   - `engaged_alpha` is a small property on `HudRenderer` that returns the steering wheel icon's alpha filter, normalized to 0..1. Add it on another fork, or pass any 0..1 engaged fade.
 
 ### Swap-ins (in `drive_summary.py`, try/except imports, nothing to do on a fork without them)
 - **`accent_rgb()`, theme color:** used by the card's check badge and the streak ring. It returns the fork's theme color from `openpilot.selfdrive.ui.layouts.settings.common.theme_rgb()`, which here is TeslaPilot's theme (Tesla blue or openpilot green). If that import fails (no theme manager), it returns **comma green** `#178645`, connect's engagedGreen, the same as the timeline's engaged color. To use another fork's theme manager, change this one function.
@@ -65,10 +66,12 @@ The keys are read tolerantly: with an older params library, the feature is just 
   - Stat columns are evenly spaced, each value centered over its label.
   - Best stretch drops if the four columns don't fit.
 - Streak icon:
+  - It shows only while engaged, fading in and out with the steering wheel icon (shared alpha, no timing of its own).
+  - There's no disengaged state: after a disengage it keeps the last value while the fade runs out.
   - The number is the current engaged stretch in the user's unit: one decimal under 10 (floored), whole numbers from 10.
+  - It starts at 0 on every engagement: the recorder zeroes it on any disengaged frame, including a restart after an onroad cycle.
   - The ring shows progress toward the streak record, filled in the accent color, and is full once the record is reached or beaten.
   - With no record yet (under 1 m), only the neutral track shows, never a misleading full ring.
-  - On disengage, everything is grey for 3 s, then it fades.
 - The timeline is 160 constant-memory time buckets, using comma connect's palette:
   - green #178645 engaged
   - blue #175886 manual

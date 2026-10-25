@@ -325,7 +325,7 @@ def test_ui_hooks_present():
   assert "_drive_summary" not in home and "DriveSummaryCard" not in home     # the card lives in the main layout now
   assert "draw_trip_row(" in home and "measure_text_cached(f, ll" not in home   # row code lives in trip_row.py only
   arv = (UI / "mici/onroad/augmented_road_view.py").read_text()
-  assert "self._streak_icon.render(self._content_rect)" in arv
+  assert "self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)" in arv
 
 
 
@@ -371,7 +371,7 @@ def test_streak_icon_v2_placement():
   assert 'LABEL = "STREAK"' in src and "RIGHT = 21" in src and "BOTTOM = 14" in src
   assert "rect.x + rect.width - RIGHT - SIZE" in src      # bottom-right of the camera content rect
   # the hook passes the content rect, which excludes the confidence-ball side panel
-  assert "self._streak_icon.render(self._content_rect)" in (UI / "mici/onroad/augmented_road_view.py").read_text()
+  assert "self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)" in (UI / "mici/onroad/augmented_road_view.py").read_text()
   # STREAK at size 7 Inter Bold is ~34 px wide; the chord 9 px above center of a 20 px circle is ~35.7 px
   assert 2 * (20 ** 2 - 9 ** 2) ** 0.5 > 34
   assert "ds.streak_record_frac(" in src and "ds.accent_rgb()" in src and "ds.streak_record_m(" in src
@@ -663,3 +663,73 @@ def test_main_layout_hooks():
   assert "not self._drive_summary.visible" in main                                            # no swiping under the card
   for word in ("tesla", "jetlink", "park"):
     assert word not in "\n".join(ln for ln in main.splitlines() if "_drive_summary" in ln or "DriveSummaryCard" in ln).lower()
+
+
+# -- streak icon: engaged only, fades with the engaged HUD, resets per engagement ----
+
+def test_streak_icon_engaged_only_with_shared_fade():
+  src = (UI / "mici/onroad/streak_icon.py").read_text()
+  for gone in ("GREY", "HOLD_S", "FADE_S", "on: bool", "state_on"):
+    assert gone not in src, gone                                   # no disengaged state or timing of its own
+  assert "ds.streak_view(engaged, alpha," in src and "def render(self, rect: rl.Rectangle, alpha: float" in src
+  hud = (UI / "mici/onroad/hud_renderer.py").read_text()
+  prop = hud.split("def engaged_alpha(self)")[1].split("def ")[0]
+  assert "self._wheel_alpha_filter.x" in prop                      # the steering wheel's own filter
+  assert "self._wheel_alpha_filter.update(self._wheel_on_alpha)" in hud
+  assert "self._wheel_alpha_filter.update(0)" in hud.split("UIStatus.DISENGAGED")[1][:200]   # 0 when disengaged
+
+
+def test_streak_view_visibility():
+  # disengaged from the start: never drawn, whatever the fade says
+  assert ds.streak_view(False, 1.0, 0.0, None) == (None, None)
+  # engagement starts: fade comes up from 0, value is the live stretch from 0
+  shown, held = ds.streak_view(True, 0.0, 0.0, None)
+  assert shown is None and held == 0.0
+  shown, held = ds.streak_view(True, 0.4, 25.0, held)
+  assert shown == 25.0
+  shown, held = ds.streak_view(True, 1.0, 900.0, held)
+  assert shown == 900.0
+  # disengage: recorder drops cur_m to 0, the icon keeps 900 while the shared fade runs out
+  shown, held = ds.streak_view(False, 0.6, 0.0, held)
+  assert shown == 900.0
+  shown, held = ds.streak_view(False, 0.005, 0.0, held)
+  assert shown is None and held is None
+  # stays hidden while disengaged (e.g. a critical wheel alert holding the wheel alpha up)
+  assert ds.streak_view(False, 1.0, 0.0, held) == (None, None)
+  # next engagement starts at 0 again
+  shown, held = ds.streak_view(True, 0.0, 0.0, held)
+  shown, held = ds.streak_view(True, 0.5, 3.0, held)
+  assert shown == 3.0
+
+
+def test_streak_resets_on_every_engagement_and_record_keeps_best():
+  r = ds.DriveRecorder()
+  t = 0.0
+
+  def run(seconds, v, enabled):
+    nonlocal t
+    for _ in range(int(seconds * 20)):
+      r.update(True, t, 1.7e9 + t, v, enabled)
+      t += 0.05
+
+  run(1, 20.0, False)
+  assert r.cur_m == 0.0
+  run(10, 20.0, True)                       # first engagement: 200 m
+  assert r.cur_m == pytest.approx(200, abs=2)
+  run(0.05, 20.0, False)                    # one disengaged frame
+  assert r.cur_m == 0.0
+  run(5, 20.0, True)                        # new engagement starts from 0: 100 m
+  assert r.cur_m == pytest.approx(100, abs=2)
+  assert r.best_m == pytest.approx(200, abs=2)    # best stretch keeps the longer one
+  run(15, 20.0, True)                       # same engagement grows past it
+  assert r.cur_m == pytest.approx(400, abs=2) and r.best_m == pytest.approx(400, abs=2)
+  # an offroad gap merged into the same drive: the restart comes back disengaged, so it resets too
+  r.update(False, t, 1.7e9 + t, 0.0, False)
+  t += 1.0
+  run(0.05, 0.0, False)
+  assert r.cur_m == 0.0 and r.best_m == pytest.approx(400, abs=2)
+  # the saved record follows the best stretch
+  data = ds.add_drive(None, r.summary(1.7e9 + t))
+  assert ds.own_record_m(data) == pytest.approx(400, abs=2)
+  data = ds.add_drive(data, {"id": "b", "m": 100.0, "e": 50.0, "best_m": 50.0, "end": 1.7e9 + t})
+  assert ds.own_record_m(data) == pytest.approx(400, abs=2)       # a shorter streak doesn't lower it

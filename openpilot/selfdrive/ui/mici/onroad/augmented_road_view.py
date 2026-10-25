@@ -260,7 +260,7 @@ class AugmentedRoadView(CameraView):
     self._hud_renderer.set_wheel_critical_icon(alert_to_render is not None and not not_animating_out and
                                                alert_to_render.visual_alert == car.CarControl.HUDControl.VisualAlert.steerRequired)
     self._hud_renderer.render(self._content_rect)
-    self._streak_icon.render(self._content_rect)
+    self._streak_icon.render(self._content_rect, self._hud_renderer.engaged_alpha)   # fades with the wheel
     self._alert_renderer.render(self._content_rect)
 
     # Draw fake rounded border

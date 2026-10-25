@@ -362,6 +362,19 @@ def fmt_streak(dist: float) -> str:
   return f"{int(dist * 10) / 10:.1f}" if dist < 10 else str(int(dist))
 
 
+def streak_view(engaged: bool, alpha: float, cur_m: float, held_m: float | None) -> tuple[float | None, float | None]:
+  """Streak icon, engaged only. alpha is the shared engaged-UI fade (0..1, the HUD wheel's filter).
+  Returns (meters to show, or None = not drawn; new held value, None = faded out).
+  While engaged it shows the live current stretch (the recorder resets it to 0 on every disengaged
+  frame, so each engagement starts at 0). After a disengage it keeps the last engaged value while
+  the shared fade runs out, then stays hidden until the next engagement."""
+  if engaged:
+    held_m = cur_m
+  if held_m is None or alpha <= 0.01:
+    return None, (cur_m if engaged else None)
+  return held_m, held_m
+
+
 RECORD_MIN_M = 1.0           # below this there is no record yet
 
 
