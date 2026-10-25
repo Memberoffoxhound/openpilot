@@ -24,6 +24,10 @@ POINTER = b'version https://git-lfs.github.com/spec/v1'
 ALLOWED = {
   'openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl',
 }
+# jetlink's own test fixture for its pointer detection; jetlink has no .gitattributes, so nothing smudges it
+SUBMODULE_ALLOWED = {
+  'jetlink_repo/tests/fixtures/pointer_f877d7a0.txt',
+}
 SUBMODULES = ('opendbc_repo', 'panda', 'msgq_repo', 'rednose_repo', 'teleoprtc_repo', 'tinygrad_repo', 'jetlink_repo')
 
 
@@ -79,7 +83,7 @@ def problems(repo: Path = ROOT) -> list[str]:
   for sm in SUBMODULES:
     d = repo / sm
     if (d / '.git').exists():
-      errs += [f'{sm}/{p}: Git LFS pointer in submodule' for p in pointers(d)]
+      errs += [f'{sm}/{p}: Git LFS pointer in submodule' for p in pointers(d) if f'{sm}/{p}' not in SUBMODULE_ALLOWED]
   return errs
 
 
