@@ -103,6 +103,14 @@ def _link_on() -> bool:
   return link_mode_file() != 0
 
 
+def chestnut_cable() -> bool:
+  """A cable on the port, for modeld's chestnut check. A Jetson or an iPhone
+  on the port is a cable too, so it counts only while Jetlink is off (jetlink
+  docs/porting.md). As zoompilot develop (93b6ca9) has it."""
+  from openpilot.common.hardware.usb import cable_connected
+  return cable_connected() and not _link_on()
+
+
 @functools.cache
 def _adapter_class():
   from jetlink.openpilot.interface import Keys

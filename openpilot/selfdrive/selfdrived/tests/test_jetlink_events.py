@@ -90,7 +90,7 @@ def test_offer_swap_no_entry_chime_and_link_lost(tracked):
 
 
 def test_the_events_are_native_and_never_disengage():
-  assert (EventName.jetlinkBigModelAvailable, EventName.jetlinkBigModelLost, EventName.jetlinkBigModelActive) == (105, 106, 107)
+  assert (EventName.jetlinkBigModelAvailable, EventName.jetlinkBigModelLost, EventName.jetlinkBigModelActive) == (106, 107, 108)
   tree = ast.parse((HERE / 'events.py').read_text())
   events = next(n.value for n in ast.walk(tree) if isinstance(n, ast.AnnAssign) and getattr(n.target, 'id', '') == 'EVENTS')
   found = {}

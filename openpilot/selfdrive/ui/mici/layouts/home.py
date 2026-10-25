@@ -177,9 +177,6 @@ class MiciHomeLayout(Widget):
     self._version_text = self._get_version_text()
     self._wordmark_font = _wordmark_font()
 
-    self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
-    self._experimental_icon.set_enabled(True)
-    self._experimental_icon.set_click_callback(self._toggle_experimental)
     self._long_badge = LongModeBadge()
     self._usb_icon = IconWidget("icons_mici/usb.png", (62, 40))
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
@@ -194,7 +191,6 @@ class MiciHomeLayout(Widget):
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
       self._long_badge,
-      self._experimental_icon,
       self._usb_icon,
       self._chestnut_icon,
       self._chestnut_loading_icon,
@@ -241,17 +237,7 @@ class MiciHomeLayout(Widget):
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, alert_icon_callback)
 
-  def _toggle_experimental(self):
-    if not ui_state.has_longitudinal_control or not ui_state.experimental_mode_confirmed:
-      return
-    on = not ui_state.experimental_mode
-    ui_state.experimental_mode = on
-    ui_state.params.put_bool("ExperimentalMode", on)
-
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
-        rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
-      return
     if (self._on_stats_click and self._trip_hit.width > 0 and
         rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
       self._on_stats_click()
@@ -335,10 +321,6 @@ class MiciHomeLayout(Widget):
                                     min(avail, x - version_pos.x) + 8, lsz + 8)
 
     # ***** Center-aligned bottom section icons *****
-    op_long = bool(ui_state.has_longitudinal_control)
-    self._experimental_icon.set_visible(op_long)
-    self._experimental_icon.set_enabled(op_long)
-    self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
     usb_connected = ui_state.usb_connected
     usb_unknown = ui_state.usb_unknown
     chestnut_state = ui_state.chestnut_state
