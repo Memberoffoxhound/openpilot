@@ -95,14 +95,27 @@ Hamburger → **Live cameras**. LAN WebRTC viewer for comma 4 feeds.
 
 ## Jetlink (branch `jetlink`)
 
-Big model on a phone or computer plugged into the comma's USB-C port. Synced with zoompilot develop `632b0b0`:
+Big model on a phone or computer plugged into the comma's USB-C port. Synced with zoompilot develop `93b6ca9`:
 
-- `jetlink_repo` pinned at `b1d7041` (untagged; jetlink's `edge` points at it), what zoompilot develop pins.
+- `jetlink_repo` pinned at `d19b83b` (jetlink **v0.8.8**), what zoompilot develop pins.
+- modeld picks the big model as zoompilot does: `chestnut_compiled() and (chestnut_present() or jetlink_adapter.chestnut_cable())`. `chestnut_cable()` is a cable on the USB-C port while the link is off, so an iPhone/USB link never waits 10 s for a chestnut.
 - `selfdrive/jetlink_adapter`: jetlink's `Stock` adapter and `Hooks`, behind Highland's lazy gate. With **Settings → models → jetlink** off nothing imports jetlink.
-- selfdrived: `jetlinkBigModelAvailable` / `jetlinkBigModelLost` / `jetlinkBigModelActive` (log.capnp @105–107) plus `bigModelLoading` no-entry for about 1 s after a swap. None of them disengage.
+- selfdrived: `jetlinkBigModelAvailable` / `jetlinkBigModelLost` / `jetlinkBigModelActive` (log.capnp @106–108; `teslaStepAside` is @105, after comma's `userBookmarkNotPaired` @104) plus `bigModelLoading` no-entry for about 1 s after a swap. None of them disengage.
 - hardwared: param `Offroad_AcceleratorUnavailable` (offroad alert "Jetlink unavailable: …"); powers the accelerator off with the comma. `launch_chffrplus.sh` stops charging out of the USB-C port from boot while the link is on.
 - UI, as zoompilot: the link drives the chestnut icons (`ChestnutState.WAITING` shows dim). The models panel holds active model / big model, the off/usb/iOS link toggle and charge phone. The data comes from jetlink's `Status` and its runtime record at `/dev/shm/jetlink/modeld.json`. There is no Highland live file and no Settings → jetlink page.
 - Own additions kept: model manager, ADB released while the link holds the port, Tesla step-aside, `lat_delay` written for the joining model. No LFS for any of it.
+
+## Upstream sync (Oct 2026)
+
+`jetlink` = comma master `9fba666` merged once (one merge commit, no rebase), opendbc moved with panda to comma's pin `b3bd79a` plus the Tesla extras (`TeslaPilot-opendbc` `b04890d`). Tesla steering decode is comma's 3-bit-only one; panda safety is comma's, byte for byte. Experimental mode follows comma (always on with openpilot long); `LongModeBadge` stays.
+
+AGNOS: `jetlink` runs comma's **20.1**. `jetlink-agnos19` is the same code with one commit on top that stays on **19.7** (no OS flash) and keeps comma's `modem` process, which AGNOS 20 moved into the OS. If 20.1 hangs at boot, install `jetlink-agnos19`.
+
+## Git LFS
+
+The branch installs with no LFS fetch. Every file comma keeps in LFS is a normal git blob here (`.gitattributes` exempts it), except `models/big_driving_tinygrad.pkl` (776 MB, over GitHub's 100 MB limit): that stays a pointer, is excluded in `.lfsconfig` (`fetchexclude`), and is pulled from comma's LFS store by the modeld build only when a chestnut is present (`big_model_source.ensure_big_pkl`). `chestnut_compiled()` is false for a pointer, so jetlink / the small model are used instead of a crash.
+
+`python3 scripts/teslapilot_lfs.py` checks this (`--fix` converts newly added LFS files). `selfdrive/test/test_no_lfs_pointers.py` runs it in the test suite.
 
 ## Safety
 
