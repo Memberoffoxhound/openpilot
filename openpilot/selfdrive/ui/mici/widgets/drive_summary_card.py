@@ -58,7 +58,6 @@ VAL_Y, LBL_Y = 80, 130
 TL_Y, TL_H = 161, 18        # 1.5x the first 12 px bar: readable on the small screen; 8 px under the labels
 TRIP_Y = 189
 WHITE = (255, 255, 255)
-VALUE_A, DIM_A = 0.9, 0.65
 ASCENT = 0.80              # Inter baseline as a fraction of the raylib font size (x FONT_SCALE in draw)
 
 
@@ -66,17 +65,18 @@ def _col(rgb, a: float) -> rl.Color:
   return rl.Color(rgb[0], rgb[1], rgb[2], max(0, min(255, int(255 * a))))
 
 
-def accent_rgb() -> tuple[int, int, int]:
-  return ds.accent_rgb()
+VALUE_COL, DIM_COL = _col(WHITE, 0.9), _col(WHITE, 0.65)
+TRACK_COL, SHADE_COL = _col(WHITE, 0.15), _col((0, 0, 0), 0.35)
+RUN_COLS = {st: _col(rgb, 1.0) for st, rgb in ds.COLORS.items()}
 
 
-def draw_check_badge(cx: float, cy: float, r: float, rgb, a: float) -> None:
-  rl.draw_circle_v(rl.Vector2(cx, cy), r, _col(rgb, a))
+def draw_check_badge(cx: float, cy: float, r: float, rgb) -> None:
+  rl.draw_circle_v(rl.Vector2(cx, cy), r, _col(rgb, 1.0))
   t = max(3.0, r * 0.22)
   p1 = rl.Vector2(cx - r * 0.45, cy + r * 0.02)
   p2 = rl.Vector2(cx - r * 0.12, cy + r * 0.36)
   p3 = rl.Vector2(cx + r * 0.48, cy - r * 0.32)
-  white = _col(WHITE, a)
+  white = _col(WHITE, 1.0)
   rl.draw_line_ex(p1, p2, t, white)
   rl.draw_line_ex(p2, p3, t, white)
   rl.draw_circle_v(p2, t / 2, white)
@@ -98,6 +98,10 @@ class DriveSummaryCard:
     self._drive: dict | None = None
     self._shown_at: float | None = None
     self._cols: list[tuple[str, str, str]] = []
+    self._slots: list[tuple[float, float, float]] = []
+    self._slots_w = -1.0
+    self._runs: list[tuple[int, int, int]] = []
+    self._n_buckets = 0
     self._today = ("Today ", "")
     self._week = ("Week ", "")
     self._accent: tuple[int, int, int] = ds.COMMA_GREEN
@@ -194,8 +198,11 @@ class DriveSummaryCard:
         st = {}
     if "today_m" not in st:
       st = {**ds.today_week(data), "streak_days": ds.day_streak(data)}
-    self._accent = accent_rgb()
+    self._accent = ds.accent_rgb()
     self._cols = ds.card_columns(self._drive or {}, int(st.get("streak_days") or 0), metric)
+    self._slots_w = -1.0
+    tl = str((self._drive or {}).get("tl") or "")
+    self._runs, self._n_buckets = ds.timeline_runs(tl), len(tl)
     self._today = ("Today ", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
     self._week = ("Week ", fmt_trip(float(st.get("week_m") or 0), float(st.get("week_e") or 0), metric))
 
@@ -216,61 +223,57 @@ class DriveSummaryCard:
       self._shown_at = None
       return
     if self._drive is not None:
-      self.draw(rect.x + pos[0], rect.y + pos[1], rect.width, rect.height, 1.0)
+      self.draw(rect.x + pos[0], rect.y + pos[1], rect.width, rect.height)
 
-  def draw(self, x: float, y: float, w: float, h: float = CARD_H, alpha: float = 1.0) -> None:
-    a = alpha
-    # opaque like a normal-status alert, over the whole home screen (no home icons peeking through)
-    rl.draw_rectangle(int(x), int(y), int(w), int(h), _col((0, 0, 0), a))
+  def draw(self, x: float, y: float, w: float, h: float) -> None:
+    rl.draw_rectangle(int(x), int(y), int(w), int(h), rl.BLACK)   # opaque: no home icons under it
 
     bold = gui_app.font(FontWeight.DISPLAY)
     roman = gui_app.font(FontWeight.ROMAN)
     cx = x + PAD
 
-    # headline: alert text1 style (Inter Bold, lowercase, white 0.9), the dominant element; theme check badge to its right
-    rl.draw_text_ex(bold, HEADLINE, rl.Vector2(cx, y + HEAD_Y), HEAD_SIZE, 0, _col(WHITE, VALUE_A * a))
+    rl.draw_text_ex(bold, HEADLINE, rl.Vector2(cx, y + HEAD_Y), HEAD_SIZE, 0, VALUE_COL)
     br = HEAD_SIZE * 0.30
     hw = measure_text_cached(bold, HEADLINE, HEAD_SIZE).x
     bcx = min(cx + hw + BADGE_GAP + br, x + w - PAD - br)
-    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, self._accent, a)
+    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, self._accent)
 
-    # stats: evenly spaced columns; each value (+ small unit, one baseline) centered over its label
+    # stats: evenly spaced columns, each value (+ unit on its baseline) centered over its label
     vs, us, ls = VAL_SIZE, UNIT_SIZE, LBL_SIZE
     vy, ly = y + VAL_Y, y + LBL_Y
-    slots = ds.column_slots(self._cols, w - 2 * PAD,
-                         lambda v, u: measure_text_cached(bold, v, vs).x + (UNIT_GAP + measure_text_cached(bold, u, us).x if u else 0),
-                         lambda lbl: measure_text_cached(roman, lbl, ls).x)
-    for (v, u, lbl), (center, vw, lw) in zip(self._cols, slots, strict=False):
+    if self._slots_w != w:
+      self._slots_w = w
+      self._slots = ds.column_slots(self._cols, w - 2 * PAD,
+                                    lambda v, u: measure_text_cached(bold, v, vs).x + (UNIT_GAP + measure_text_cached(bold, u, us).x if u else 0),
+                                    lambda lbl: measure_text_cached(roman, lbl, ls).x)
+    for (v, u, lbl), (center, vw, lw) in zip(self._cols, self._slots, strict=False):
       sx = x + PAD + center
       v0 = sx - vw / 2
-      rl.draw_text_ex(bold, v, rl.Vector2(v0, vy), vs, 0, _col(WHITE, VALUE_A * a))
+      rl.draw_text_ex(bold, v, rl.Vector2(v0, vy), vs, 0, VALUE_COL)
       if u:
         ux = v0 + measure_text_cached(bold, v, vs).x + UNIT_GAP
         uy = vy + (vs - us) * ASCENT * 1.16
-        rl.draw_text_ex(bold, u, rl.Vector2(ux, uy), us, 0, _col(WHITE, DIM_A * a))
-      rl.draw_text_ex(roman, lbl, rl.Vector2(sx - lw / 2, ly), ls, 0, _col(WHITE, DIM_A * a))
+        rl.draw_text_ex(bold, u, rl.Vector2(ux, uy), us, 0, DIM_COL)
+      rl.draw_text_ex(roman, lbl, rl.Vector2(sx - lw / 2, ly), ls, 0, DIM_COL)
 
-    self.draw_timeline(x + PAD, y + TL_Y, w - 2 * PAD, TL_H, str(self._drive.get("tl") or "") if self._drive else "", a)
-    draw_trip_block(roman, bold, x + PAD, y + TRIP_Y, w - 2 * PAD, self._today, self._week, alpha=a)
+    self.draw_timeline(x + PAD, y + TL_Y, w - 2 * PAD, TL_H, self._runs, self._n_buckets)
+    draw_trip_block(roman, bold, x + PAD, y + TRIP_Y, w - 2 * PAD, self._today, self._week)
 
   @staticmethod
-  def draw_timeline(x: float, y: float, w: float, h: float, codes: str, a: float = 1.0) -> None:
-    """connect-style status bar with rounded ends: a round cap in the first / last run's color at
-    each end, then every run drawn square between the caps' centers (so even a run thinner than
-    the cap keeps the pill shape at any thickness)."""
-    rl.draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0, 8, _col(WHITE, 0.15 * a))
-    n = len(codes)
+  def draw_timeline(x: float, y: float, w: float, h: float, runs: list[tuple[int, int, int]], n: int) -> None:
+    """connect-style status bar: round caps in the first / last run's color, runs drawn square between
+    the caps' centers, so even a run thinner than the cap keeps the pill shape."""
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0, 8, TRACK_COL)
     if n == 0:
       return
-    runs = ds.timeline_runs(codes)
     r = h / 2
-    rl.draw_rectangle_rounded(rl.Rectangle(x, y, h, h), 1.0, 8, _col(ds.COLORS[runs[0][0]], a))
-    rl.draw_rectangle_rounded(rl.Rectangle(x + w - h, y, h, h), 1.0, 8, _col(ds.COLORS[runs[-1][0]], a))
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, h, h), 1.0, 8, RUN_COLS[runs[0][0]])
+    rl.draw_rectangle_rounded(rl.Rectangle(x + w - h, y, h, h), 1.0, 8, RUN_COLS[runs[-1][0]])
     lo, hi = x + r, x + w - r
     for st, start, length in runs:
       x0 = max(lo, round(x + w * start / n))
       x1 = min(hi, round(x + w * (start + length) / n))
       if x1 > x0:
-        rl.draw_rectangle_rec(rl.Rectangle(x0, y, max(1, x1 - x0), h), _col(ds.COLORS[st], a))
-    # connect's status gradient: a little darker toward the bottom (inset from the rounded ends)
-    rl.draw_rectangle_gradient_v(int(x + r), int(y), int(w - 2 * r), int(h), _col((0, 0, 0), 0), _col((0, 0, 0), 0.35 * a))
+        rl.draw_rectangle_rec(rl.Rectangle(x0, y, max(1, x1 - x0), h), RUN_COLS[st])
+    # connect's status gradient: a little darker toward the bottom
+    rl.draw_rectangle_gradient_v(int(x + r), int(y), int(w - 2 * r), int(h), rl.Color(0, 0, 0, 0), SHADE_COL)
