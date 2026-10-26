@@ -1,13 +1,10 @@
-"""Trip-complete card (DriveSummary): an opaque, alert-style overlay the main layout draws above
-its scroller when a trip ends.
+"""Trip summary card (DriveSummary): the onroad page's content while the car is parked or off.
 
-On the offroad edge, if a trip is due, it slides in over the onroad page and holds the stock
-scroll to home. After SHOW_S or a tap, the scroll runs and the card rides the onroad page off
-(no exit animation of its own). Going back onroad removes it at once.
+begin() when a trip ends: it slides in over ENTER_S and stays the onroad page's content until
+clear() (the next drive), so swiping back from home shows it again. update() returns True once,
+SHOW_S after begin, if it's still in view: time for the stock scroll to home.
 
-Optional hooks: stats_fn() -> today_m/today_e/week_m/week_e/streak_days (else drive_summary's own
-totals); early_fn() -> "show" / "cut" / None, polled while onroad to put the card up before the
-offroad edge (lib/park_card.py).
+Optional hook: stats_fn() -> today_m/today_e/week_m/week_e/streak_days (else drive_summary's own totals).
 """
 from __future__ import annotations
 
@@ -17,13 +14,12 @@ from collections.abc import Callable
 import pyray as rl
 
 from openpilot.selfdrive.ui.lib import drive_summary as ds
-from openpilot.selfdrive.ui.mici.widgets.card_slide import SHOWN, CardSlide, attached_dx
 from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_block, fmt_trip
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 
-CARD_H = 240              # the whole home screen: opaque, so the home icons never show under it
+ENTER_S = 0.28            # slide in from above, cubic ease-out, never past the top
 PAD = 18
 BADGE_GAP = 14
 UNIT_GAP = 2
@@ -58,17 +54,17 @@ def draw_check_badge(cx: float, cy: float, r: float, rgb) -> None:
   rl.draw_circle_v(p2, t / 2, white)
 
 
-class DriveSummaryCard:
-  """Main layout hooks: hold_home() on the offroad edge, release_home() every tick, cancel() on the
-  onroad edge, render() after the scroller, dismiss_on_tap() in its tap handler."""
+def slide_y(t: float, h: float) -> float:
+  p = min(1.0, max(0.0, t / ENTER_S))
+  return -h * (1.0 - p) ** 3
 
-  def __init__(self, stats_fn: Callable[[], dict] | None = None, early_fn: Callable[[], str | None] | None = None):
+
+class DriveSummaryCard:
+  def __init__(self, stats_fn: Callable[[], dict] | None = None):
     self._stats_fn = stats_fn
-    self._early_fn = early_fn
-    self._early = False           # up ahead of the offroad edge (still onroad)
-    self._early_tap = False       # tapped while early: leave with the scroll as soon as offroad comes
-    self._drive: dict | None = None
-    self._shown_at: float | None = None
+    self.drive: dict | None = None
+    self._shown_at = 0.0
+    self._holding = False
     self._cols: list[tuple[str, str, str]] = []
     self._slots: list[tuple[float, float, float]] = []
     self._slots_w = -1.0
@@ -77,82 +73,39 @@ class DriveSummaryCard:
     self._today = ("Today ", "")
     self._week = ("Week ", "")
     self._accent: tuple[int, int, int] = ds.COMMA_GREEN
-    self._slide = CardSlide(CARD_H, 1 / gui_app.target_fps)
-    self._handoff = ds.HomeHandoff()
 
-  @property
-  def visible(self) -> bool:
-    return self._slide.drawn and (self._early or not ui_state.started)
-
-  @property
-  def holding(self) -> bool:
-    """Up and not dismissed. Time-based too, so it lets go after SHOW_S even when not drawn (settings open)."""
-    return (self._slide.state == SHOWN and self._shown_at is not None and
-            time.monotonic() - self._shown_at < ds.SHOW_S)
-
-  def dismiss(self) -> None:
-    self._slide.hide()
-
-  def dismiss_on_tap(self) -> bool:
-    if self.visible:
-      if self._early:
-        self._early_tap = True    # still onroad: nothing to scroll to yet, leave at the offroad edge
-      else:
-        self.dismiss()
-      return True
-    return False
-
-  def hold_home(self) -> bool:
-    """Offroad edge. True: the card is up, hold the scroll to home. False: stock, scroll now."""
-    if self._early:
-      # already up early: keep it and its SHOW_S clock, unless tapped meanwhile
-      self._early = False
-      shown = self._slide.state == SHOWN and not self._early_tap
-      if self._early_tap:
-        self._early_tap = False
-        self.dismiss()
-    else:
-      shown = self._begin()
-    return not self._handoff.offroad(shown)
-
-  def release_home(self) -> bool:
-    """Every tick. True once, when the card goes away: scroll to home now. Polls early_fn while onroad."""
-    if self._early_fn is not None and ui_state.started:
-      try:
-        ev = self._early_fn()
-      except Exception:
-        ev = None
-      if ev == "show" and not self._slide.drawn and self._begin():
-        self._early = True
-      elif ev == "cut" and self._early:
-        self.cancel()
-        ds.recorder.shown = False   # the trip goes on; the card comes back at its real end
-    return self._handoff.release(self.holding)
-
-  def cancel(self) -> None:
-    """Onroad edge: gone at once, nothing pending."""
-    self._handoff.onroad()
-    self._slide.cut()
-    self._shown_at = None
-    self._early = self._early_tap = False
-
-  def _begin(self) -> bool:
+  def begin(self) -> bool:
+    """The trip just ended: True if it's long enough for a card and the card is up."""
     try:
       params = ui_state.params
       drive = ds.due_summary(params)
       if drive is None:
         return False
-      ds.recorder.shown = True
-      data = ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive)   # Today/Week fallback incl. this trip
-      self._drive = drive
-      self._load_texts(data)
+      self._load_texts(drive, ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive))   # Today/Week incl. this trip
     except Exception:
       return False
-    self._shown_at = time.monotonic()
-    self._slide.show()
+    self.drive, self._shown_at, self._holding = drive, time.monotonic(), True
     return True
 
-  def _load_texts(self, data: dict | None) -> None:
+  def clear(self) -> None:
+    self.drive, self._holding = None, False
+
+  def update(self, in_view: bool) -> bool:
+    if not self._holding:
+      return False
+    t = time.monotonic() - self._shown_at
+    if t >= ds.SHOW_S or (not in_view and t > ENTER_S):   # time's up, or tapped / swiped away
+      self._holding = False
+      return in_view
+    return False
+
+  def render(self, rect: rl.Rectangle) -> bool:
+    if self.drive is None:
+      return False
+    self.draw(rect.x, rect.y + slide_y(time.monotonic() - self._shown_at, rect.height), rect.width, rect.height)
+    return True
+
+  def _load_texts(self, drive: dict, data: dict | None) -> None:
     metric = bool(ui_state.is_metric)
     st: dict = {}
     if self._stats_fn is not None:
@@ -163,31 +116,15 @@ class DriveSummaryCard:
     if "today_m" not in st:
       st = {**ds.today_week(data), "streak_days": ds.day_streak(data)}
     self._accent = ds.accent_rgb()
-    self._cols = ds.card_columns(self._drive or {}, int(st.get("streak_days") or 0), metric)
+    self._cols = ds.card_columns(drive, int(st.get("streak_days") or 0), metric)
     self._slots_w = -1.0
-    tl = str((self._drive or {}).get("tl") or "")
+    tl = str(drive.get("tl") or "")
     self._runs, self._n_buckets = ds.timeline_runs(tl), len(tl)
     self._today = ("Today ", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
     self._week = ("Week ", fmt_trip(float(st.get("week_m") or 0), float(st.get("week_e") or 0), metric))
 
-  def render(self, rect: rl.Rectangle, page_x: float | None = None) -> None:
-    """page_x: the onroad page's x in the main layout's scroller; the card rides it once dismissed."""
-    ds.card_on_screen = self.visible and not ui_state.started
-    if ui_state.started and not self._early:
-      self.cancel()
-      return
-    if self._shown_at is not None and time.monotonic() - self._shown_at >= ds.SHOW_S:
-      self.dismiss()
-    self._slide.height, self._slide.width = rect.height, rect.width   # fully off-screen at both ends
-    pos = self._slide.step(attached_dx(rect.x if page_x is None else page_x, rect.x))
-    if pos is None:
-      self._shown_at = None
-      return
-    if self._drive is not None:
-      self.draw(rect.x + pos[0], rect.y + pos[1], rect.width, rect.height)
-
   def draw(self, x: float, y: float, w: float, h: float) -> None:
-    rl.draw_rectangle(int(x), int(y), int(w), int(h), rl.BLACK)   # opaque: no home icons under it
+    rl.draw_rectangle(int(x), int(y), int(w), int(h), rl.BLACK)   # opaque, over the camera while parking
 
     bold = gui_app.font(FontWeight.DISPLAY)
     roman = gui_app.font(FontWeight.ROMAN)

@@ -15,8 +15,7 @@ from openpilot.common.hardware import HARDWARE, PC
 from openpilot.common.hardware.usb import cable_connected, get_usb_state, is_chestnut_usb_id
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled
 from openpilot.selfdrive.car import tesla_step_aside, park_offroad
-from openpilot.selfdrive.ui.lib import drive_summary
-from openpilot.selfdrive.ui.lib.park_card import HOLD, JUMP, ParkReturn
+from openpilot.selfdrive.ui.lib.park_view import HOLD, JUMP, ParkView
 from openpilot.selfdrive import jetlink_adapter
 from openpilot.selfdrive.selfdrived.alertmanager import OFFROAD_ALERTS
 
@@ -127,9 +126,8 @@ class UIState:
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
     self.tesla_stepped_aside: bool = False  # card stepped aside for Tesla Autosteer/FSD
-    self.park_offroad_active: bool = False  # parked offroad right now (ParkOffroad on + ParkOffroadActive)
-    self.park_return: bool = False          # this onroad session began from park-offroad (R/D)
-    self._park_return = ParkReturn()
+    self.park = ParkView()                  # park-offroad: parkd's ParkOffroadState, see lib/park_view.py
+    self._park_state = park_offroad.NONE
 
     self._params_thread: threading.Thread | None = None
 
@@ -198,8 +196,7 @@ class UIState:
 
     # Update started state
     self.started = self.sm["deviceState"].started and self.ignition
-    self._park_return.update(self.started, self.ignition, self.park_offroad_active)
-    self.park_return = self._park_return.returned
+    self.park.update(time.monotonic(), self.started, self.ignition, self._park_state)
 
     # Update body state
     if self.CP is not None and self.is_body != self.CP.notCar:
@@ -312,7 +309,7 @@ class UIState:
 
     self.recording_audio = self.params.get_bool("RecordAudio") and self.started
     self.tesla_stepped_aside = self.started and tesla_step_aside.stepped_aside(self.params)
-    self.park_offroad_active = not park_offroad.not_parked(self.params)
+    self._park_state = park_offroad.get_state(self.params) if park_offroad.enabled(self.params) else park_offroad.NONE
     self.is_metric = self.params.get_bool("IsMetric")
     self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
@@ -430,9 +427,7 @@ class Device:
 
       clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [30, 100]))
 
-    # park-offroad (toggle on only): hold under the trip card, jump to the camera on the way back
-    park = ui_state._park_return.brightness(ui_state.started, ui_state.park_offroad_active,
-                                            drive_summary.card_on_screen, ui_state.light_sensor >= 0)
+    park = ui_state.park.brightness(time.monotonic(), ui_state.started, ui_state.light_sensor >= 0)
     if park == HOLD:
       brightness = round(self._brightness_filter.x)
     elif park == JUMP:

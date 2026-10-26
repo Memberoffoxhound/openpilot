@@ -153,9 +153,10 @@ class BookmarkIcon(Widget):
 
 
 class AugmentedRoadView(CameraView):
-  def __init__(self, bookmark_callback=None, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_NARROW_ROAD):
+  def __init__(self, bookmark_callback=None, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_NARROW_ROAD, summary=None):
     super().__init__("camerad", stream_type)
     self._bookmark_callback = bookmark_callback
+    self._summary = summary   # trip summary card: drawn instead of the offroad label, and over the camera while parking
     self._set_placeholder_color(rl.BLACK)
 
     self.device_camera: DeviceCameraConfig | None = None
@@ -194,6 +195,8 @@ class AugmentedRoadView(CameraView):
     # update offroad label
     if ui_state.panda_type == log.PandaState.PandaType.unknown:
       self._offroad_label.set_text("system booting")
+    elif ui_state.park.parked:
+      self._offroad_label.set_text("shift to D or R\nto use openpilot")
     elif ui_state.ignition and not ui_state.started:
       self._offroad_label.set_text("openpilot can't start\ncheck alerts")
     else:
@@ -208,7 +211,8 @@ class AugmentedRoadView(CameraView):
     # Draw text if not onroad
     if not ui_state.started:
       rl.draw_rectangle_rec(self.rect, rl.BLACK)
-      self._offroad_label.render(self._rect)
+      if not (self._summary and self._summary.render(self._rect)):
+        self._offroad_label.render(self._rect)
       return
 
     self._switch_stream_if_needed(ui_state.sm)
@@ -274,6 +278,8 @@ class AugmentedRoadView(CameraView):
       self._confidence_ball.render(self.rect)
 
     self._bookmark_icon.render(self.rect)
+    if self._summary:
+      self._summary.render(self._rect)
 
   def close(self):
     self._navigation.close()

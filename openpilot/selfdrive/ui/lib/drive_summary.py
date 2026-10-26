@@ -21,7 +21,7 @@ N_BUCKETS = 160
 BUCKET_S0 = 2.0              # first bucket length; doubles as the drive grows
 MIN_SHOW_M = 160.9           # 0.1 mi: shorter drives never show the card
 MIN_SHOW_S = 30.0
-SHOW_S = 10.0                # seconds the trip-complete card stays up before sliding away (Bruce may change this)
+SHOW_S = 10.0                # seconds the card holds the onroad page before the scroll to home
 MERGE_S = 3.0                # offroad shorter than this (onroad cycles) continues the same drive
 DAYS_KEEP = 14
 MOVING_V = 0.15              # m/s, same cutoff as the home trip meter
@@ -110,7 +110,6 @@ class DriveRecorder:
     self._off_since: float | None = None
     self._off_wall = 0.0
     self.last_v = 0.0               # vEgo on the last onroad frame: a trip ends stopped
-    self.shown = False              # the card already hopped in for this drive
 
   def update(self, started: bool, now: float, wall: float, v_ego: float, enabled: bool,
              state: str = "", alert_status: str = "normal", gas_pressed: bool = False,
@@ -156,7 +155,7 @@ class DriveRecorder:
     return {
       "id": self.drive_id, "start": self.start_wall, "end": end_wall, "dur": round(self.dur, 1),
       "m": round(self.m, 1), "e": round(self.e, 1), "best_m": round(self.best_m, 1),
-      "tl": self.timeline.codes(), "shown": self.shown,
+      "tl": self.timeline.codes()
     }
 
 
@@ -240,26 +239,6 @@ def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
     return None
   drive = rec.summary(wall_now())
   return drive if eligible(drive) else None
-
-
-class HomeHandoff:
-  """Holds the stock scroll to home while the card is up. offroad() / release() return True
-  when the main layout should scroll now."""
-  def __init__(self) -> None:
-    self.waiting = False
-
-  def offroad(self, card_shown: bool) -> bool:
-    self.waiting = bool(card_shown)
-    return not self.waiting
-
-  def onroad(self) -> None:
-    self.waiting = False
-
-  def release(self, card_holding: bool) -> bool:
-    if self.waiting and not card_holding:
-      self.waiting = False
-      return True
-    return False
 
 
 # -- card formatting (pure, shared with the widgets) ---------
@@ -398,7 +377,6 @@ def _raw_write(params, key: str, data: bytes) -> None:
 # -- UI hook ---------------------------------------------------------------------
 
 recorder = DriveRecorder()
-card_on_screen = False       # set by the card every frame (on screen offroad); read by ui_state's Device
 _enabled_cache = (0.0, False)
 _route_t = 0.0
 _logged = False
