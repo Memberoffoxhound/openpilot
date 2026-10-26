@@ -1,8 +1,10 @@
 """Tesla park-offroad (ParkOffroad toggle, default off): offroad in Park, back onroad on R/D.
 
-  * Arms once this ignition cycle has seen R or D. Park held PARK_HOLD_S, not engaged, sets
-    ParkOffroadActive; hardwared's "not_parked" condition takes the device offroad the normal way
-    (NO_OUTPUT, relay open). It can only make the device offroad, never onroad, and sends nothing.
+  * One output, ParkOffroadState: NONE, PARKING (in Park, armed, not engaged: offroad in
+    PARK_HOLD_S unless it leaves Park) or PARKED. hardwared's "not_parked" condition takes the device
+    offroad the normal way on PARKED (NO_OUTPUT, relay open); the UI reads the same param.
+    It can only make the device offroad, never onroad, and sends nothing.
+  * Arms once this ignition cycle has seen R or D.
   * Latched, only R or D returns onroad (a new route); N stays offroad. Tesla keeps ignitionCan on
     in Park, so ignition staying on or blipping never restarts onroad. Only ignition off for
     IGN_OFF_CLEAR_S clears the latch.
@@ -24,8 +26,9 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 PARAM_ENABLED = "ParkOffroad"           # Settings toggle (PERSISTENT, default 0)
-PARAM_ACTIVE = "ParkOffroadActive"      # parked offroad right now (CLEAR_ON_MANAGER_START only: manager's
+PARAM_STATE = "ParkOffroadState"        # parkd's output (CLEAR_ON_MANAGER_START only: manager's
                                         # ignition-on clear would drop the latch on an ignitionCan blip)
+NONE, PARKING, PARKED = 0, 1, 2
 
 PARK_HOLD_S = 3.0        # Park held this long, not engaged, before going offroad
 RETURN_SAMPLES = 2       # consecutive R/D samples before coming back onroad (~0.1 s at 20 Hz)
@@ -89,27 +92,26 @@ PARK_SOURCES: dict[str, ParkSource] = {
 class ParkOffroad:
   """Pure state machine. update() returns True while the device should be offroad for Park."""
 
-  def __init__(self, parked: bool = False) -> None:
-    # a restart while parked keeps the device offroad until R/D (or ignition off)
-    self.parked = parked
-    self.armed = parked
-    self.unavailable = False
-    self._p_since: float | None = None
-    self._return_n = 0
-    self._last_gear_t: float | None = None
-    self._autopark_t: float | None = None
-    # a latch restored after a parkd restart was taken with ignition on
-    self._ignition_prev = parked
+  def __init__(self) -> None:
+    self._reset()
+    self._ignition_prev = False
     self._ign_off_t: float | None = None
 
   def _reset(self) -> None:
     self.parked = False
     self.armed = False
     self.unavailable = False
-    self._p_since = None
+    self._parking = False
+    self._p_since: float | None = None
     self._return_n = 0
-    self._last_gear_t = None
-    self._autopark_t = None
+    self._last_gear_t: float | None = None
+    self._autopark_t: float | None = None
+
+  @property
+  def state(self) -> int:
+    if self.parked:
+      return PARKED
+    return PARKING if self._parking else NONE
 
   def autopark_active(self, now: float) -> bool:
     return self._autopark_t is not None and now - self._autopark_t <= AUTOPARK_HOLD_S
@@ -144,9 +146,6 @@ class ParkOffroad:
       # ignition on (or toggle on): plain ignition behavior until the car leaves Park
       self._reset()
       self._ignition_prev = True
-    if self.parked and self._last_gear_t is None:
-      self._last_gear_t = now          # latch restored after a restart
-
     if autopark is not None and autopark in AUTOPARK_ACTIVE_STATES:
       self._autopark_t = now
 
@@ -168,12 +167,14 @@ class ParkOffroad:
       self._return_n = 0
       if self._p_since is None:
         self._p_since = now
-      if (self.armed and not self.parked and not self.unavailable and not engaged
-          and now - self._p_since >= PARK_HOLD_S):
-        self.parked = True
     elif gear == GEAR_N:
       self._return_n = 0
       self._p_since = None
+
+    fresh = self._last_gear_t is not None and now - self._last_gear_t <= CAN_TIMEOUT_S
+    self._parking = fresh and self._p_since is not None and self.armed and not self.parked and not self.unavailable and not engaged
+    if self._parking and now - self._p_since >= PARK_HOLD_S:
+      self.parked, self._parking = True, False
 
     if self.parked and (self._last_gear_t is None or now - self._last_gear_t > CAN_TIMEOUT_S):
       # no gear frames offroad: never strand the device offroad with ignition on
@@ -190,32 +191,53 @@ def _raw_path(params, key: str) -> str:
   return os.path.join(params.get_param_path(), key)
 
 
-def get_bool(params, key: str, default: bool = False) -> bool:
+def _get(params, key: str):
   try:
     params.check_key(key)
   except Exception:
     try:
       with open(_raw_path(params, key), "rb") as f:
-        return f.read().strip() in (b"1", b"true", b"True")
+        return f.read().strip()
     except OSError:
-      return default
+      return None
   try:
-    raw = params.get(key, return_default=True)
+    return params.get(key, return_default=True)
   except Exception:
-    return default
+    return None
+
+
+def get_bool(params, key: str, default: bool = False) -> bool:
+  raw = _get(params, key)
+  if isinstance(raw, bytes):
+    return raw in (b"1", b"true", b"True")
   return default if raw is None else bool(raw)
 
 
-def put_bool(params, key: str, value: bool, block: bool = False) -> None:
+def get_state(params) -> int:
   try:
-    params.put_bool(key, value, block=block)
+    return int(_get(params, PARAM_STATE) or NONE)
+  except (TypeError, ValueError):
+    return NONE
+
+
+def _put(params, key: str, write, raw: bytes) -> None:
+  try:
+    write()
   except Exception:
     path = _raw_path(params, key)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.tmp{os.getpid()}"
     with open(tmp, "wb") as f:
-      f.write(b"1" if value else b"0")
+      f.write(raw)
     os.replace(tmp, path)
+
+
+def put_bool(params, key: str, value: bool, block: bool = False) -> None:
+  _put(params, key, lambda: params.put_bool(key, value, block=block), b"1" if value else b"0")
+
+
+def put_state(params, state: int, block: bool = False) -> None:
+  _put(params, PARAM_STATE, lambda: params.put(PARAM_STATE, int(state), block=block), b"%d" % state)
 
 
 def enabled(params) -> bool:
@@ -227,7 +249,7 @@ def enabled(params) -> bool:
 def not_parked(params) -> bool:
   """hardwared onroad condition. True (no effect) unless the toggle is on and parkd says parked."""
   try:
-    return not (enabled(params) and get_bool(params, PARAM_ACTIVE, False))
+    return not (enabled(params) and get_state(params) == PARKED)
   except Exception:
     return True
 
@@ -277,18 +299,17 @@ def main() -> None:
   from openpilot.common.swaglog import cloudlog
 
   params = Params()
+  put_state(params, NONE, block=True)    # valid from the first loop, whatever a previous run left
   # gear frames mean something else on other brands: idle unless the last car has a park source
   source = PARK_SOURCES.get(_brand(params))
-  if source is None:
-    put_bool(params, PARAM_ACTIVE, False)
-    while source is None:
-      time.sleep(5.0)
-      source = PARK_SOURCES.get(_brand(params))
+  while source is None:
+    time.sleep(5.0)
+    source = PARK_SOURCES.get(_brand(params))
 
   can_sock = messaging.sub_sock("can", conflate=True, timeout=0)
   sm = messaging.SubMaster(["pandaStates", "selfdriveState"])
-  ctrl = ParkOffroad(parked=get_bool(params, PARAM_ACTIVE, False))
-  published = ctrl.parked
+  ctrl = ParkOffroad()
+  published = NONE
   rk = Ratekeeper(20, print_delay_threshold=None)
   on, on_t, sync_t = True, 0.0, 0.0
   try:
@@ -307,20 +328,19 @@ def main() -> None:
                  sm["selfdriveState"].enabled)
       if now - on_t > 1.0:
         on, on_t = enabled(params), now
-      parked = ctrl.update(now, gear, ignition, engaged, autopark, on)
-      if parked != published:
-        put_bool(params, PARAM_ACTIVE, parked, block=True)
-        cloudlog.event("park_offroad", parked=parked, unavailable=ctrl.unavailable, gear=gear)
-        published = parked
-        sync_t = now
+      ctrl.update(now, gear, ignition, engaged, autopark, on)
+      state = ctrl.state
+      if state != published:
+        put_state(params, state, block=True)
+        cloudlog.event("park_offroad", state=state, unavailable=ctrl.unavailable, gear=gear)
+        published, sync_t = state, now
       elif now - sync_t > 1.0:
-        # re-assert the latch if anything else cleared the param; reads only, writes on mismatch
         sync_t = now
-        if get_bool(params, PARAM_ACTIVE, False) != parked:
-          put_bool(params, PARAM_ACTIVE, parked, block=True)
+        if get_state(params) != state:   # someone else wrote it: re-assert
+          put_state(params, state, block=True)
       rk.keep_time()
   finally:
-    put_bool(params, PARAM_ACTIVE, False)
+    put_state(params, NONE)
 
 
 if __name__ == "__main__":

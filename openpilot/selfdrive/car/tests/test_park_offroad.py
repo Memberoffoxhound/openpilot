@@ -264,7 +264,7 @@ def test_autopark_hold_bridges_10hz_di_state():
 
 def test_step_aside_flag_is_independent(tmp_path):
   """Stepped aside (FSD) or not, park-offroad only reads gear: both leave the relay open."""
-  params = FakeParams(tmp_path, {"ParkOffroad": True, "ParkOffroadActive": True, "TeslaSteppedAside": True})
+  params = FakeParams(tmp_path, {"ParkOffroad": True, "ParkOffroadState": po.PARKED, "TeslaSteppedAside": True})
   assert po.not_parked(params) is False
   params.d["TeslaSteppedAside"] = False
   assert po.not_parked(params) is False
@@ -284,11 +284,88 @@ def test_no_gear_frames_offroad_falls_back_to_ignition():
   assert not parked     # disarmed until ignition cycles: no on/off loop
 
 
-def test_restart_while_parked_keeps_offroad():
-  ctrl = po.ParkOffroad(parked=True)
-  _, parked, _ = run(ctrl, 0.0, 3.0, po.GEAR_P)
+def test_state_parking_then_parked():
+  ctrl = po.ParkOffroad()
+  t = drive_then_park(ctrl)
+  assert ctrl.state == po.NONE
+  t, _, _ = run(ctrl, t, 0.1, po.GEAR_P)
+  assert ctrl.state == po.PARKING            # first Park sample: the card can go up now
+  t, _, _ = run(ctrl, t, 0.5, None)          # a missed 0x118 sample doesn't flap it
+  assert ctrl.state == po.PARKING
+  t, _, _ = run(ctrl, t, 2.5, po.GEAR_P)
+  assert ctrl.state == po.PARKED
+  run(ctrl, t, 0.2, po.GEAR_D)
+  assert ctrl.state == po.NONE
+
+
+def test_parking_cancelled_by_leaving_park_or_engaging():
+  ctrl = po.ParkOffroad()
+  t = drive_then_park(ctrl)
+  t, _, _ = run(ctrl, t, 1.0, po.GEAR_P)
+  assert ctrl.state == po.PARKING
+  t, _, _ = run(ctrl, t, 0.1, po.GEAR_D)
+  assert ctrl.state == po.NONE
+  run(ctrl, t, 1.0, po.GEAR_P, engaged=True)
+  assert ctrl.state == po.NONE
+
+
+def test_parking_needs_fresh_gear_frames():
+  ctrl = po.ParkOffroad()
+  t = drive_then_park(ctrl)
+  t, _, _ = run(ctrl, t, 1.0, po.GEAR_P)
+  _, parked, _ = run(ctrl, t, po.CAN_TIMEOUT_S + 0.2, None)
+  assert ctrl.state == po.NONE and not parked
+
+
+# -- first run: what a fresh parkd does on its first ignition cycle -------------------
+
+def test_first_run_cold_start_in_park_is_stock():
+  ctrl = po.ParkOffroad()
+  _, parked, _ = run(ctrl, 0.0, 10.0, po.GEAR_P)
+  assert not parked and ctrl.state == po.NONE      # never seen R/D: onroad as today
+
+
+def test_first_run_cold_start_in_drive_arms():
+  ctrl = po.ParkOffroad()
+  t, _, _ = run(ctrl, 0.0, 2.0, po.GEAR_D)
+  _, parked, flip = run(ctrl, t, 4.0, po.GEAR_P)
+  assert parked and abs(flip - po.PARK_HOLD_S) < 0.1
+
+
+def test_first_run_no_gear_data_is_stock():
+  ctrl = po.ParkOffroad()
+  _, parked, _ = run(ctrl, 0.0, 10.0, None)
+  assert not parked and ctrl.state == po.NONE
+
+
+def test_first_run_toggle_off_is_stock():
+  ctrl = po.ParkOffroad()
+  t = 0.0
+  for gear in (po.GEAR_D, po.GEAR_P):
+    for _ in range(100):
+      assert ctrl.update(t, gear, True, False, None, enabled=False) is False
+      t += 0.05
+  assert ctrl.state == po.NONE
+
+
+def test_first_run_ignition_off_clears_hold():
+  ctrl = po.ParkOffroad()
+  t = drive_then_park(ctrl)
+  t, parked, _ = run(ctrl, t, 4.0, po.GEAR_P)
   assert parked
-  _, parked, _ = run(ctrl, 3.0, 0.5, po.GEAR_R)
+  t, parked, _ = run(ctrl, t, po.IGN_OFF_CLEAR_S + 0.5, po.GEAR_P, ignition=False)
+  assert not parked
+  _, parked, _ = run(ctrl, t, 5.0, po.GEAR_P)
+  assert not parked                                 # fresh cycle in P: stock until R/D
+
+
+def test_first_run_n_stays_offroad_r_returns():
+  ctrl = po.ParkOffroad()
+  t = drive_then_park(ctrl)
+  t, parked, _ = run(ctrl, t, 4.0, po.GEAR_P)
+  t, parked, _ = run(ctrl, t, 3.0, po.GEAR_N)
+  assert parked
+  _, parked, _ = run(ctrl, t, 0.2, po.GEAR_R)
   assert not parked
 
 
@@ -310,16 +387,21 @@ class FakeParams:
   def put_bool(self, key, value, block=False):
     self.d[key] = value
 
+  def put(self, key, value, block=False):
+    self.d[key] = value
+
 
 def test_not_parked_hook(tmp_path):
   p = FakeParams(tmp_path, {})
   assert po.not_parked(p)
-  p.d.update(ParkOffroadActive=True)
-  assert po.not_parked(p)              # toggle off: no effect even if a stale flag remains
+  p.d.update(ParkOffroadState=po.PARKED)
+  assert po.not_parked(p)              # toggle off: no effect even if a stale state remains
   p.d.update(ParkOffroad=True)
   assert not po.not_parked(p)
-  p.d.update(ParkOffroadActive=False)
-  assert po.not_parked(p)
+  p.d.update(ParkOffroadState=po.PARKING)
+  assert po.not_parked(p)              # parking is still onroad
+  p.d.update(ParkOffroadState=None)
+  assert po.not_parked(p) and po.get_state(p) == po.NONE   # key absent: stock
   assert po.should_run(False, p, None) and po.should_run(True, p, None)
 
 
@@ -330,11 +412,15 @@ def test_stale_params_library_reads_raw_file(tmp_path):
 
     def put_bool(self, key, value, block=False):
       raise KeyError(key)
+
+    def put(self, key, value, block=False):
+      raise KeyError(key)
   p = Stale(tmp_path, {})
   assert po.not_parked(p)
   po.put_bool(p, "ParkOffroad", True)
-  po.put_bool(p, "ParkOffroadActive", True)
+  po.put_state(p, po.PARKED)
   assert (tmp_path / "ParkOffroad").read_bytes() == b"1"
+  assert (tmp_path / "ParkOffroadState").read_bytes() == b"2"
   assert not po.not_parked(p)
 
 
@@ -366,7 +452,7 @@ def test_hardwared_and_manager_hooks():
 def test_params_keys():
   keys = (OP / "common/params_keys.h").read_text()
   assert '{"ParkOffroad", {PERSISTENT, BOOL, "0"}}' in keys
-  assert '{"ParkOffroadActive", {CLEAR_ON_MANAGER_START, BOOL}}' in keys
+  assert '{"ParkOffroadState", {CLEAR_ON_MANAGER_START, INT, "0"}}' in keys
   assert '{"DriveSummary", {PERSISTENT, BOOL, "0"}}' in keys
   assert '{"DriveSummaryLast", {PERSISTENT, JSON}}' in keys
   assert "BACKUP" not in keys
@@ -426,7 +512,7 @@ def test_parkd_main_loop_smoke(monkeypatch, tmp_path):
         cur = row
     return cur[1], cur[2]
 
-  world = SimpleNamespace(started=False, route=0, log=[])
+  world = SimpleNamespace(started=False, route=0, log=[], states=[])
 
   class Sock:
     pass
@@ -464,6 +550,7 @@ def test_parkd_main_loop_smoke(monkeypatch, tmp_path):
         world.route += 1                               # manager starts loggerd: a new route
       world.started = started
       world.log.append((round(now_rel(), 2), started, world.route))
+      world.states.append(po.get_state(params))
       if now_rel() >= END:
         raise StopLoop
 
@@ -503,7 +590,8 @@ def test_parkd_main_loop_smoke(monkeypatch, tmp_path):
   assert at(48.5) == (True, 4)           # real ignition cycle (8 s off) cleared everything: onroad as today
   assert at(57.9) == (True, 4)
   assert at(61.3) == (False, 4)          # armed again after D: Park held 3 s -> offroad
-  assert params.d["ParkOffroadActive"] is False   # main() clears the latch on exit
+  assert params.d["ParkOffroadState"] == po.NONE   # main() clears the latch on exit
+  assert world.states[0] == po.NONE and po.PARKING in world.states and po.PARKED in world.states
   assert max(r for _, _, r in world.log) == 4
 
 

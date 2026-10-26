@@ -133,7 +133,7 @@ procs = [
   # Runs onroad too, since it holds the USB gadget for the whole drive.
   RestartingPythonProcess(jetlink_adapter.OWNER, "openpilot.selfdrive.jetlink_adapter", jetlink_adapter.should_run, enabled=not PC),
   # Tesla park-offroad (ParkOffroad toggle): watches DI_gear on bus 0 onroad and offroad, and only
-  # sets ParkOffroadActive, which hardwared turns into an onroad condition. Idle unless the toggle is on.
+  # publishes ParkOffroadState, which hardwared turns into an onroad condition. Idle unless the toggle is on.
   RestartingPythonProcess("parkd", "openpilot.selfdrive.car.park_offroad", park_offroad.should_run, enabled=not PC),
   # the big-model catalog and pick (from sunnypilot's model manager); offroad only
   RestartingPythonProcess("modelmanagerd", "openpilot.selfdrive.modelmanager.manager", only_offroad, enabled=not PC),
