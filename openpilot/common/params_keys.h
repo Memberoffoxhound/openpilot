@@ -150,7 +150,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     // Park-offroad (Tesla) and the drive summary; see PORTING.md. The ParkOffroad toggle also sets DriveSummary.
     {"ParkOffroad", {PERSISTENT, BOOL, "0"}},  // go offroad after Park is held 3 s; back onroad on R/D
     {"ParkOffroadState", {CLEAR_ON_MANAGER_START, INT, "0"}},  // parkd: 0 none, 1 parking, 2 parked offroad (no ignition-on clear: parkd owns it)
-    {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // drive-summary "trip complete" card
+    {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // drive-summary "trip summary" card
     {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui: last drive's summary + timeline, and 14 days of totals
     {"VSlamFilterEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam filter; OP-long only, TACC locks off
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},

@@ -287,7 +287,7 @@ def test_card_layout_rules():
           if isinstance(n, ast.Name) and isinstance(v, ast.Constant):
             consts[n.id] = v.value
   assert 0.25 <= consts["ENTER_S"] <= 0.3
-  assert consts["HEADLINE"] == consts["HEADLINE"].lower() == "trip complete"
+  assert consts["HEADLINE"] == consts["HEADLINE"].lower() == "trip summary"
   draw_src = src.split("def draw(self")[1].split("def draw_timeline")[0]
   # badge right of the headline: headline drawn at the left pad, badge center after its measured width
   assert "rl.Vector2(cx, y + HEAD_Y)" in draw_src and "cx + hw + BADGE_GAP + br" in draw_src
