@@ -16,13 +16,12 @@ from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, F
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
-from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_row, fmt_trip
+from openpilot.selfdrive.ui.mici.widgets.trip_row import GREY, WHITE, draw_trip_row, fmt_trip
 from openpilot.common.version import RELEASE_BRANCHES
 
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
 MICI_WORDMARK_SIZE = 80
-LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
@@ -163,7 +162,7 @@ class LongModeBadge(Widget):
     lx = x + self.LOGO_W + 2
     cy = y + gap
     for ch, sz in zip(letters, sizes, strict=False):
-      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, LABEL_WHITE)
+      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, WHITE)
       cy += sz.y + gap
 
 
@@ -199,9 +198,9 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
+    self._version_label = UnifiedLabel("", font_size=36, text_color=WHITE, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
     self._last_txt = ("Today ", "0mi 0%")
     self._week_txt = ("Week ", "0mi 0%")
@@ -272,7 +271,7 @@ class MiciHomeLayout(Widget):
       if measure_text_cached(self._wordmark_font, mark, wm).x <= avail:
         break
       wm -= 2
-    rl.draw_text_ex(self._wordmark_font, mark, text_pos, wm, 0, LABEL_WHITE)
+    rl.draw_text_ex(self._wordmark_font, mark, text_pos, wm, 0, WHITE)
 
     if self._version_text is not None:
       release_branch = self._version_text[1] in RELEASE_BRANCHES

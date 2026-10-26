@@ -37,7 +37,7 @@ def _col(rgb, a: float) -> rl.Color:
   return rl.Color(rgb[0], rgb[1], rgb[2], max(0, min(255, int(255 * a))))
 
 
-VALUE_COL, DIM_COL = _col(WHITE, 0.9), _col(WHITE, 0.65)
+VALUE_COL, DIM_COL = _col(WHITE, 1.0), _col(WHITE, 0.8)
 TRACK_COL, SHADE_COL = _col(WHITE, 0.15), _col((0, 0, 0), 0.35)
 RUN_COLS = {st: _col(rgb, 1.0) for st, rgb in ds.COLORS.items()}
 

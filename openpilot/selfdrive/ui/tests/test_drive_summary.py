@@ -272,6 +272,19 @@ def test_ui_hooks_present():
   assert "draw_trip_row(" in (UI / "mici/layouts/home.py").read_text()
 
 
+
+def test_home_text_daylight_readable():
+  """Home and card text: full white primary, >= 200 grey secondary (raylib GRAY 130 washed out in sun)."""
+  import re
+  row = (UI / "mici/widgets/trip_row.py").read_text()
+  assert "GREY = rl.Color(200, 200, 200, 255)" in row and "WHITE = rl.Color(255, 255, 255, 255)" in row
+  home = (UI / "mici/layouts/home.py").read_text()
+  assert "rl.GRAY" not in home and "0.9))" not in home.split("class MiciHomeLayout")[1]
+  assert home.count("text_color=") == 3
+  card = (UI / "mici/widgets/drive_summary_card.py").read_text()
+  value, dim = map(float, re.search(r"VALUE_COL, DIM_COL = _col\(WHITE, ([\d.]+)\), _col\(WHITE, ([\d.]+)\)", card).groups())
+  assert value == 1.0 and dim >= 0.78
+
 def test_card_layout_rules():
   """Alert-style card: opaque full screen (no home icons under it, no timer dots), Inter Bold lowercase
   headline as the biggest text, two-column Today/Week block, everything inside 240 px."""

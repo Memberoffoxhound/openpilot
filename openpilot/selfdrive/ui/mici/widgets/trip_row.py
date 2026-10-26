@@ -6,8 +6,8 @@ import pyray as rl
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.lib.drive_summary import engaged_pct
 
-GREY = rl.Color(130, 130, 130, 255)   # raylib GRAY, which home used for the labels
-WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
+GREY = rl.Color(200, 200, 200, 255)   # secondary text on home and the card: readable in daylight
+WHITE = rl.Color(255, 255, 255, 255)
 ROW_GAP = 16
 BLOCK_LABEL = 30          # grey label, home style but bigger
 BLOCK_VALUE = 34          # white bold value
