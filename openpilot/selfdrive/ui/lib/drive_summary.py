@@ -1,31 +1,11 @@
 """Drive summary: per-drive stats and an engagement timeline, for any car.
 
-Portable: no car-brand, Tesla, TeslaPilot or Jetlink dependencies. The UI
-process feeds it every frame through tick(ui_state) (one hook in the main
-layout's _update_state). The drive ends on the generic onroad -> offroad
-transition (ui_state.started going False, whatever the cause: ignition off,
-park-offroad, onroad cycle, always-offroad). It then saves the summary to the
-DriveSummaryLast param, so the home card can show it once.
+tick(ui_state) once per UI frame records while onroad and saves DriveSummaryLast when offroad
+lasts MERGE_S, whatever the cause. Constant memory: N_BUCKETS time buckets that merge pairwise
+(bucket length doubles) as the drive grows. Engaged % is by distance.
 
-Recorded in constant memory:
-  distance, engaged distance (selfdriveState.enabled, distance-based like the
-  home Today/Week numbers), duration, best and current engaged stretch, and a
-  timeline of N_BUCKETS time buckets. Each bucket holds seconds per status;
-  when the drive outgrows them, neighbors merge and the bucket length doubles.
-
-Timeline colors follow comma connect's route timeline (commaai/connect
-src/theme.js palette.states + src/colors.js):
-  engaged   #178645 engagedGreen (green400)
-  manual    #175886 drivingBlue (blue500), the base driving color
-  override  #e3d756 yellow500 (connect's bookmark yellow; connect draws
-            overriding in engagedGrey, Bruce asked for yellow/orange)
-  prompt    #da6f25 alertOrange (orange50), alertStatus userPrompt
-  critical  #c92231 alertRed (red100), alertStatus critical
-  standby   #919b95 engagedGrey: stopped and not engaged
-Swap-in (try/except import, safe on any fork): accent_rgb() (theme color,
-else comma green).
-Params: DriveSummary (toggle), DriveSummaryLast (JSON). Read tolerantly, so
-a params library built before these keys only loses the feature.
+Colors are comma connect's route timeline palette, except override: yellow instead of grey.
+Params are read tolerantly: a params library without these keys just loses the feature.
 """
 from __future__ import annotations
 
@@ -48,13 +28,13 @@ MOVING_V = 0.15              # m/s, same cutoff as the home trip meter
 
 STANDBY, MANUAL, ENGAGED, OVERRIDE, PROMPT, CRITICAL = range(6)
 CODES = "smeopc"
-COLORS = {
-  ENGAGED: (0x17, 0x86, 0x45),
-  MANUAL: (0x17, 0x58, 0x86),
-  OVERRIDE: (0xe3, 0xd7, 0x56),
-  PROMPT: (0xda, 0x6f, 0x25),
-  CRITICAL: (0xc9, 0x22, 0x31),
-  STANDBY: (0x91, 0x9b, 0x95),
+COLORS = {                       # comma connect theme.js / colors.js
+  ENGAGED: (0x17, 0x86, 0x45),   # engagedGreen
+  MANUAL: (0x17, 0x58, 0x86),    # drivingBlue
+  OVERRIDE: (0xe3, 0xd7, 0x56),  # yellow500 (connect uses engagedGrey)
+  PROMPT: (0xda, 0x6f, 0x25),    # alertOrange, userPrompt
+  CRITICAL: (0xc9, 0x22, 0x31),  # alertRed, critical
+  STANDBY: (0x91, 0x9b, 0x95),   # engagedGrey: stopped, not engaged
 }
 
 # cereal enum names, so this module needs no cereal import
@@ -135,11 +115,8 @@ class DriveRecorder:
   def update(self, started: bool, now: float, wall: float, v_ego: float, enabled: bool,
              state: str = "", alert_status: str = "normal", gas_pressed: bool = False,
              drive_id: str = "") -> dict | None:
-    """Feed one frame. Returns the finished drive's summary once offroad has lasted MERGE_S.
-
-    Shorter offroad gaps (an onroad cycle, e.g. a step-aside switch, is ~1 s) continue the same
-    drive, so the card isn't used up by a fragment.
-    """
+    """Feed one frame. Returns the finished drive once offroad has lasted MERGE_S; shorter gaps
+    (an onroad cycle is ~1 s) continue the same drive."""
     if started:
       if not self.active:
         self._reset()
@@ -183,10 +160,9 @@ class DriveRecorder:
     }
 
 
-# -- stored data: last drive + a few days of totals (fallback for Today/Week) --
+# -- stored data: last drive + DAYS_KEEP days of totals (fallback for Today/Week) --
 
 def wall_now() -> float:
-  """Wall-clock seconds (day keys and the show window need real time, not monotonic)."""
   return datetime.now().timestamp()
 
 
@@ -258,10 +234,7 @@ def eligible(drive: dict | None) -> bool:
 
 
 def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
-  """At the onroad -> offroad edge: the trip that just ended, when the card should hop in before
-  home (toggle on, a recorded drive, stopped, long enough). None = stock behavior.
-  The recorder still merges a short offroad gap into the same drive; if onroad comes back,
-  the main layout cancels the card and the drive goes on."""
+  """The trip that just ended, if the card is due (toggle on, recorded, stopped, long enough)."""
   rec = recorder if rec is None else rec
   if not enabled(params) or not rec.active or rec.last_v > MOVING_V:
     return None
@@ -270,14 +243,8 @@ def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
 
 
 class HomeHandoff:
-  """The main layout's hop: on the offroad edge, hold the stock scroll to home while the card is
-  up, then hand off to it. Pure; the main layout calls offroad() / onroad() on the edges and
-  release() every tick.
-
-    offroad(card_shown) -> True: scroll to home now (stock, no card)
-    release(card_holding) -> True once: the card is going away, scroll to home now
-    onroad(): onroad is back, nothing is pending (stock onroad logic takes over)
-  """
+  """Holds the stock scroll to home while the card is up. offroad() / release() return True
+  when the main layout should scroll now."""
   def __init__(self) -> None:
     self.waiting = False
 
@@ -315,10 +282,8 @@ COL_GAP = 10                 # card: minimum space between neighboring stat colu
 
 
 def column_slots(cols, avail: float, value_w, label_w, gap: float = COL_GAP) -> list[tuple[float, float, float]]:
-  """Evenly spaced stat columns: [(center x from the left edge, value width, label width)].
-  n columns get equal slots of avail / n, each value and label centered in its slot. The last
-  columns (best stretch) are dropped (never below 3) while two neighbors would come closer than
-  gap, or an edge column would leave avail."""
+  """[(center x, value width, label width)] in equal slots of avail / n. Trailing columns drop
+  (never below 3) while neighbors would come closer than gap or an edge column would overflow."""
   widths = [(value_w(v, u), label_w(lbl)) for v, u, lbl in cols]
 
   def fits(n: int) -> bool:
@@ -348,7 +313,7 @@ def timeline_runs(codes: str) -> list[tuple[int, int, int]]:
 
 
 def own_record_m(data: dict | None) -> float:
-  """The record drive_summary keeps itself (DriveSummaryLast.record_m, max best stretch of saved drives)."""
+  """Longest best stretch of all saved drives."""
   try:
     return float((data or {}).get("record_m") or 0.0)
   except (TypeError, ValueError):
@@ -359,8 +324,7 @@ COMMA_GREEN = (0x17, 0x86, 0x45)   # comma connect's engagedGreen, same as the t
 
 
 def accent_rgb() -> tuple[int, int, int]:
-  """Swap-in: the user's theme color from the fork's theme manager (settings.common.theme_rgb,
-  e.g. blue or green). A fork without a theme manager gets comma green."""
+  """Swap-in: the fork's theme color, else comma green."""
   try:
     from openpilot.selfdrive.ui.layouts.settings.common import theme_rgb
     r, g, b = theme_rgb()
@@ -449,7 +413,6 @@ def enabled(params) -> bool:
 
 
 def tick(ui_state) -> None:
-  """Call once per UI frame. Records while onroad; saves the summary when the drive ends."""
   global _route_t, _logged
   params = ui_state.params
   try:

@@ -1,40 +1,21 @@
-"""Tesla park-offroad: go offroad when the car sits in Park, back onroad on D/R.
+"""Tesla park-offroad (ParkOffroad toggle, default off): offroad in Park, back onroad on R/D.
 
-Behind the ParkOffroad toggle (default off). With it on:
-  * after this ignition cycle has seen R or D, Park held PARK_HOLD_S with
-    openpilot not engaged sets ParkOffroadActive, and hardwared adds a
-    "not_parked" onroad condition. The device goes offroad, so pandad puts the
-    panda in NO_OUTPUT (relay open, nothing sent) exactly as with ignition off.
-  * Once latched, only R or D brings the device back onroad, through a
-    normal offroad -> onroad transition (a new route). N keeps it offroad (car
-    wash). Tesla keeps power state DRIVE in Park, so ignitionCan staying on, or
-    dropping out and returning, never restarts onroad while latched.
-  * ignition (Tesla's ignitionCan, 0x221 DRIVE) otherwise starts and stops
-    onroad exactly as before: ignition on in Park goes onroad as today
-    (park-offroad only arms after the first R/D), ignition off while driving
-    is stock, and a real ignition cycle (off >= IGN_OFF_CLEAR_S) clears the
-    latch. With the toggle off, nothing changes.
-  * Summon / Autopark (DI_state.DI_autoparkState active) never brings the
-    device back onroad: the car moves itself between R and D with the relay
-    open, and Tesla keeps it that way.
-  * if gear frames stop arriving while parked offroad with ignition on
-    (CAN_TIMEOUT_S), the latch clears and park-offroad stays disarmed until the
-    next ignition cycle: stock ignition behavior, never stuck offroad.
+  * Arms once this ignition cycle has seen R or D. Park held PARK_HOLD_S, not engaged, sets
+    ParkOffroadActive; hardwared's "not_parked" condition takes the device offroad the normal way
+    (NO_OUTPUT, relay open). It can only make the device offroad, never onroad, and sends nothing.
+  * Latched, only R or D returns onroad (a new route); N stays offroad. Tesla keeps ignitionCan on
+    in Park, so ignition staying on or blipping never restarts onroad. Only ignition off for
+    IGN_OFF_CLEAR_S clears the latch.
+  * Summon/Autopark (DI_autoparkState active) never returns onroad.
+  * No gear frames for CAN_TIMEOUT_S while latched: clear and stay disarmed until the next
+    ignition cycle, so it's never stuck offroad.
 
-It only ever removes an onroad condition: it can make the device offroad
-(relay open), never onroad, and it sends nothing on CAN. Panda safety is
-untouched.
+Bus 0, checksum = sum of address bytes + data[1:]:
+  0x118 DI_systemStatus 100 Hz: DI_gear = (dat[2] >> 5) & 7  (1 P, 2 R, 3 N, 4 D, 0 invalid, 7 SNA)
+  0x286 DI_state 10 Hz: DI_autoparkState = (dat[3] >> 1) & 0xF
+The panda forwards bus 0 in every safety mode, including NO_OUTPUT.
 
-Signals, bus 0 (party), both checksummed (sum of address bytes + data[1:]):
-  0x118 DI_systemStatus, 100 Hz: DI_gear bits 21..23 = (dat[2] >> 5) & 7,
-        1 P, 2 R, 3 N, 4 D, 0 invalid, 7 SNA
-  0x286 DI_state, 10 Hz: DI_autoparkState bits 25..28 = (dat[3] >> 1) & 0xF
-The panda forwards bus 0 to the host in every safety mode (the fixtures here
-were logged in ELM327 with the relay open). Offroad it is NO_OUTPUT with the
-relay open; see PORTING.md for the device check.
-
-Kept free of openpilot imports at the top level so it unit-tests without a
-build. Params are read tolerantly (raw file fallback for a stale library).
+No openpilot imports at the top level, so it unit-tests without a build.
 """
 from __future__ import annotations
 
@@ -95,13 +76,11 @@ def sample(frames) -> tuple[int | None, int | None]:
 
 
 class ParkSource(NamedTuple):
-  """Swap-in park detection: which CAN addresses to read, and (frames) -> (gear, autopark)."""
   addrs: frozenset
-  sample: Callable
+  sample: Callable    # (frames) -> (gear, autopark)
 
 
-# brand -> source. Another brand only needs its own decoder here; the state machine,
-# hardwared hook and UI are brand-free.
+# another brand only needs its own decoder here; the rest is brand-free
 PARK_SOURCES: dict[str, ParkSource] = {
   "tesla": ParkSource(frozenset({ADDR_DI_SYSTEM_STATUS, ADDR_DI_STATE}), sample),
 }
@@ -254,13 +233,8 @@ def not_parked(params) -> bool:
 
 
 class OffroadTimer:
-  """hardwared: restart the offroad (shutdown) timer at ignition off after a park-offroad.
-
-  Parked offroad, hardwared's off_ts starts when the car is put in Park with
-  ignition still on. Without this, a long sit in the car would count toward
-  the shutdown delays once ignition goes off. With it, shutdown timing after
-  ignition off is the same as without park-offroad.
-  """
+  """hardwared: after a park-offroad, restart off_ts at ignition off, so time sat in Park
+  doesn't count toward the shutdown delays."""
 
   def __init__(self) -> None:
     self._parked_off = False

@@ -1,37 +1,13 @@
-"""Trip-complete card (DriveSummary param): an extra hop between the onroad
-page and home when a trip ends.
+"""Trip-complete card (DriveSummary): an opaque, alert-style overlay the main layout draws above
+its scroller when a trip ends.
 
-Looks like a normal-status alert: opaque black over the whole screen, an Inter
-Bold lowercase headline (alert text1 style) with a check badge in the user's
-theme color to its right (drive_summary.accent_rgb: the fork's theme manager,
-else comma green), then the stats.
+On the offroad edge, if a trip is due, it slides in over the onroad page and holds the stock
+scroll to home. After SHOW_S or a tap, the scroll runs and the card rides the onroad page off
+(no exit animation of its own). Going back onroad removes it at once.
 
-The main layout draws it as an overlay above its scroller. On the onroad ->
-offroad edge, when the trip is due (toggle on, recorded drive, stopped,
->= 0.1 mi and 30 s), it slides in from the top over the onroad page, and the
-stock scroll to home waits. After SHOW_S, or a tap, the stock scroll to home
-runs and the card moves with the onroad page (attached to its scroller
-position), sideways like home sliding in today. No exit animation of its own. When it isn't due, the scroll happens
-at once (stock). Going back onroad removes it at once and cancels the hand-off.
-Smooth entry, no bounce (card_slide.py), no on-screen timer.
-
-Optional early_fn (like stats_fn): polled every tick while onroad. "show" puts the
-card up ahead of the offroad edge (TeslaPilot: the moment the car is shifted into
-Park, lib/park_card.py), "cut" takes it down again if the trip goes on. The offroad
-edge then keeps the card that is already up, with its SHOW_S clock. A tap while
-it is up early is kept for the offroad edge. Without early_fn: as before.
-
-  trip complete (check)
-   6.8mi      81%         4         1.2mi            evenly spaced columns, each value
-   driven   engaged   day streak best stretch        centered over its label (best only if it fits)
-  [====green====|blue|==green==|yellow|=====green=====]   connect-style timeline
-  Today 7mi 81%          Week 42mi 64%                   (trip_row.draw_trip_block)
-
-Data comes from drive_summary.py (the trip the recorder just finished). Today/Week and
-the day streak come from stats_fn() when the fork has home trip stats
-(stats_view keys today_m/today_e/week_m/week_e/streak_days), else from the
-few days of totals drive_summary keeps itself. Everything is drawn in code:
-no new assets.
+Optional hooks: stats_fn() -> today_m/today_e/week_m/week_e/streak_days (else drive_summary's own
+totals); early_fn() -> "show" / "cut" / None, polled while onroad to put the card up before the
+offroad edge (lib/park_card.py).
 """
 from __future__ import annotations
 
@@ -83,15 +59,11 @@ def draw_check_badge(cx: float, cy: float, r: float, rgb) -> None:
 
 
 class DriveSummaryCard:
-  """Drawn by the main layout as an overlay above the onroad page, the moment a trip ends:
-  the card hops in first, then the stock scroll to home follows (HomeHandoff). Main layout
-  hooks: hold_home() on the offroad edge, release_home() every tick, cancel() on the onroad
-  edge, render(rect) after the scroller, dismiss_on_tap() in its tap handler."""
+  """Main layout hooks: hold_home() on the offroad edge, release_home() every tick, cancel() on the
+  onroad edge, render() after the scroller, dismiss_on_tap() in its tap handler."""
 
   def __init__(self, stats_fn: Callable[[], dict] | None = None, early_fn: Callable[[], str | None] | None = None):
     self._stats_fn = stats_fn
-    # optional: called every tick while onroad, returns "show" (the trip is ending: put the card up
-    # now, ahead of the offroad edge), "cut" (it isn't after all: take it down) or None
     self._early_fn = early_fn
     self._early = False           # up ahead of the offroad edge (still onroad)
     self._early_tap = False       # tapped while early: leave with the scroll as soon as offroad comes
@@ -110,22 +82,18 @@ class DriveSummaryCard:
 
   @property
   def visible(self) -> bool:
-    """On screen: entering, shown, or sliding away."""
     return self._slide.drawn and (self._early or not ui_state.started)
 
   @property
   def holding(self) -> bool:
-    """Up and not yet dismissed: the main layout keeps the stock scroll to home waiting.
-    Time-based too, so it lets go after SHOW_S even when the card isn't being drawn (settings open)."""
+    """Up and not dismissed. Time-based too, so it lets go after SHOW_S even when not drawn (settings open)."""
     return (self._slide.state == SHOWN and self._shown_at is not None and
             time.monotonic() - self._shown_at < ds.SHOW_S)
 
   def dismiss(self) -> None:
-    """Dismiss (timeout or tap): the main layout scrolls to home and the card rides the onroad page off."""
     self._slide.hide()
 
   def dismiss_on_tap(self) -> bool:
-    """Main layout's tap hook: a tap while the card is on screen only dismisses it."""
     if self.visible:
       if self._early:
         self._early_tap = True    # still onroad: nothing to scroll to yet, leave at the offroad edge
@@ -134,13 +102,10 @@ class DriveSummaryCard:
       return True
     return False
 
-  # -- main-layout hand-off -------------------------------------------------------
-
   def hold_home(self) -> bool:
-    """Offroad edge. True: the card is hopping in, hold the stock scroll to home.
-    False: not due (toggle off, short trip, still moving, ...): stock, scroll now."""
+    """Offroad edge. True: the card is up, hold the scroll to home. False: stock, scroll now."""
     if self._early:
-      # already up since the early trigger: keep it (and its SHOW_S clock); a tap meanwhile -> leave now
+      # already up early: keep it and its SHOW_S clock, unless tapped meanwhile
       self._early = False
       shown = self._slide.state == SHOWN and not self._early_tap
       if self._early_tap:
@@ -151,8 +116,7 @@ class DriveSummaryCard:
     return not self._handoff.offroad(shown)
 
   def release_home(self) -> bool:
-    """Every tick. True once, when the card goes away: scroll to home now.
-    Also polls early_fn while onroad (the card up ahead of the offroad edge)."""
+    """Every tick. True once, when the card goes away: scroll to home now. Polls early_fn while onroad."""
     if self._early_fn is not None and ui_state.started:
       try:
         ev = self._early_fn()
@@ -166,7 +130,7 @@ class DriveSummaryCard:
     return self._handoff.release(self.holding)
 
   def cancel(self) -> None:
-    """Onroad edge: the card is gone at once and nothing is pending; onroad takes over."""
+    """Onroad edge: gone at once, nothing pending."""
     self._handoff.onroad()
     self._slide.cut()
     self._shown_at = None
@@ -206,11 +170,8 @@ class DriveSummaryCard:
     self._today = ("Today ", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
     self._week = ("Week ", fmt_trip(float(st.get("week_m") or 0), float(st.get("week_e") or 0), metric))
 
-  # -- drawing ---------------------------------------------------------------
-
   def render(self, rect: rl.Rectangle, page_x: float | None = None) -> None:
-    """page_x: the onroad page's current x in the main layout's scroller. Once dismissed, the card
-    rides it, so it leaves with the stock scroll to home."""
+    """page_x: the onroad page's x in the main layout's scroller; the card rides it once dismissed."""
     ds.card_on_screen = self.visible and not ui_state.started
     if ui_state.started and not self._early:
       self.cancel()
