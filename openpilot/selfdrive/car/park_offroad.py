@@ -69,12 +69,8 @@ def sample(frames) -> tuple[int | None, int | None]:
   """(gear, autopark) from one can packet's (address, bus, data) frames; first valid of each."""
   gear = autopark = None
   for addr, bus, dat in frames:
-    if bus != PARTY_BUS:
-      continue
-    if gear is None and addr == ADDR_DI_SYSTEM_STATUS:
-      gear = decode_gear(addr, bus, dat)
-    elif autopark is None and addr == ADDR_DI_STATE:
-      autopark = decode_autopark(addr, bus, dat)
+    gear = decode_gear(addr, bus, dat) if gear is None else gear
+    autopark = decode_autopark(addr, bus, dat) if autopark is None else autopark
   return gear, autopark
 
 
@@ -248,10 +244,7 @@ def enabled(params) -> bool:
 
 def not_parked(params) -> bool:
   """hardwared onroad condition. True (no effect) unless the toggle is on and parkd says parked."""
-  try:
-    return not (enabled(params) and get_state(params) == PARKED)
-  except Exception:
-    return True
+  return not (enabled(params) and get_state(params) == PARKED)
 
 
 class OffroadTimer:
@@ -273,10 +266,7 @@ class OffroadTimer:
 
 def should_run(started: bool, params, CP) -> bool:
   """process_config: parkd runs onroad and offroad while the toggle is on."""
-  try:
-    return enabled(params)
-  except Exception:
-    return False
+  return enabled(params)
 
 
 def _brand(params) -> str:

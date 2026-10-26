@@ -1,5 +1,5 @@
-"""Drive summary: recorder, timeline, persistence, show rules, Today/Week fallbacks, card layout
-and motion. No raylib needed."""
+"""Drive summary: recorder, timeline, persistence, show rules, Today/Week fallbacks, card layout.
+No raylib needed."""
 import json
 from datetime import date, datetime
 from pathlib import Path
