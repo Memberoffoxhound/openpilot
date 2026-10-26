@@ -1,24 +1,21 @@
-"""Park-offroad glue for the trip card (TeslaPilot): show the "trip complete" card the moment
-the car is shifted into Park, instead of when park-offroad takes the device offroad 3 s later
-(parkd's PARK_HOLD_S).
+"""Park-offroad glue for the trip card (TeslaPilot).
 
-The card stays portable: it takes an optional early_fn (like stats_fn) that returns SHOW / CUT /
-None once per tick. early_event() here is that function.
+ParkEarly: the card's early_fn. Puts the card up the moment the car is shifted into Park, not
+3 s later when parkd takes the device offroad. It mirrors parkd's arming (R/D seen this session,
+then Park, stopped, not engaged, both toggles on) and cuts the card if the car leaves Park
+while still onroad, or if Park lasts GIVEUP_S and the device never goes offroad.
 
-ParkEarly mirrors parkd's arming so the card only shows when park-offroad will act: R or D seen
-during this onroad session, then Park, stopped, not engaged, ParkOffroad and DriveSummary on.
-The early card is cut again if the car leaves Park while still onroad (a quick P -> R), or if
-Park lasts GIVEUP_S and the device is still onroad (park-offroad unavailable, e.g. gear frames
-lost). Going offroad hands it to the normal card flow (the main layout's hold_home), so the card
-keeps its 10 s from the moment of Park and then rides the stock scroll to home.
+ParkReturn: back onroad from park-offroad skips ONROAD_DELAY and the slow brightness ramp.
 """
 from __future__ import annotations
 
 import time
 
+from openpilot.selfdrive.car import park_offroad
+from openpilot.selfdrive.ui.lib import drive_summary
+
 SHOW, CUT = "show", "cut"
 GIVEUP_S = 5.0          # Park held this long and still onroad: park-offroad isn't coming, cut the card
-MOVING_V = 0.15         # m/s, same as drive_summary.MOVING_V
 RETURN_GEARS = ("drive", "reverse")
 
 
@@ -54,7 +51,7 @@ class ParkEarly:
         self.armed = False          # no second try until the car leaves Park in R/D again
         return self._cut()
       return None
-    if self.armed and not engaged and v_ego <= MOVING_V:
+    if self.armed and not engaged and v_ego <= drive_summary.MOVING_V:
       self.fired = True
       return SHOW
     return None
@@ -75,8 +72,6 @@ def _on(params) -> bool:
   now = time.monotonic()
   if now - _on_cache[0] > 1.0:
     try:
-      from openpilot.selfdrive.car import park_offroad
-      from openpilot.selfdrive.ui.lib import drive_summary
       on = park_offroad.enabled(params) and drive_summary.get_bool(params, drive_summary.PARAM_ENABLED, False)
     except Exception:
       on = False
@@ -101,23 +96,17 @@ def early_event() -> str | None:
     return None
 
 
-# -- back onroad from park-offroad: no ONROAD_DELAY, no slow brightness ramp --------------------
 HOLD, JUMP = "hold", "jump"
 
 
 class ParkReturn:
-  """Pure. ui_state feeds it every frame.
+  """Pure; ui_state feeds it every frame.
 
-  returned: this onroad session began from park-offroad (R/D in Park, a new route). Latched from
-  ParkOffroadActive while offroad, so it survives parkd clearing the param a moment before
-  hardwared starts onroad; a real ignition off (latch cleared, param False) drops it.
+  returned: this onroad session began from park-offroad. Latched while offroad, so it survives parkd
+  clearing ParkOffroadActive a moment before hardwared starts onroad; a real ignition off drops it.
 
-  brightness(): the Device's park-offroad hold and jump.
-    HOLD (offroad, parked offroad, trip card on screen): keep the last onroad brightness, don't
-      fade toward the offroad level, so the card is readable. Afterwards: stock fade.
-    JUMP (once, onroad after a park return, first camera reading): set the filter straight to the
-      camera-based target instead of the 10 s ramp.
-    None: stock. With ParkOffroad off, ParkOffroadActive is never set, so always None."""
+  brightness(): HOLD the onroad level while the card is up parked offroad, JUMP once to the camera
+  target on the way back, else None (stock). ParkOffroadActive is never set with the toggle off."""
 
   def __init__(self) -> None:
     self.returned = False

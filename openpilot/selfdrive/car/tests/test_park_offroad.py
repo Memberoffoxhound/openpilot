@@ -377,14 +377,14 @@ def test_brand_gate_reads_car_params_persistent(tmp_path):
   cp = car.CarParams.new_message()
   cp.brand = "tesla"
   p = FakeParams(tmp_path, {"CarParamsPersistent": cp.to_bytes()})
-  assert po._is_tesla(p)
+  assert po._brand(p) == "tesla"
   cp = car.CarParams.new_message()
   cp.brand = "toyota"
   p.d["CarParamsPersistent"] = cp.to_bytes()
-  assert po.park_source("toyota") is None and po.park_source("tesla").sample is po.sample
-  assert not po._is_tesla(p)
+  assert "toyota" not in po.PARK_SOURCES and po.PARK_SOURCES["tesla"].sample is po.sample
+  assert po._brand(p) == "toyota"
   p.d["CarParamsPersistent"] = None
-  assert not po._is_tesla(p)
+  assert po._brand(p) == ""
 
 
 # -- smoke test: parkd main() end to end, with hardwared / manager / loggerd simulated ---------------

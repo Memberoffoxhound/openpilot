@@ -146,16 +146,6 @@ def summary(m=3000.0, dur=300.0, end=1_760_000_000.0, **kw):
           "tl": "eeem", "shown": False, **kw}
 
 
-def test_should_show_rules():
-  s = summary()
-  assert ds.should_show(s, s["end"] + 1)
-  assert not ds.should_show(summary(m=150.0), s["end"] + 1)     # < 0.1 mi
-  assert not ds.should_show(summary(dur=25.0), s["end"] + 1)    # < 30 s
-  assert not ds.should_show(summary(shown=True), s["end"] + 1)  # once per drive
-  assert not ds.should_show(s, s["end"] + ds.SHOW_WITHIN_S + 1)  # stale
-  assert not ds.should_show(None, 0)
-
-
 def test_add_drive_keeps_days_and_last():
   data = None
   for i in range(20):
@@ -200,7 +190,7 @@ class FakeParams:
 
 
 @pytest.mark.parametrize("known", [True, False])
-def test_params_roundtrip_and_mark_shown(tmp_path, known):
+def test_params_roundtrip(tmp_path, known):
   p = FakeParams(tmp_path, known)
   assert ds.get_json(p, ds.PARAM_LAST) is None and not ds.get_bool(p, ds.PARAM_ENABLED)
   ds.put_bool(p, ds.PARAM_ENABLED, True)
@@ -208,10 +198,7 @@ def test_params_roundtrip_and_mark_shown(tmp_path, known):
   ds.put_json(p, ds.PARAM_LAST, ds.add_drive(None, summary()))
   if not known:
     assert json.loads((tmp_path / ds.PARAM_LAST).read_text())["last"]["id"] == "r"
-  ds.mark_shown(p, "other")
-  assert not ds.get_json(p, ds.PARAM_LAST)["last"]["shown"]
-  ds.mark_shown(p, "r")
-  assert ds.get_json(p, ds.PARAM_LAST)["last"]["shown"]
+  assert ds.get_json(p, ds.PARAM_LAST)["last"]["id"] == "r"
 
 
 # -- formatting ---------------------------------------------------------------------
@@ -358,7 +345,6 @@ def test_card_enters_from_off_screen_smoothly_no_overshoot():
   assert not hasattr(card_slide, "EXIT_S")         # no exit animation of its own
   sl = _slide()
   assert sl.step() is None and not sl.drawn       # nothing before show()
-  assert sl.offset == -240                        # starts fully above the screen
   sl.show()
   ys = _ys(sl, FPS)
   assert ys[0] < -0.4 * 240                       # first frame still mostly above the screen

@@ -107,10 +107,6 @@ PARK_SOURCES: dict[str, ParkSource] = {
 }
 
 
-def park_source(brand: str) -> ParkSource | None:
-  return PARK_SOURCES.get(brand)
-
-
 class ParkOffroad:
   """Pure state machine. update() returns True while the device should be offroad for Park."""
 
@@ -299,10 +295,6 @@ def _brand(params) -> str:
     return ""
 
 
-def _is_tesla(params) -> bool:
-  return _brand(params) == "tesla"
-
-
 def main() -> None:
   import time
   import openpilot.cereal.messaging as messaging
@@ -312,12 +304,12 @@ def main() -> None:
 
   params = Params()
   # gear frames mean something else on other brands: idle unless the last car has a park source
-  source = park_source(_brand(params))
+  source = PARK_SOURCES.get(_brand(params))
   if source is None:
     put_bool(params, PARAM_ACTIVE, False)
     while source is None:
       time.sleep(5.0)
-      source = park_source(_brand(params))
+      source = PARK_SOURCES.get(_brand(params))
 
   can_sock = messaging.sub_sock("can", conflate=True, timeout=0)
   sm = messaging.SubMaster(["pandaStates", "selfdriveState"])

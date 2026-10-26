@@ -43,7 +43,6 @@ MIN_SHOW_M = 160.9           # 0.1 mi: shorter drives never show the card
 MIN_SHOW_S = 30.0
 SHOW_S = 10.0                # seconds the trip-complete card stays up before sliding away (Bruce may change this)
 MERGE_S = 3.0                # offroad shorter than this (onroad cycles) continues the same drive
-SHOW_WITHIN_S = 600.0        # never show a summary for a drive that ended longer ago
 DAYS_KEEP = 14
 MOVING_V = 0.15              # m/s, same cutoff as the home trip meter
 
@@ -258,12 +257,6 @@ def eligible(drive: dict | None) -> bool:
   return bool(drive) and float(drive.get("m") or 0) >= MIN_SHOW_M and float(drive.get("dur") or 0) >= MIN_SHOW_S
 
 
-def should_show(drive: dict | None, now_wall: float) -> bool:
-  if not drive or drive.get("shown") or not eligible(drive):
-    return False
-  return 0 <= now_wall - float(drive.get("end") or 0) <= SHOW_WITHIN_S
-
-
 def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
   """At the onroad -> offroad edge: the trip that just ended, when the card should hop in before
   home (toggle on, a recorded drive, stopped, long enough). None = stock behavior.
@@ -436,15 +429,6 @@ def _raw_write(params, key: str, data: bytes) -> None:
   with open(tmp, "wb") as f:
     f.write(data)
   os.replace(tmp, path)
-
-
-def mark_shown(params, drive_id: str) -> None:
-  data = get_json(params, PARAM_LAST) or {}
-  last = data.get("last") or {}
-  if last.get("id") == drive_id and not last.get("shown"):
-    last["shown"] = True
-    data["last"] = last
-    put_json(params, PARAM_LAST, data)
 
 
 # -- UI hook ---------------------------------------------------------------------
