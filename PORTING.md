@@ -2,90 +2,49 @@
 
 ## Drive summary card (any car, any fork)
 
-Self-contained: no Tesla, TeslaPilot or Jetlink code, no gear detection, no new assets (everything is drawn in code).
+No Tesla, TeslaPilot or Jetlink code, no gear detection, no assets.
 
-### Files (copy as is)
-| File | What |
-| --- | --- |
-| `openpilot/selfdrive/ui/lib/drive_summary.py` | Recorder, timeline buckets, persistence, show rules, formatting. Imports nothing from openpilot except swaglog, plus the optional swap-in below. |
-| `openpilot/selfdrive/ui/mici/widgets/drive_summary_card.py` | The home card: opaque, alert-style, 536x240. |
-| `openpilot/selfdrive/ui/mici/widgets/card_slide.py` | Card motion (pure, steppable, no imports). |
-| `openpilot/selfdrive/ui/mici/widgets/trip_row.py` | The Today/Week row (home) and block (card). |
-| `openpilot/selfdrive/ui/tests/test_drive_summary.py` | Tests. Pure Python, no raylib. |
+**Copy:** `selfdrive/ui/lib/drive_summary.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,card_slide,trip_row}.py`, `selfdrive/ui/tests/test_drive_summary.py`.
 
-### Params (one place: `common/params_keys.h`)
+**Params** (`common/params_keys.h`; read tolerantly, so an older params library just turns the feature off):
 ```
 {"DriveSummary", {PERSISTENT, BOOL, "0"}},
 {"DriveSummaryLast", {PERSISTENT, JSON}},
 ```
-The keys are read tolerantly: with an older params library, the feature is just off. This fork sets `DriveSummary` from the "Go Offroad in Park" toggle. Elsewhere, add a `BigParamControl("drive summary", "DriveSummary")` toggle, or set the param.
+Here the "Go Offroad in Park" toggle sets `DriveSummary`; elsewhere add a `BigParamControl("drive summary", "DriveSummary")`.
 
-### Hooks (all in the mici main layout, plus imports)
-1. Stats at drive end: in `_update_state`, call `drive_summary.tick(ui_state)` once per frame.
-   - It records while `ui_state.started` and saves the summary when offroad lasts 3 s. Shorter onroad cycles count as the same drive.
-   - It works with any offroad cause: ignition off, park-offroad, onroad cycle, always-offroad.
-2. Card: in `__init__`, add `self._drive_summary = DriveSummaryCard(stats_fn=None)`. At the end of `_render`, after `super()._render(...)`, add `self._drive_summary.render(self._rect, self._onroad_layout.rect.x)`: an overlay above the scroller that rides the onroad page once dismissed.
-   - `stats_fn` is optional: a callable returning `today_m/today_e/week_m/week_e/streak_days`. TeslaPilot passes its `stats_view`. Without it, the card uses the 14 days of totals it keeps itself.
-   - `early_fn` is optional too: called every tick while onroad, it returns `"show"` (put the card up now, ahead of the offroad edge), `"cut"` (take it down, the trip goes on) or `None`. TeslaPilot passes `park_card.early_event` (card at Park). Without it, the card shows at the offroad edge.
-3. The hop, in `_handle_transitions`. The trip card shows first, then stock's scroll to home:
+**Hooks** (mici main layout):
+1. `_update_state`: `drive_summary.tick(ui_state)`.
+2. `__init__`: `self._drive_summary = DriveSummaryCard()`. Optional `stats_fn` (returns `today_m/today_e/week_m/week_e/streak_days`; default: the card's own 14-day totals) and `early_fn` (returns `"show"`/`"cut"`/`None` while onroad; TeslaPilot passes `park_card.early_event`).
+3. End of `_render`, after `super()._render(...)`: `self._drive_summary.render(self._rect, self._onroad_layout.rect.x)`.
+4. `_handle_transitions`:
    ```python
    if ui_state.started:
-     self._drive_summary.cancel()                 # onroad wins, nothing pending
+     self._drive_summary.cancel()
      self._onroad_time_delay = rl.get_time()      # stock
-   elif not self._drive_summary.hold_home():      # card due: hold the scroll
+   elif not self._drive_summary.hold_home():
      self._scroll_to(self._home_layout)           # stock
 
-   if self._drive_summary.release_home():         # card dismissed: stock scroll now
+   if self._drive_summary.release_home():
      self._scroll_to(self._home_layout)
    ```
-   - Not due (toggle off, short trip, still moving): exactly stock.
-   - The offroad branch never pops the nav stack (stock).
-4. Tap: add `_handle_mouse_release` with `if self._drive_summary.dismiss_on_tap(): return` before `super()`.
-   - Also add `and not self._drive_summary.visible` to the scroller's `set_scrolling_enabled`, so nothing swipes under the card.
+5. `_handle_mouse_release`: `if self._drive_summary.dismiss_on_tap(): return` before `super()`, and add `and not self._drive_summary.visible` to the scroller's `set_scrolling_enabled`.
 
-### Swap-in (in `drive_summary.py`, try/except import, nothing to do on a fork without it)
-- **`accent_rgb()`, theme color:** used by the card's check badge. It returns the fork's theme color from `openpilot.selfdrive.ui.layouts.settings.common.theme_rgb()`, which here is TeslaPilot's theme (Tesla blue or openpilot green). If that import fails (no theme manager), it returns **comma green** `#178645`, connect's engagedGreen, the same as the timeline's engaged color. To use another fork's theme manager, change this one function.
+**Theme:** `drive_summary.accent_rgb()` tries `layouts.settings.common.theme_rgb()`, else comma green. Change that one function for another theme manager.
 
-### Behavior
-- The card hops in at the onroad -> offroad edge, over the onroad page, before home. Only when it's due:
-  - `DriveSummary` is on.
-  - The trip was recorded and is at least 0.1 mi and 30 s long.
-  - The car is stopped on the last onroad frame. An onroad cycle while moving stays stock.
-- Motion and timing:
-  - Slides in from the top with a smooth ease-out in `ENTER_S` (0.28 s), with no bounce or overshoot (`widgets/card_slide.py`).
-  - After `SHOW_S` (10 s; one constant in `drive_summary.py`) or a tap, the stock scroll to home runs.
-    - The card has no exit animation of its own: it rides the onroad page's scroller position (`attached_dx`), so it slides sideways exactly like home coming in today.
-    - It stops drawing once home is in place, with a 2 s failsafe if no scroll happens.
-    - There's no on-screen timer.
-  - Going back onroad removes it at once and cancels the hand-off.
-  - If onroad resumes within the 3 s merge window, the trip goes on and the card comes back at the real end.
-- The card headline is "trip complete", with the theme check badge to its right.
-  - Stat columns are evenly spaced, each value centered over its label.
-  - Best stretch drops if the four columns don't fit.
-- The timeline is 160 constant-memory time buckets, using comma connect's palette:
-  - green #178645 engaged
-  - blue #175886 manual
-  - yellow #e3d756 override/gas
-  - orange #da6f25 userPrompt
-  - red #c92231 critical
-  - grey #919b95 stopped and disengaged
-- Engagement % is distance-based (engaged meters / meters).
+**Behavior:** shows at the offroad edge when the toggle is on, the trip is >= 0.1 mi and 30 s, and the car is stopped. Slides in over `ENTER_S` (0.28 s), stays `SHOW_S` (10 s) or until a tap, then leaves with the stock scroll to home. Onroad again removes it at once; onroad within 3 s continues the same trip. Not due: exactly stock.
 
 ## Park-offroad (Tesla; another brand needs one decoder)
 
 | Piece | Where |
 | --- | --- |
-| State machine, decoders, hooks, `parkd` main | `openpilot/selfdrive/car/park_offroad.py` |
-| Swap-in detection | `PARK_SOURCES = {"tesla": ParkSource(addrs, sample)}`. A brand adds `(frames) -> (gear, autopark)`. parkd idles for brands without a source (brand from `CarParamsPersistent`). |
-| Onroad condition | hardwared: `onroad_conditions["not_parked"] = park_offroad.not_parked(params)`. This is a no-op unless `ParkOffroad` is on and parkd holds `ParkOffroadActive`. Offroad then goes through the normal transition: route end, NO_OUTPUT with the relay open, uploads. |
-| Shutdown timing | hardwared: `off_ts = park_timer.update(...)`. After a park-offroad, the shutdown timer restarts at ignition off. |
-| Process | `RestartingPythonProcess("parkd", ..., park_offroad.should_run)`. It runs onroad and offroad while the toggle is on. |
-| Params | `ParkOffroad {PERSISTENT, BOOL, "0"}`, `ParkOffroadActive {CLEAR_ON_MANAGER_START, BOOL}`. Do not add CLEAR_ON_IGNITION_ON: manager's ignition-on clear would drop the latch on an ignitionCan blip. |
-| Toggles | Both `toggles.py` files, with a warning confirm. They also set `DriveSummary`. |
-| Tests | `openpilot/selfdrive/car/tests/test_park_offroad.py`. CAN fixtures, plus a parkd main-loop smoke test with simulated hardwared/manager routes. |
-| Trip card at Park | `selfdrive/ui/lib/park_card.py` `early_event`, passed to the card as `DriveSummaryCard(stats_fn=..., early_fn=early_event)`. The card goes up on the first Park frame (after R/D this onroad session, stopped, not engaged, both toggles on), over the onroad page, instead of 3 s later at the offroad edge. The offroad edge keeps it (and its `SHOW_S` clock). It's cut again if the car leaves Park while still onroad, or if Park lasts 5 s and the device is still onroad. |
-| Back onroad faster | `ui_state.park_return` (`park_card.ParkReturn`): the onroad session began from park-offroad. The mici main layout then skips `ONROAD_DELAY` (straight to the camera), and the Device jumps the brightness filter to the first camera reading instead of the 10 s ramp. |
-| Brightness under the card | Device: parked offroad (`ParkOffroadActive`) with the trip card on screen (`drive_summary.card_on_screen`), the brightness holds at the last onroad value. Afterwards the stock fade to the offroad level. Toggle off: stock. |
-| UI tests | `openpilot/selfdrive/ui/tests/test_park_card.py`. |
+| State machine, decoders, `parkd` | `selfdrive/car/park_offroad.py`. A brand adds a `ParkSource` to `PARK_SOURCES`; parkd idles without one. |
+| Onroad condition | hardwared: `onroad_conditions["not_parked"] = park_offroad.not_parked(params)`. No-op unless `ParkOffroad` is on and parkd holds `ParkOffroadActive`. |
+| Shutdown timing | hardwared: `off_ts = park_timer.update(...)` restarts the timer at ignition off. |
+| Process | `RestartingPythonProcess("parkd", ..., park_offroad.should_run)`, onroad and offroad while the toggle is on. |
+| Params | `ParkOffroad {PERSISTENT, BOOL, "0"}`, `ParkOffroadActive {CLEAR_ON_MANAGER_START, BOOL}`. No CLEAR_ON_IGNITION_ON: an ignitionCan blip would drop the latch. |
+| Toggles | Both `toggles.py`, warning confirm; also sets `DriveSummary`. |
+| Card at Park, fast return, brightness | `selfdrive/ui/lib/park_card.py`: `early_event` puts the card up on the first Park frame. `ParkReturn` skips `ONROAD_DELAY` and jumps brightness to the camera on R/D, and holds brightness while the card is up parked offroad. |
+| Tests | `selfdrive/car/tests/test_park_offroad.py`, `selfdrive/ui/tests/test_park_card.py`. |
 
 It only ever removes an onroad condition and sends nothing on CAN. Panda safety is unchanged.
