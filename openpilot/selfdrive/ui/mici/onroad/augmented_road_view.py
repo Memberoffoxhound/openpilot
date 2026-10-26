@@ -130,8 +130,9 @@ class BookmarkIcon(Widget):
 
 
 class AugmentedRoadView(CameraView):
-  def __init__(self, bookmark_callback=None, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_NARROW_ROAD):
+  def __init__(self, bookmark_callback=None, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_NARROW_ROAD, summary=None):
     super().__init__("camerad", stream_type)
+    self._summary = summary   # trip summary card: drawn instead of the offroad label
     self._bookmark_callback = bookmark_callback
     self._set_placeholder_color(rl.BLACK)
 
@@ -183,7 +184,8 @@ class AugmentedRoadView(CameraView):
     # Draw text if not onroad
     if not ui_state.started:
       rl.draw_rectangle_rec(self.rect, rl.BLACK)
-      self._offroad_label.render(self._rect)
+      if not (self._summary and self._summary.render(self._rect)):
+        self._offroad_label.render(self._rect)
       return
 
     self._switch_stream_if_needed(ui_state.sm)

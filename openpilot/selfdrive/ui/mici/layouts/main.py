@@ -11,6 +11,9 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
+from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui.lib import drive_summary
+from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
 
 
 ONROAD_DELAY = 2.5  # seconds
@@ -31,7 +34,8 @@ class MiciMainLayout(Scroller):
     self._home_layout = MiciHomeLayout()
     self._alerts_layout = MiciOffroadAlerts()
     self._settings_layout = SettingsLayout()
-    self._car_onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked)
+    self._summary = DriveSummaryCard(stats_fn=stats_view)
+    self._car_onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked, summary=self._summary)
     self._body_onroad_layout = BodyLayout()
 
     # Initialize widget rects
@@ -90,6 +94,7 @@ class MiciMainLayout(Scroller):
   def _update_state(self):
     super()._update_state()
     tick_trip()
+    drive_summary.tick(ui_state)
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
 
@@ -109,6 +114,9 @@ class MiciMainLayout(Scroller):
     if gui_app.widget_in_stack(self._onboarding_window):
       return
 
+    if ui_state.ignition:   # trip summary: up from the offroad edge until the next drive
+      self._summary.clear()
+
     if ui_state.started != self._prev_onroad:
       self._prev_onroad = ui_state.started
 
@@ -116,8 +124,11 @@ class MiciMainLayout(Scroller):
       # offroad: immediately scroll to home, but don't pop nav stack (can stay in settings)
       if ui_state.started:
         self._onroad_time_delay = rl.get_time()
-      else:
+      elif ui_state.ignition or not self._summary.begin():   # card only at key off
         self._scroll_to(self._home_layout)
+
+    if self._summary.update(abs(self._onroad_layout.rect.x - self._rect.x) < 1):
+      self._scroll_to(self._home_layout)
 
     # FIXME: these two pops can interrupt user interacting in the settings
     if self._onroad_time_delay is not None and rl.get_time() - self._onroad_time_delay >= ONROAD_DELAY:
