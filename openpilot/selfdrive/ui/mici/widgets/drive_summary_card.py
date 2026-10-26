@@ -1,4 +1,4 @@
-"""Trip summary card (DriveSummary): the onroad page's content while the car is parked or off.
+"""Trip summary card: the onroad page's content while the car is parked or off.
 
 begin() when a trip ends: it slides in over ENTER_S and stays the onroad page's content until
 clear() (the next drive), so swiping back from home shows it again. update() returns True once,
@@ -78,7 +78,7 @@ class DriveSummaryCard:
     """The trip just ended: True if it's long enough for a card and the card is up."""
     try:
       params = ui_state.params
-      drive = ds.due_summary(params)
+      drive = ds.due_summary()
       if drive is None:
         return False
       self._load_texts(drive, ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive))   # Today/Week incl. this trip

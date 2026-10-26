@@ -184,16 +184,11 @@ class FakeParams:
   def put(self, key, value):
     self.d[key] = value
 
-  def put_bool(self, key, value):
-    self.d[key] = value
-
 
 @pytest.mark.parametrize("known", [True, False])
 def test_params_roundtrip(tmp_path, known):
   p = FakeParams(tmp_path, known)
-  assert ds.get_json(p, ds.PARAM_LAST) is None and not ds.get_bool(p, ds.PARAM_ENABLED)
-  ds.put_bool(p, ds.PARAM_ENABLED, True)
-  assert ds.get_bool(p, ds.PARAM_ENABLED)
+  assert ds.get_json(p, ds.PARAM_LAST) is None
   ds.put_json(p, ds.PARAM_LAST, ds.add_drive(None, summary()))
   if not known:
     assert json.loads((tmp_path / ds.PARAM_LAST).read_text())["last"]["id"] == "r"
@@ -323,16 +318,18 @@ def _rec(m=5000.0, dur=600.0, last_v=0.0, active=True):
   return r
 
 
-def test_due_summary_rules(monkeypatch):
-  monkeypatch.setattr(ds, "enabled", lambda params: True)
-  d = ds.due_summary(None, _rec())
+def test_due_summary_rules():
+  d = ds.due_summary(_rec())
   assert d is not None and d["id"] == "route1" and d["m"] == 5000.0
-  assert ds.due_summary(None, _rec(m=150.0)) is None          # < 0.1 mi: stock
-  assert ds.due_summary(None, _rec(dur=20.0)) is None         # < 30 s: stock
-  assert ds.due_summary(None, _rec(last_v=8.0)) is None       # still moving (an onroad cycle): stock
-  assert ds.due_summary(None, _rec(active=False)) is None     # nothing recorded: stock
-  monkeypatch.setattr(ds, "enabled", lambda params: False)
-  assert ds.due_summary(None, _rec()) is None                 # toggle off: stock
+  assert ds.due_summary(_rec(m=150.0)) is None          # < 0.1 mi: stock
+  assert ds.due_summary(_rec(dur=20.0)) is None         # < 30 s: stock
+  assert ds.due_summary(_rec(last_v=8.0)) is None       # still moving (an onroad cycle): stock
+  assert ds.due_summary(_rec(active=False)) is None     # nothing recorded: stock
+
+
+def test_always_on():
+  assert '"DriveSummary"' not in (UI.parents[1] / "common/params_keys.h").read_text()
+  assert "DriveSummary" not in (UI / "mici/layouts/settings/toggles.py").read_text()
 
 
 def test_recorder_tracks_last_speed():

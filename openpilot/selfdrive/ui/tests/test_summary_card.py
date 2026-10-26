@@ -49,7 +49,6 @@ class World:
     monkeypatch.setattr(dsc, "ui_state", self.ui)
     monkeypatch.setattr(dsc, "time", self.clock)
     monkeypatch.setattr(dsc.DriveSummaryCard, "draw", lambda self, *a: setattr(self, "drawn_y", a[1]))
-    monkeypatch.setattr(ds, "enabled", lambda params: True)
     rec = ds.DriveRecorder()
     rec.active, rec.m, rec.e, rec.dur, rec.last_v = True, 5000.0 if due else 50.0, 4000.0, 600.0, 0.0
     monkeypatch.setattr(ds, "recorder", rec)

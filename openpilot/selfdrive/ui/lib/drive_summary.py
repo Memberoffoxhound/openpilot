@@ -5,7 +5,7 @@ lasts MERGE_S, whatever the cause. Constant memory: N_BUCKETS time buckets that 
 (bucket length doubles) as the drive grows. Engaged % is by distance.
 
 Colors are comma connect's route timeline palette, except override: yellow instead of grey.
-Params are read tolerantly: a params library without these keys just loses the feature.
+DriveSummaryLast is read tolerantly: without the key it lives in a raw file in the params dir.
 """
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ import os
 import time
 from datetime import date, datetime, timedelta
 
-PARAM_ENABLED = "DriveSummary"
 PARAM_LAST = "DriveSummaryLast"
 
 N_BUCKETS = 160
@@ -232,10 +231,10 @@ def eligible(drive: dict | None) -> bool:
   return bool(drive) and float(drive.get("m") or 0) >= MIN_SHOW_M and float(drive.get("dur") or 0) >= MIN_SHOW_S
 
 
-def due_summary(params, rec: DriveRecorder | None = None) -> dict | None:
-  """The trip that just ended, if the card is due (toggle on, recorded, stopped, long enough)."""
+def due_summary(rec: DriveRecorder | None = None) -> dict | None:
+  """The trip that just ended, if the card is due (recorded, stopped, long enough)."""
   rec = recorder if rec is None else rec
-  if not enabled(params) or not rec.active or rec.last_v > MOVING_V:
+  if not rec.active or rec.last_v > MOVING_V:
     return None
   drive = rec.summary(wall_now())
   return drive if eligible(drive) else None
@@ -326,24 +325,6 @@ def _known(params, key: str) -> bool:
     return False
 
 
-def get_bool(params, key: str, default: bool = False) -> bool:
-  try:
-    if _known(params, key):
-      raw = params.get(key, return_default=True)
-      return default if raw is None else bool(raw)
-    with open(_raw_path(params, key), "rb") as f:
-      return f.read().strip() in (b"1", b"true", b"True")
-  except Exception:
-    return default
-
-
-def put_bool(params, key: str, value: bool) -> None:
-  if _known(params, key):
-    params.put_bool(key, value)
-    return
-  _raw_write(params, key, b"1" if value else b"0")
-
-
 def get_json(params, key: str) -> dict | None:
   try:
     if _known(params, key):
@@ -377,25 +358,14 @@ def _raw_write(params, key: str, data: bytes) -> None:
 # -- UI hook ---------------------------------------------------------------------
 
 recorder = DriveRecorder()
-_enabled_cache = (0.0, False)
 _route_t = 0.0
 _logged = False
-
-
-def enabled(params) -> bool:
-  global _enabled_cache
-  now = time.monotonic()
-  if now - _enabled_cache[0] > 2.0:
-    _enabled_cache = (now, get_bool(params, PARAM_ENABLED, False))
-  return _enabled_cache[1]
 
 
 def tick(ui_state) -> None:
   global _route_t, _logged
   params = ui_state.params
   try:
-    if not enabled(params) and not recorder.active:
-      return
     sm = ui_state.sm
     started = bool(ui_state.started)
     v = enabled_ = gas = False

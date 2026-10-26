@@ -37,7 +37,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DoReboot", {CLEAR_ON_MANAGER_START, BOOL}},
     {"DoShutdown", {CLEAR_ON_MANAGER_START, BOOL}},
     {"DoUninstall", {CLEAR_ON_MANAGER_START, BOOL}},
-    {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // drive-summary "trip summary" card
     {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui: last drive's summary + timeline, and 14 days of totals
     {"DriverTooDistracted", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"DriverLockoutCount", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, INT, "0"}},

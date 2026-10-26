@@ -5,12 +5,11 @@ Any car with an ignition switch, any fork. No car-specific code, no new process,
 **Copy:** `selfdrive/ui/lib/drive_summary.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,trip_row}.py`,
 `selfdrive/ui/tests/{test_drive_summary,test_summary_card}.py`.
 
-**Params** (`common/params_keys.h`; read tolerantly, so an older params library just turns the feature off):
+**Param** (`common/params_keys.h`; without it the history falls back to a raw file in the params dir):
 ```
-{"DriveSummary", {PERSISTENT, BOOL, "0"}},
 {"DriveSummaryLast", {PERSISTENT, JSON}},
 ```
-Toggle: `BigParamControl("trip summary", "DriveSummary")` in mici `toggles.py`. Off by default.
+Always on: no toggle.
 
 **Hooks** (mici only):
 1. `main.__init__`: `self._summary = DriveSummaryCard(stats_fn=...)`, passed as `AugmentedRoadView(..., summary=self._summary)`.
@@ -30,6 +29,6 @@ Toggle: `BigParamControl("trip summary", "DriveSummary")` in mici `toggles.py`. 
 
 **Behavior:** at key off, if the trip was >= 0.1 mi and 30 s and the car stopped, the card slides in (0.28 s) as the
 onroad page's content, holds `SHOW_S` (10 s) or until a tap or swipe, then the stock scroll to home. Swipe back from
-home to see it again until the next key on. Toggle off, short trip, or offroad with the key on: stock.
+home to see it again until the next key on. Short trip or offroad with the key on: stock.
 
 **Theme:** `drive_summary.accent_rgb()` uses `layouts.settings.common.theme_rgb()` if present, else comma green.
