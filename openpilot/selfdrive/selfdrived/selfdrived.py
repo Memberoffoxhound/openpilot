@@ -31,6 +31,7 @@ from openpilot.common.hardware import HARDWARE
 REPLAY = "REPLAY" in os.environ
 SIMULATION = "SIMULATION" in os.environ
 TESTING_CLOSET = "TESTING_CLOSET" in os.environ
+STARTUP_MAX_S = 30.  # a service still not up this long after start is a real comm issue
 
 LONGITUDINAL_PERSONALITY_MAP = {v: k for k, v in log.LongitudinalPersonality.schema.enumerants.items()}
 
@@ -126,6 +127,7 @@ class SelfdriveD:
     self.last_functional_fan_frame = 0
     self.events_prev = []
     self.logged_comm_issue = None
+    self.services_up = False
     self.not_running_prev = None
     self.personality = self.params.get("LongitudinalPersonality", return_default=True)
     self.recalibrating_seen = False
@@ -390,8 +392,14 @@ class SelfdriveD:
     no_system_errors = (not has_disable_events) or (len(self.events) == num_events)
     warmup_sec = 5.
     big_model_settling = self.big_model_loading or time.monotonic() < self.big_model_ready_t + warmup_sec or self.jetlink_events.settling
-    if not self.sm.all_checks() and no_system_errors and not big_model_settling:  # the load holds modelV2 and friends back on purpose
-      if not self.sm.all_alive():
+    all_checks = self.sm.all_checks()
+    self.services_up |= all_checks
+    # services not all up once yet since start: that's initializing, not a comm issue
+    starting = not self.services_up and not self.enabled and self.sm.frame * DT_CTRL < STARTUP_MAX_S
+    if not all_checks and no_system_errors and not big_model_settling:  # the load holds modelV2 and friends back on purpose
+      if starting:
+        self.events.add(EventName.selfdriveInitializing)
+      elif not self.sm.all_alive():
         self.events.add(EventName.commIssue)
       elif not self.sm.all_freq_ok():
         self.events.add(EventName.commIssueAvgFreq)
