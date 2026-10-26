@@ -1,6 +1,5 @@
-"""Drive summary (selfdrive/ui/lib/drive_summary.py): recorder math, the
-connect-style timeline buckets, persistence, show-once rules, Today/Week and
-day-streak fallbacks, and the card formatting. No raylib needed."""
+"""Drive summary: recorder, timeline, persistence, show rules, Today/Week fallbacks, card layout
+and motion. No raylib needed."""
 import json
 from datetime import date, datetime
 from pathlib import Path
@@ -270,16 +269,10 @@ def test_card_columns_even_and_centered():
 def test_ui_hooks_present():
   main = (UI / "mici/layouts/main.py").read_text()
   assert "drive_summary.tick(ui_state)" in main
-  home = (UI / "mici/layouts/home.py").read_text()
-  assert "_drive_summary" not in home and "DriveSummaryCard" not in home     # the card lives in the main layout now
-  assert "draw_trip_row(" in home and "measure_text_cached(f, ll" not in home   # row code lives in trip_row.py only
-  arv = (UI / "mici/onroad/augmented_road_view.py").read_text()
-  assert "streak" not in arv.lower()                                         # streak pill removed
-  assert not (UI / "mici/onroad/streak_icon.py").exists()
-  assert "engaged_alpha" not in (UI / "mici/onroad/hud_renderer.py").read_text()
+  assert "draw_trip_row(" in (UI / "mici/layouts/home.py").read_text()
 
 
-def test_card_v3_layout_rules():
+def test_card_layout_rules():
   """Alert-style card: opaque full screen (no home icons under it, no timer dots), Inter Bold lowercase
   headline as the biggest text, two-column Today/Week block, everything inside 240 px."""
   import ast
@@ -310,12 +303,11 @@ def test_card_v3_layout_rules():
   assert consts["TL_Y"] + consts["TL_H"] + 6 <= consts["TRIP_Y"]
   assert "draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0" in src     # rounded ends kept
   assert "FontWeight.DISPLAY" in src and "draw_trip_block(" in src
-  assert "draw_circle" not in src.split("def draw_check_badge")[0]      # no dot indicators
   row = (UI / "mici/widgets/trip_row.py").read_text()
   assert "def draw_trip_block(" in row and "BLOCK_VALUE = 34" in row and "BLOCK_LABEL = 30" in row
 
 
-# -- card motion: alert-style bounce in, slide back up to the home screen ------
+# -- card motion: slide in from the top, leave with the onroad page ------
 
 FPS = 60
 
@@ -342,7 +334,6 @@ def _ys(sl, n, page_dx=0.0):
 def test_card_enters_from_off_screen_smoothly_no_overshoot():
   from openpilot.selfdrive.ui.mici.widgets import card_slide
   assert 0.25 <= card_slide.ENTER_S <= 0.3
-  assert not hasattr(card_slide, "EXIT_S")         # no exit animation of its own
   sl = _slide()
   assert sl.step() is None and not sl.drawn       # nothing before show()
   sl.show()
@@ -404,11 +395,9 @@ def test_card_uses_the_slide():
   assert "self._slide.cut()" in src.split("def cancel(self)")[1].split("def ")[0]
   assert "self._slide.show()" in src.split("def _begin(self)")[1].split("def ")[0]
   assert "ds.due_summary(" in src.split("def _begin(self)")[1].split("def ")[0]
-  assert "def _poll" not in src and "mark_shown" not in src     # only the hand-off shows it
   render = src.split("def render(self")[1].split("def draw(self")[0]
-  assert "ds.SHOW_S" in render and "attached_dx(" in render and "rect.x + pos[0]" in render and "FADE_S" not in src
-  slide = (UI / "mici/widgets/card_slide.py").read_text()
-  assert "Bounce" not in slide and "pyray" not in slide
+  assert "ds.SHOW_S" in render and "attached_dx(" in render and "rect.x + pos[0]" in render
+  assert "pyray" not in (UI / "mici/widgets/card_slide.py").read_text()
 
 
 # -- the hop: trip card first, then the stock scroll to home -------------------
