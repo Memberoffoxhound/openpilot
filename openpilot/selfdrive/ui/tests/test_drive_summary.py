@@ -227,11 +227,12 @@ def test_accent_uses_theme_else_comma_green(monkeypatch):
   import types
   assert ds.COMMA_GREEN == (0x17, 0x86, 0x45) == ds.COLORS[ds.ENGAGED]
   fake = types.ModuleType("openpilot.selfdrive.ui.layouts.settings.common")
+  fake.THEME_OPENPILOT_RGB = (0, 255, 64)
   fake.theme_rgb = lambda params=None: (62, 140, 235)
   monkeypatch.setitem(sys.modules, "openpilot.selfdrive.ui.layouts.settings.common", fake)
   assert ds.accent_rgb() == (62, 140, 235)
-  fake.theme_rgb = lambda params=None: (0, 255, 64)
-  assert ds.accent_rgb() == (0, 255, 64)
+  fake.theme_rgb = lambda params=None: (0, 255, 64)                # openpilot theme: timeline's comma green
+  assert ds.accent_rgb() == ds.COMMA_GREEN
   fake.theme_rgb = lambda params=None: (300, -5, 64.7)          # out-of-range theme value: clamped, no crash
   assert ds.accent_rgb() == (255, 0, 64)
   for bad in (lambda params=None: (1, 2), lambda params=None: None, lambda params=None: 1 / 0):
