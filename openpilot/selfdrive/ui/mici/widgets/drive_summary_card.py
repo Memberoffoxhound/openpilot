@@ -72,7 +72,6 @@ class DriveSummaryCard:
     self._n_buckets = 0
     self._today = ("Today ", "")
     self._week = ("Week ", "")
-    self._accent: tuple[int, int, int] = ds.COMMA_GREEN
 
   def begin(self) -> bool:
     """The trip just ended: True if it's long enough for a card and the card is up."""
@@ -115,7 +114,6 @@ class DriveSummaryCard:
         st = {}
     if "today_m" not in st:
       st = {**ds.today_week(data), "streak_days": ds.day_streak(data)}
-    self._accent = ds.accent_rgb()
     self._cols = ds.card_columns(drive, int(st.get("streak_days") or 0), metric)
     self._slots_w = -1.0
     tl = str(drive.get("tl") or "")
@@ -134,7 +132,7 @@ class DriveSummaryCard:
     br = HEAD_SIZE * 0.30
     hw = measure_text_cached(bold, HEADLINE, HEAD_SIZE).x
     bcx = min(cx + hw + BADGE_GAP + br, x + w - PAD - br)
-    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, self._accent)
+    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, ds.accent_rgb())
 
     # stats: evenly spaced columns, each value (+ unit on its baseline) centered over its label
     vs, us, ls = VAL_SIZE, UNIT_SIZE, LBL_SIZE

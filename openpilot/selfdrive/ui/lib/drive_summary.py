@@ -302,11 +302,11 @@ COMMA_GREEN = (0x17, 0x86, 0x45)   # comma connect's engagedGreen, same as the t
 
 
 def accent_rgb() -> tuple[int, int, int]:
-  """Swap-in: the fork's theme color, else comma green."""
+  """The fork's theme color (read live, so a theme change shows on the next frame), else comma green."""
   try:
     from openpilot.selfdrive.ui.layouts.settings.common import theme_rgb
-    r, g, b = theme_rgb()
-    return int(r), int(g), int(b)
+    r, g, b = (max(0, min(255, int(c))) for c in theme_rgb())
+    return r, g, b
   except Exception:
     return COMMA_GREEN
 
