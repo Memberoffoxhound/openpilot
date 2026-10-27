@@ -280,7 +280,9 @@ def test_home_text_daylight_readable():
   assert "GREY = rl.Color(200, 200, 200, 255)" in row and "WHITE = rl.Color(255, 255, 255, 255)" in row
   home = (UI / "mici/layouts/home.py").read_text()
   assert "rl.GRAY" not in home and "0.9))" not in home.split("class MiciHomeLayout")[1]
-  assert home.count("text_color=") == 3
+  assert home.count("text_color=") == 3 and "text_color=WHITE" not in home   # version/date/branch: card label grey
+  # home's Today/Week row is the card's stat style: roman grey label + Inter Bold (DISPLAY) white value
+  assert "draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY)" in home
   card = (UI / "mici/widgets/drive_summary_card.py").read_text()
   value, dim = map(float, re.search(r"VALUE_COL, DIM_COL = _col\(WHITE, ([\d.]+)\), _col\(WHITE, ([\d.]+)\)", card).groups())
   assert value == 1.0 and dim >= 0.78

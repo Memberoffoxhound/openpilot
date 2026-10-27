@@ -198,7 +198,7 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._version_label = UnifiedLabel("", font_size=36, text_color=WHITE, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._version_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
@@ -290,10 +290,9 @@ class MiciHomeLayout(Widget):
       self._branch_label.render()
 
       y2 = version_pos.y + self._date_label.font_size + 7
-      f = gui_app.font(FontWeight.ROMAN)
       avail = self.rect.width - HOME_PADDING * 2
-      row_w, lsz = draw_trip_row(f, version_pos.x, y2, avail, self._last_txt, self._week_txt)
-      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz + 8)
+      row_w, lsz = draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY), version_pos.x, y2, avail, self._last_txt, self._week_txt)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz * 1.16 + 8)
 
     # ***** Center-aligned bottom section icons *****
     usb_connected = ui_state.usb_connected
