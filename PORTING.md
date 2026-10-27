@@ -28,7 +28,7 @@ Always on: no toggle.
 4. `AugmentedRoadView._render`, offroad branch: `if not (self._summary and self._summary.render(self._rect)):` before the stock label.
 
 **Behavior:** at key off, if the trip was >= 0.1 mi and 30 s and the car stopped, the card slides in (0.28 s) as the
-onroad page's content, holds `SHOW_S` (10 s) or until a tap or swipe, then the stock scroll to home. Swipe back from
+onroad page's content, holds `SHOW_S` (20 s) or until a tap or swipe, then the stock scroll to home. Swipe back from
 home to see it again until the next key on. Short trip or offroad with the key on: stock.
 
 **Theme:** `drive_summary.accent_rgb()` uses `layouts.settings.common.theme_rgb()` if present, else comma green.
