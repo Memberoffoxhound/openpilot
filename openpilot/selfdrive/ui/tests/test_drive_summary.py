@@ -232,6 +232,11 @@ def test_accent_uses_theme_else_comma_green(monkeypatch):
   assert ds.accent_rgb() == (62, 140, 235)
   fake.theme_rgb = lambda params=None: (0, 255, 64)
   assert ds.accent_rgb() == (0, 255, 64)
+  fake.theme_rgb = lambda params=None: (300, -5, 64.7)          # out-of-range theme value: clamped, no crash
+  assert ds.accent_rgb() == (255, 0, 64)
+  for bad in (lambda params=None: (1, 2), lambda params=None: None, lambda params=None: 1 / 0):
+    fake.theme_rgb = bad                                           # broken theme manager: comma green
+    assert ds.accent_rgb() == ds.COMMA_GREEN
   # a fork with a settings.common but no theme manager, and a fork without the module at all
   monkeypatch.setitem(sys.modules, "openpilot.selfdrive.ui.layouts.settings.common", types.ModuleType("x"))
   assert ds.accent_rgb() == ds.COMMA_GREEN
@@ -307,6 +312,7 @@ def test_card_layout_rules():
   # badge right of the headline: headline drawn at the left pad, badge center after its measured width
   assert "rl.Vector2(cx, y + HEAD_Y)" in draw_src and "cx + hw + BADGE_GAP + br" in draw_src
   assert draw_src.index("draw_text_ex(bold, HEADLINE") < draw_src.index("draw_check_badge(")
+  assert "br, ds.accent_rgb())" in draw_src and "_accent" not in src   # badge reads the theme live, no stale copy
   assert "ds.column_slots(" in draw_src and "sx - lw / 2" in draw_src and "sx - vw / 2" in draw_src
   assert "drive" not in " ".join(v for k, v in consts.items() if isinstance(v, str))
   assert consts["HEAD_SIZE"] > consts["VAL_SIZE"] > consts["LBL_SIZE"]
