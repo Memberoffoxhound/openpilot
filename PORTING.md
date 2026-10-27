@@ -31,7 +31,7 @@ Here the "Go Offroad in Park" toggle sets `DriveSummary`; elsewhere add a `BigPa
 
 **Theme:** `drive_summary.accent_rgb()` tries `layouts.settings.common.theme_rgb()`, else comma green.
 
-**Behavior:** at the offroad edge, if the trip is >= 0.1 mi and 30 s and the car stopped, the card is the onroad page's content: slides in over `ENTER_S` (0.28 s), holds the page `SHOW_S` (10 s) or until a tap or swipe, then the stock scroll to home. Swiping back from home shows it again until the next drive. Not due: stock.
+**Behavior:** at the offroad edge, if the trip is >= 0.1 mi and 30 s and the car stopped, the card is the onroad page's content: slides in over `ENTER_S` (0.28 s), holds the page `SHOW_S` (20 s) or until a tap or swipe, then the stock scroll to home. Swiping back from home shows it again until the next drive. Not due: stock.
 
 ## Park-offroad (Tesla; another brand needs one decoder)
 

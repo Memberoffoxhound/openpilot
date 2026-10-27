@@ -328,7 +328,7 @@ FPS = 60
 
 
 def test_show_time_is_ten_seconds():
-  assert ds.SHOW_S == 10.0
+  assert ds.SHOW_S == 20.0
   assert sum(ln.startswith("SHOW_S =") for ln in (UI / "lib/drive_summary.py").read_text().splitlines()) == 1
 
 
