@@ -301,6 +301,23 @@ def test_card_layout_rules():
   assert "def draw_trip_block(" in row and "BLOCK_VALUE = 34" in row and "BLOCK_LABEL = 30" in row
 
 
+def test_home_text_matches_card():
+  """Home: Today/Week in the card's stat style (grey roman label + white Inter Bold value), version/date/branch in
+  the card's label grey, all readable in daylight."""
+  import re
+  row = (UI / "mici/widgets/trip_row.py").read_text()
+  assert "GREY = rl.Color(200, 200, 200, 255)" in row and "WHITE = rl.Color(255, 255, 255, 255)" in row
+  home = (UI / "mici/layouts/home.py").read_text()
+  assert "draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY)" in home
+  for lbl in ("_version_label", "_date_label", "_branch_label"):
+    assert re.search(rf"self\.{lbl} = UnifiedLabel\([^)]*text_color=GREY", home), lbl
+  assert 'UnifiedLabel("openpilot", font_size=96, text_color=WHITE' in home
+  assert "rl.GRAY" not in home and "TEXT_DIM" not in home and "def _fmt_trip" not in home
+  card = (UI / "mici/widgets/drive_summary_card.py").read_text()
+  value, dim = map(float, re.search(r"VALUE_COL, DIM_COL = _col\(WHITE, ([\d.]+)\), _col\(WHITE, ([\d.]+)\)", card).groups())
+  assert value == 1.0 and dim >= 0.78
+
+
 # -- card motion: slide in from the top, then it's just the onroad page's content ------
 
 FPS = 60
