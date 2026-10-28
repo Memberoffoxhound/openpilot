@@ -12,8 +12,8 @@ Working branch. Version **0.11.23**. Repo name is `openpilot` so `installer.comm
 
 Structure matches comma: gitlink SHA is what ships, not the branch tip. The SHA is **comma openpilot master's opendbc pin plus Tesla-only commits**:
 
-- base: `a3d3b7c6` (commaai/opendbc, the pin in comma/openpilot master)
-- extras: 3-bit `DAS_steeringControlType`, cooperative steering, scroll-wheel cancel, `TESLA_MODEL_3` fingerprint pin, cached EPS FW fallback, shallow cruise-return jerk
+- base: `b3bd79a6` (commaai/opendbc, the pin in comma/openpilot master)
+- extras: 3-bit `DAS_steeringControlType`, cooperative steering, scroll-wheel cancel, `TESLA_MODEL_3` fingerprint pin, cached EPS FW fallback
 
 ```bash
 cd opendbc_repo
@@ -24,7 +24,7 @@ git add opendbc_repo
 git commit -m "opendbc: bump Highland (comma pin + Tesla extras)"
 ```
 
-Current gitlink: `43242f0a` (local HighlandStage until TeslaPilot-opendbc is pushed).
+Current gitlink: `c16441e` (`Highland-sync`).
 
 ## Fingerprint
 
