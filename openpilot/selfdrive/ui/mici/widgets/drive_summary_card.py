@@ -70,7 +70,7 @@ class DriveSummaryCard:
     self._slots_w = -1.0
     self._runs: list[tuple[int, int, int]] = []
     self._n_buckets = 0
-    self._today = ("Today ", "")
+    self._today = ("Day ", "")
     self._week = ("Week ", "")
 
   def begin(self) -> bool:
@@ -80,7 +80,7 @@ class DriveSummaryCard:
       drive = ds.due_summary(params)
       if drive is None:
         return False
-      self._load_texts(drive, ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive))   # Today/Week incl. this trip
+      self._load_texts(drive, ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive))   # Day/Week incl. this trip
     except Exception:
       return False
     self.drive, self._shown_at, self._holding = drive, time.monotonic(), True
@@ -118,7 +118,7 @@ class DriveSummaryCard:
     self._slots_w = -1.0
     tl = str(drive.get("tl") or "")
     self._runs, self._n_buckets = ds.timeline_runs(tl), len(tl)
-    self._today = ("Today ", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
+    self._today = ("Day ", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
     self._week = ("Week ", fmt_trip(float(st.get("week_m") or 0), float(st.get("week_e") or 0), metric))
 
   def draw(self, x: float, y: float, w: float, h: float) -> None:
