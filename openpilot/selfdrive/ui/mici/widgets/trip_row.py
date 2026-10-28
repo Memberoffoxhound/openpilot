@@ -1,4 +1,4 @@
-"""The "Today 52mi 24%   Week 330mi 64%" row (home) and block (trip card)."""
+"""The "Day 52mi 24%   Week 330mi 64%" row (home) and block (trip card)."""
 from __future__ import annotations
 
 import pyray as rl
@@ -8,8 +8,9 @@ from openpilot.selfdrive.ui.lib.drive_summary import engaged_pct
 
 GREY = rl.Color(200, 200, 200, 255)   # secondary text on home and the card: readable in daylight
 WHITE = rl.Color(255, 255, 255, 255)
-ROW_GAP = 24             # between Today and Week on home
-BLOCK_LABEL = 30          # grey roman label (home + card)
+ROW_GAP = 14             # between Day and Week on home
+HOME_LABEL = 34          # grey roman label on home, as big as the value
+BLOCK_LABEL = 30          # grey roman label on the card
 BLOCK_VALUE = 34          # white Inter Bold value (home + card)
 
 
@@ -18,9 +19,9 @@ def fmt_trip(meters: float, eng_m: float, metric: bool) -> str:
   return f"{int(round(dist))}{unit} {engaged_pct(eng_m, meters)}%"
 
 
-def _fit(roman: rl.Font, bold: rl.Font, pairs, avail_fn) -> tuple[int, int]:
-  """Label / value sizes from BLOCK_LABEL / BLOCK_VALUE, shrinking together until avail_fn(widths) holds."""
-  ls, vs = BLOCK_LABEL, BLOCK_VALUE
+def _fit(roman: rl.Font, bold: rl.Font, pairs, ls: int, avail_fn) -> tuple[int, int]:
+  """Label / value sizes from ls / BLOCK_VALUE, shrinking together until avail_fn(widths) holds."""
+  vs = BLOCK_VALUE
   while ls > 20 and not avail_fn([(measure_text_cached(roman, lbl.strip(), ls).x, measure_text_cached(bold, val, vs).x) for lbl, val in pairs]):
     ls, vs = ls - 1, vs - 1
   return ls, vs
@@ -37,8 +38,8 @@ def _draw_pair(roman: rl.Font, bold: rl.Font, x: float, y: float, lbl: str, val:
 
 def draw_trip_row(roman: rl.Font, bold: rl.Font, x: float, y: float, avail: float, last_txt: tuple[str, str],
                   week_txt: tuple[str, str]) -> tuple[float, int]:
-  """Home: Today / Week on one line, same fonts, sizes and colors as the card's block. Returns (width, value size)."""
-  ls, vs = _fit(roman, bold, (last_txt, week_txt), lambda ws: sum(lw + 10 + vw for lw, vw in ws) + ROW_GAP <= avail)
+  """Home: Day / Week on one line, the card's fonts and colors, label as big as the value. Returns (width, value size)."""
+  ls, vs = _fit(roman, bold, (last_txt, week_txt), HOME_LABEL, lambda ws: sum(lw + 10 + vw for lw, vw in ws) + ROW_GAP <= avail)
   end = _draw_pair(roman, bold, x, y, *last_txt, ls, vs)
   end = _draw_pair(roman, bold, end + ROW_GAP, y, *week_txt, ls, vs)
   return end - x, vs
@@ -48,6 +49,6 @@ def draw_trip_block(roman: rl.Font, bold: rl.Font, x: float, y: float, w: float,
                     week_txt: tuple[str, str]) -> None:
   """Card: two columns, grey label + white bold value on one baseline, shrinking together to fit."""
   col_w = w / 2
-  ls, vs = _fit(roman, bold, (last_txt, week_txt), lambda ws: all(lw + 10 + vw <= col_w - 12 for lw, vw in ws))
+  ls, vs = _fit(roman, bold, (last_txt, week_txt), BLOCK_LABEL, lambda ws: all(lw + 10 + vw <= col_w - 12 for lw, vw in ws))
   for i, (lbl, val) in enumerate((last_txt, week_txt)):
     _draw_pair(roman, bold, x + i * col_w, y, lbl, val, ls, vs)

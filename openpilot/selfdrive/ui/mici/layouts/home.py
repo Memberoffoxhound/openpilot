@@ -204,7 +204,7 @@ class MiciHomeLayout(Widget):
     self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
-    self._last_txt = ("Today ", "0mi 0%")
+    self._last_txt = ("Day ", "0mi 0%")
     self._week_txt = ("Week ", "0mi 0%")
 
   def _update_state(self):
@@ -235,7 +235,7 @@ class MiciHomeLayout(Widget):
       t = stats_view()
     except Exception:
       t = {}
-    self._last_txt = ("Today ", fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0, ui_state.is_metric))
+    self._last_txt = ("Day ", fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0, ui_state.is_metric))
     self._week_txt = ("Week ", fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0, ui_state.is_metric))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
