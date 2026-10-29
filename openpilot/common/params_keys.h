@@ -144,7 +144,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UptimeOffroad", {PERSISTENT, FLOAT, "0.0"}},
     {"UptimeOnroad", {PERSISTENT, FLOAT, "0.0"}},
     {"TripMeter", {PERSISTENT, JSON}},  // home Today/Week miles; survives reboot and overlay
-    {"VSlamEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam detector/logger; C4 green-pill toggle
     {"TeslaStepAside", {PERSISTENT, BOOL, "1"}},  // step aside (noOutput, relay open) while Tesla Autosteer/FSD is selected or active
     {"TeslaSteppedAside", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},  // card: this drive is stepped aside
     // Park-offroad (Tesla) and the drive summary; see PORTING.md. The ParkOffroad toggle also sets DriveSummary.
@@ -152,7 +151,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ParkOffroadState", {CLEAR_ON_MANAGER_START, INT, "0"}},  // parkd: 0 none, 1 parking, 2 parked offroad (no ignition-on clear: parkd owns it)
     {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // drive-summary "trip summary" card
     {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui: last drive's summary + timeline, and 14 days of totals
-    {"VSlamFilterEnabled", {PERSISTENT, BOOL, "1"}},  // vSlam filter; OP-long only, TACC locks off
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     // Jetlink (zoompilot/jetlink): an iPhone / Jetson / Mac runs the large model.

@@ -37,8 +37,6 @@ This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs)
 | `AutoLaneChangeEnabled` | off | Nudgeless lane change >25 mph, 0.75 s after the blinker, once Tesla BSM is clear. Warning + slide-to-enable. rav4kumar / sunnypilot. |
 | `LaneColor` | tesla | `0` Openpilot green, `1` Tesla Autopilot blue (lanes, wheel, confidence, compass, DM). |
 | `CompassSize` | small | Custom UI only. `0` small left, `1` large top-right. |
-| `VSlamEnabled` | on | Green-pill logger toggle. Off stops detect + log + toast. File `/data/vslam/enabled`. |
-| `VSlamFilterEnabled` | on* | *Unfinished / observe-only.* Param + UI storage exist, but no planner consumer yet — Filter toggle hidden in WebUI/C4 until wired. Requires openpilot long (`AlphaLongitudinalEnabled`); locked off on TACC. File `/data/vslam/filter`. |
 | `TeslaStepAside` | on | While Tesla Autosteer/FSD is selected (not TACC) or Autopilot/FSD/Summon is active, openpilot goes passive before CarParams: `noOutput`, relay never closes. 5 s alert, then display off (touch wakes). Back via onroad cycle once Tesla is idle on TACC 3 s and in P or cruise off. `TeslaSteppedAside` (cleared on ignition) is the per-drive state. See `selfdrive/car/tesla_step_aside.py`. |
 | `ParkOffroad` | off | "Go Offroad in Park" (warning confirm; also sets `DriveSummary`). After R/D this ignition cycle, Park held 3 s, not engaged → normal offroad. Only R/D returns onroad (new route); ignitionCan staying on never does. Ignition off ≥ 5 s clears it. No gear frames 2 s → stock until the next ignition cycle. Summon/Autopark stays offroad. `selfdrive/car/park_offroad.py` (parkd), hardwared `not_parked`. |
 | `ParkOffroadState` | 0 | parkd's output: 0 none, 1 parking, 2 parked. Cleared on manager start only, re-asserted every second. |
@@ -68,25 +66,9 @@ A Highland car is forced to `TESLA_MODEL_3`. Stock master sets `alphaLongitudina
 
 Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 
-## vSlam tracker
-
-`vslam_d` (onroad only) logs every cruise-set drop ≥ 6 mph. Observe-only — no panda / actuation change.
-
-Each event keeps **5 s before detect and 5 s after recovery** (or timeout / cruise-off). `vslam_d` holds the write until the post-recovery window is in the ring buffer.
-
-| Path | Role |
-|---|---|
-| `/data/vslam/events.jsonl` | Event index (route, GPS, place, pre/slam/recover, local time, compact spark) |
-| `/data/vslam/traces/<id>.json` | 5s+event+5s vCruise vs planner vPlan + GPS (lat/lon) |
-
-C4: Settings → vSlam (green-pill logger toggle + list + sparkline) and Settings → toggles. Event list shows the mph drop up top-right with a mini spark under it. Map / spark is green when nominal, red→yellow during the slam (red = slowest slam speed, yellow = highest in the window).
-
-On detect, C4 throws a 3s orange `userPrompt` toast: **vSlam logged**. Observe-only — stamped via `/data/vslam/alert_until`, not selfdrived / panda.
-
 ## Screenshots / LAN
 
 Hold display 3s → `/data/media/0/screenshots`. Web GUI `system/webgui` on **8089** (opt-in: `/data/webgui_enabled`), no auth: stats, screenshots, UI screen recording.
-
 
 ## Jetlink (branch `jetlink`)
 

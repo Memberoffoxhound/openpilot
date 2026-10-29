@@ -77,56 +77,7 @@ Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ig
 
 Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
 
-Opt-in web GUI: `touch /data/webgui_enabled`, then `http://<comma-ip>:8089`. Stats, device health, screenshots, UI screen recording, vSlam logger toggle. No auth — local network only. `rm /data/webgui_enabled` to turn it off.
-
-### vSlam
-
-Tesla can dump cruise set speed by 6 mph or more with no curve in front of you. On **TACC**, Tesla still owns gas and brake, so that slam is Tesla's problem. On **OP long**, the slammed set speed becomes openpilot's cruise target and the car follows it down — which is how stock phantom braking overrides the openpilot longitudinal planner.
-
-#### Settings tree
-
-```
-Settings
-└── vSlam Settings
-    ├── vSlam logger   (observe-only; default on)
-    ├── vSlam filter   (behavioral; OP long only; locked on TACC)
-    ├── event list
-    └── 60s trace
-```
-
-Not exposed on the web GUI.
-
-#### What each control does
-
-**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in Settings → vSlam on the device.
-
-**vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off/Locked whenever stock Tesla TACC is the longitudinal policy. Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps.
-
-#### Filter rule tree
-
-```
-vCruise drop >= 6 mph
-|
-|-- logger off ------------------------------------------ not logged
-|
-|-- path = cornering / ramp / blinker curve
-|     HONOR immediately
-|     openpilot long is not ready to invent that slowdown
-|
-|-- path = unknown (thin GPS / mixed votes)
-|     HOLD (treat as honor until more path exists)
-|
-`-- path = straight  (this is the filter)
-      |
-      |-- driver adjusting speed (gas / stalk) ---------- DRIVER
-      |     leave the set-speed change alone
-      |
-      |-- set speed starts rising >= 1 mph within 6 s --- IGNORE
-      |     Tesla glitch. Do not follow the slam down.
-      |
-      `-- still sitting at the slammed set speed at 6 s - HONOR
-            follow set speed down
-```
+Opt-in web GUI: `touch /data/webgui_enabled`, then `http://<comma-ip>:8089`. Stats, device health, screenshots, UI screen recording. No auth — local network only. `rm /data/webgui_enabled` to turn it off.
 
 ## Tesla compatibility
 

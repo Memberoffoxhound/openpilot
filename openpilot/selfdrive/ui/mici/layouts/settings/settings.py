@@ -8,7 +8,6 @@ from openpilot.selfdrive.ui.mici.layouts.settings.developer import DeveloperLayo
 from openpilot.selfdrive.ui.mici.layouts.settings.software import SoftwareLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.stats import StatsLayoutMici
-from openpilot.selfdrive.ui.mici.layouts.settings.vslam import VSlamLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.models import ModelsLayoutMici
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 
@@ -34,10 +33,6 @@ class SettingsLayout(NavScroller):
     self._stats_layout = StatsLayoutMici()
     stats_btn = SettingsBigButton("statistics", "", gui_app.texture("icons_mici/wheel.png", 64, 64))
     stats_btn.set_click_callback(lambda: gui_app.push_widget(self._stats_layout))
-
-    self._vslam_layout = VSlamLayoutMici()
-    vslam_btn = SettingsBigButton("vSlam Settings", "", gui_app.texture("icons_mici/exclamation_point.png", 64, 64))
-    vslam_btn.set_click_callback(lambda: gui_app.push_widget(self._vslam_layout))
 
     self._models_layout = ModelsLayoutMici()
     models_btn = SettingsBigButton("models", "")
@@ -67,7 +62,6 @@ class SettingsLayout(NavScroller):
       toggles_btn,
       theme_btn,
       stats_btn,
-      vslam_btn,
       models_btn,
       network_btn,
       self._device_button,

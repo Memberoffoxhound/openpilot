@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from openpilot.cereal import messaging, log
 from opendbc.car.structs import car
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.vslam.store import alert_until
 from openpilot.common.filter_simple import BounceFilter, FirstOrderFilter
 from openpilot.common.hardware import COMMA_HARDWARE
 from openpilot.system.ui.lib.application import gui_app, FontWeight, TextAlignment
@@ -87,15 +86,6 @@ ALERT_CRITICAL_REBOOT = Alert(
   status=AlertStatus.critical,
 )
 
-ALERT_VSLAM_LOGGED = Alert(
-  text1="vSlam logged",
-  text2="",
-  size=AlertSize.small,
-  status=AlertStatus.userPrompt,
-  alert_type="vSlam/warning",
-)
-
-
 class AlertRenderer(Widget):
   def __init__(self):
     super().__init__()
@@ -144,11 +134,6 @@ class AlertRenderer(Widget):
           return ALERT_CRITICAL_REBOOT
 
     if ss.alertSize == 0:
-      try:
-        if time.time() < alert_until():
-          return ALERT_VSLAM_LOGGED
-      except Exception:
-        pass
       return None
 
     ret = Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize.raw, status=ss.alertStatus.raw,

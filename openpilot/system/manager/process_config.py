@@ -104,7 +104,6 @@ procs = [
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
   PythonProcess("webgui", "openpilot.system.webgui.webgui", webgui, enabled=not PC),
-  PythonProcess("vslam_d", "openpilot.selfdrive.vslam.vslam_d", only_onroad),
   PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", driverview),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
   NativeProcess("_pandad", "openpilot/selfdrive/pandad", ["./pandad"], always_run, enabled=False),
