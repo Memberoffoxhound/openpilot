@@ -68,7 +68,7 @@ Tesla stock ACC until this is on. Experimental is gated on openpilot long.
 
 ## Screenshots / LAN
 
-Hold display 3s → `/data/media/0/screenshots`. Web GUI `system/webgui` on **8089** (opt-in: `/data/webgui_enabled`), no auth: stats, screenshots, UI screen recording.
+Hold display 3s → `/data/media/0/screenshots`. Web GUI `system/webgui` on **8089**, runs at boot (manager `RestartingPythonProcess`, always_run), no auth: stats, screenshots, UI screen recording.
 
 ## Jetlink (branch `jetlink`)
 

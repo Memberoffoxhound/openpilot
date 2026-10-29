@@ -77,7 +77,7 @@ Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ig
 
 Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
 
-Opt-in web GUI: `touch /data/webgui_enabled`, then `http://<comma-ip>:8089`. Stats, device health, screenshots, UI screen recording. No auth — local network only. `rm /data/webgui_enabled` to turn it off.
+Web GUI at `http://<comma-ip>:8089`, always running (onroad and offroad). Stats, device health, screenshots, UI screen recording. No auth — local network only.
 
 ## Tesla compatibility
 

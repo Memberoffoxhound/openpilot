@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
 
 PERSONALITY = {0: "Aggressive", 1: "Standard", 2: "Relaxed"}
 PARAMS = ("Version", "GitBranch", "GitCommit", "IsOffroad", "IsEngaged", "IsMetric", "CurrentRoute", "LongitudinalPersonality")
 _sm = None
+_lock = threading.Lock()  # server is threaded; SubMaster is not thread-safe
 
 
 def _sub():
@@ -31,6 +33,11 @@ def drives_on_device(realdata: str) -> int | None:
 
 
 def collect(data: str = "/data") -> dict:
+  with _lock:
+    return _collect(data)
+
+
+def _collect(data: str) -> dict:
   from openpilot.common.params import Params
   p = Params()
   out: dict = {"mock": False}

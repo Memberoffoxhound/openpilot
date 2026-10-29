@@ -246,12 +246,27 @@ def make_server(app: App, host: str, port: int) -> ThreadingHTTPServer:
   return srv
 
 
+def serve(app: App, host: str, port: int, retry_s: float = 5.0) -> ThreadingHTTPServer:
+  while True:  # port busy (old instance in TIME_WAIT is fine: allow_reuse_address) -> wait, don't die
+    try:
+      return make_server(app, host, port)
+    except OSError as e:
+      print(f"webgui: bind {host}:{port} failed ({e}), retrying", flush=True)
+      time.sleep(retry_s)
+
+
 def main():
   data = Path(os.getenv("WEBGUI_DATA", "/data"))
   host, port = os.getenv("WEBGUI_HOST", "0.0.0.0"), int(os.getenv("WEBGUI_PORT", "8089"))
   app = App(data, mock=os.getenv("WEBGUI_MOCK") == "1")
+  for d in (app.shots, app.rec.dir):
+    try:
+      d.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+      print(f"webgui: can't create {d} ({e})", flush=True)
+  srv = serve(app, host, port)
   print(f"webgui on http://{host}:{port}  (no auth, LAN-visible, plain HTTP)", flush=True)
-  make_server(app, host, port).serve_forever()
+  srv.serve_forever()
 
 
 if __name__ == "__main__":
