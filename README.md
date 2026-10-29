@@ -77,7 +77,7 @@ Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ig
 
 Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
 
-On the LAN: `http://<comma-ip>:8088`. Statistics, vSlam tracker, screenshots, and **Live cameras** (WebRTC fcam/ecam/dcam + Tesla overlay). No auth — local network only.
+Opt-in web GUI: `touch /data/webgui_enabled`, then `http://<comma-ip>:8089`. Stats, device health, screenshots, UI screen recording, vSlam logger toggle. No auth — local network only. `rm /data/webgui_enabled` to turn it off.
 
 ### vSlam
 
@@ -94,11 +94,11 @@ Settings
     └── 60s trace
 ```
 
-LAN deviceweb (`http://<comma-ip>:8088` → vSlam) mirrors the same two toggles.
+Not exposed on the web GUI.
 
 #### What each control does
 
-**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in **TeslaPilot WebUI** at `http://<comma-ip>:8088`.
+**vSlam Logger** — Records Tesla cruise dumps of 6+ mph for review. Doesn't touch gas or brake. View events in Settings → vSlam on the device.
 
 **vSlam Filter** — On openpilot long, stops Tesla phantom brakes from yanking set speed down on straight roads. Off/Locked whenever stock Tesla TACC is the longitudinal policy. Allows Tesla curvature assisted slowdowns in curves such as exit off-ramps.
 

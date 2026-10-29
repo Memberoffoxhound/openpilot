@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """TeslaPilot device web GUI: stats, screenshots, UI screen recording. Stdlib only.
 
-LAN exposure: binds 0.0.0.0:8089 by default (WEBGUI_HOST/WEBGUI_PORT to change). Plain HTTP, so anyone on
-the same wifi/hotspot can reach it; every /api and /media route needs the token in <data>/webgui_token
-(created on first run, 0600). Nothing here publishes messages or writes params: read-only on car/controls.
+No auth (owner's call: single user). Binds 0.0.0.0:8089 (WEBGUI_HOST/WEBGUI_PORT), plain HTTP: anyone on the
+same wifi/hotspot can use it. Read-only on car/controls; writes no params.
 The UI process does the actual capture (system/ui/lib/screenshot.py, screenrec.py) via request files.
 """
 from __future__ import annotations
 
-import hmac
 import json
 import os
 import re
-import secrets
 import shutil
 import time
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -24,13 +20,10 @@ STATIC = Path(__file__).parent / "static" / "index.html"
 FONT_DIR = Path(__file__).parents[2] / "selfdrive/assets/fonts"
 FONTS = ("TESLA.ttf", "Inter-SemiBold.ttf")  # wordmark only: TESLA in TESLA.ttf (as on the device home), PILOT in Inter
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
-COOKIE = "tpgui"
 MIN_FREE = 2 * 1024**3
 MAX_REC_S = 300
 STALE_S = 5.0
 GRACE_S = 10.0
-LOCK_FAILS, LOCK_S = 5, 60.0
 CSP = ("default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; "
        + "media-src 'self'; connect-src 'self'; frame-ancestors 'none'")
 
@@ -51,16 +44,6 @@ def list_files(d: Path, ext: str) -> list[dict]:
     return []
   return [{"name": f.name, "size": f.stat().st_size, "mtime": int(f.stat().st_mtime)} for f in sorted(fs, key=lambda f: f.name, reverse=True)][:500]
 
-
-def load_token(path: Path) -> str:
-  try:
-    return path.read_text().strip()
-  except FileNotFoundError:
-    tok = "".join(secrets.choice(ALPHABET) for _ in range(10))
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-      f.write(tok + "\n")
-    return tok
 
 
 class Recorder:
@@ -127,26 +110,7 @@ class App:
   def __init__(self, data: Path, mock: bool = False, wall=time.monotonic, free=None):
     self.data, self.mock, self.wall = data, mock, wall
     self.shots, self.shot_req = data / "media/0/screenshots", data / "screenshot_request"
-    self.token = load_token(data / "webgui_token")
     self.rec = Recorder(data, wall, free)
-    self.fails, self.locked_until = 0, 0.0
-
-  def authed(self, headers) -> bool:
-    c = SimpleCookie(headers.get("Cookie") or "")
-    got = headers.get("X-Token") or (c[COOKIE].value if COOKIE in c else "")
-    return bool(got) and hmac.compare_digest(got.encode(), self.token.encode())
-
-  def login(self, tok: str) -> tuple[int, dict]:
-    now = self.wall()
-    if now < self.locked_until:
-      return 429, {"error": "locked, try again in a minute"}
-    if hmac.compare_digest(str(tok).strip().lower().encode(), self.token.encode()):
-      self.fails = 0
-      return 200, {"ok": True}
-    self.fails += 1
-    if self.fails >= LOCK_FAILS:
-      self.fails, self.locked_until = 0, now + LOCK_S
-    return 401, {"error": "wrong token"}
 
   def stats(self) -> dict:
     from openpilot.system.webgui import stats
@@ -209,21 +173,11 @@ class Handler(BaseHTTPRequestHandler):
     path = unquote(urlparse(self.path).path)
     return path, [p for p in path.split("/") if p]
 
-  def _gate(self, path: str) -> bool:
-    if path in ("/", "/index.html", "/api/auth") or path.startswith("/font/") or self.app.authed(self.headers):
-      return True
-    self._json(401, {"error": "token required"})
-    return False
-
   def do_GET(self):
     path, parts = self._route()
-    if not self._gate(path):
-      return
     a = self.app
     if path in ("/", "/index.html"):
       return self._send(200, STATIC.read_bytes(), "text/html; charset=utf-8", {"Content-Security-Policy": CSP})
-    if path == "/api/auth":
-      return self._json(200, {"ok": a.authed(self.headers), "mock": a.mock})
     if len(parts) == 2 and parts[0] == "font" and parts[1] in FONTS:
       return self._send(200, (FONT_DIR / parts[1]).read_bytes(), "font/ttf", {"Cache-Control": "public, max-age=86400"})
     if path == "/api/stats":
@@ -267,13 +221,9 @@ class Handler(BaseHTTPRequestHandler):
 
   def do_POST(self):
     path, _ = self._route()
-    if not self._gate(path):
-      return
+    if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+      return self._json(415, {"error": "json only"})  # not auth: forces a CORS preflight, so other sites can't POST here
     a, body = self.app, self._body()
-    if path == "/api/auth":
-      code, out = a.login(body.get("token") or "")
-      ck = {"Set-Cookie": f"{COOKIE}={a.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000"} if code == 200 else None
-      return self._json(code, out, ck)
     if path == "/api/shots":
       return self._json(200, a.capture())
     if path == "/api/rec/start":
@@ -284,8 +234,6 @@ class Handler(BaseHTTPRequestHandler):
 
   def do_DELETE(self):
     path, parts = self._route()
-    if not self._gate(path):
-      return
     if len(parts) == 3 and parts[:2] in (["api", "shots"], ["api", "recs"]):
       return self._json(*self.app.delete(parts[1], parts[2]))
     self._json(404, {"error": "not found"})
@@ -302,7 +250,7 @@ def main():
   data = Path(os.getenv("WEBGUI_DATA", "/data"))
   host, port = os.getenv("WEBGUI_HOST", "0.0.0.0"), int(os.getenv("WEBGUI_PORT", "8089"))
   app = App(data, mock=os.getenv("WEBGUI_MOCK") == "1")
-  print(f"webgui on http://{host}:{port}  token in {data / 'webgui_token'}  (LAN-visible, plain HTTP)", flush=True)
+  print(f"webgui on http://{host}:{port}  (no auth, LAN-visible, plain HTTP)", flush=True)
   make_server(app, host, port).serve_forever()
 
 

@@ -31,10 +31,8 @@ def env(tmp_path):
   srv.shutdown()
 
 
-def req(url, method="GET", body=None, token=None, raw=False):
-  h = {"Content-Type": "application/json"}
-  if token:
-    h["X-Token"] = token
+def req(url, method="GET", body=None, raw=False, ctype="application/json"):
+  h = {"Content-Type": ctype}
   r = urllib.request.Request(url, method=method, headers=h, data=json.dumps(body).encode() if body is not None else None)
   try:
     with urllib.request.urlopen(r, timeout=5) as resp:
@@ -49,53 +47,24 @@ def ui_state(app, clk, **kw):
   app.rec.state_f.write_text(json.dumps(st))
 
 
-# --- token / auth ---
-def test_token_created_once_0600(tmp_path):
-  t = W.load_token(tmp_path / "tok")
-  assert len(t) == 10 and set(t) <= set(W.ALPHABET)
-  assert oct((tmp_path / "tok").stat().st_mode & 0o777) == "0o600"
-  assert W.load_token(tmp_path / "tok") == t
-
-
-def test_api_requires_token(env):
-  app, _, _, u = env
-  for m, path in [("GET", "/api/stats"), ("GET", "/api/shots"), ("POST", "/api/shots"), ("GET", "/api/rec"),
-                  ("POST", "/api/rec/start"), ("POST", "/api/rec/stop"), ("DELETE", "/api/shots/a.png"),
-                  ("DELETE", "/api/recs/a.mp4"), ("GET", "/media/shots/a.png")]:
-    assert req(u + path, m, {} if m == "POST" else None)[0] == 401, path
-    assert req(u + path, m, {} if m == "POST" else None, token="wrongtoken1")[0] == 401, path
-  assert not app.rec.req.exists() and not app.shot_req.exists()
-  assert req(u + "/", raw=True)[0] == 200  # page itself is public, holds no data
-
-
-def test_login_cookie_and_lockout(env):
-  app, clk, _, u = env
-  code, _, h = req(u + "/api/auth", "POST", {"token": app.token})
-  assert code == 200 and "HttpOnly" in h["Set-Cookie"] and "SameSite=Strict" in h["Set-Cookie"]
-  for _ in range(W.LOCK_FAILS):
-    assert req(u + "/api/auth", "POST", {"token": "nope"})[0] == 401
-  assert req(u + "/api/auth", "POST", {"token": app.token})[0] == 429  # locked even with right token
-  clk.t += W.LOCK_S + 1
-  assert req(u + "/api/auth", "POST", {"token": app.token})[0] == 200
-
-
 # --- path traversal ---
-@pytest.mark.parametrize("name", ["../webgui_token", "..%2Fwebgui_token", "%2e%2e%2fwebgui_token", "a/../../x.png",
+@pytest.mark.parametrize("name", ["../secret.png", "..%2Fsecret.png", "%2e%2e%2fsecret.png", "a/../../x.png",
                                   ".hidden.png", "x.png/..", "evil.sh", "a.png.sh", "..png", "a..png"])
 def test_traversal_rejected(env, name):
   app, _, _, u = env
   (app.data / "x.png").write_bytes(b"secret")
-  assert req(u + "/media/shots/" + name, token=app.token)[0] == 404
-  assert req(u + "/api/shots/" + name, "DELETE", token=app.token)[0] == 404
-  assert (app.data / "webgui_token").exists() and (app.data / "x.png").exists()
+  (app.data / "secret.png").write_bytes(b"secret")
+  assert req(u + "/media/shots/" + name)[0] == 404
+  assert req(u + "/api/shots/" + name, "DELETE")[0] == 404
+  assert (app.data / "secret.png").exists() and (app.data / "x.png").exists()
 
 
 def test_symlink_rejected(env):
   app, _, _, u = env
   (app.data / "secret.png").write_bytes(b"s")
   os.symlink(app.data / "secret.png", app.shots / "link.png")
-  assert req(u + "/media/shots/link.png", token=app.token)[0] == 404
-  assert req(u + "/api/shots/link.png", "DELETE", token=app.token)[0] == 404
+  assert req(u + "/media/shots/link.png")[0] == 404
+  assert req(u + "/api/shots/link.png", "DELETE")[0] == 404
   assert (app.data / "secret.png").exists()
 
 
@@ -103,13 +72,13 @@ def test_shot_list_view_delete_range(env):
   app, _, _, u = env
   (app.shots / "2026-10-29--10-00-00.png").write_bytes(b"0123456789")
   (app.shots / "notes.txt").write_text("x")
-  _, j, _ = req(u + "/api/shots", token=app.token)
+  _, j, _ = req(u + "/api/shots")
   assert [f["name"] for f in j["items"]] == ["2026-10-29--10-00-00.png"]
-  r = urllib.request.Request(u + "/media/shots/2026-10-29--10-00-00.png", headers={"X-Token": app.token, "Range": "bytes=2-5"})
+  r = urllib.request.Request(u + "/media/shots/2026-10-29--10-00-00.png", headers={"Range": "bytes=2-5"})
   with urllib.request.urlopen(r) as resp:
     assert resp.status == 206 and resp.read() == b"2345" and resp.headers["Content-Range"] == "bytes 2-5/10"
-  assert req(u + "/api/shots/2026-10-29--10-00-00.png", "DELETE", token=app.token)[0] == 200
-  assert req(u + "/api/shots", token=app.token)[1]["items"] == []
+  assert req(u + "/api/shots/2026-10-29--10-00-00.png", "DELETE")[0] == 200
+  assert req(u + "/api/shots")[1]["items"] == []
 
 
 def test_capture_writes_request(env, monkeypatch):
@@ -121,26 +90,26 @@ def test_capture_writes_request(env, monkeypatch):
 # --- recording guards (server half) ---
 def test_rec_start_writes_request(env):
   app, clk, _, u = env
-  code, j, _ = req(u + "/api/rec/start", "POST", {"max_s": 9999, "fps": 99}, token=app.token)
+  code, j, _ = req(u + "/api/rec/start", "POST", {"max_s": 9999, "fps": 99})
   assert code == 200 and j["max_s"] == W.MAX_REC_S
   r = json.loads(app.rec.req.read_text())
   assert r["max_s"] == W.MAX_REC_S and r["fps"] == 30 and r["name"].endswith(".mp4")
-  assert req(u + "/api/rec/start", "POST", {}, token=app.token)[0] == 409  # pending counts as busy
+  assert req(u + "/api/rec/start", "POST", {})[0] == 409  # pending counts as busy
 
 
 def test_rec_refuses_low_space_and_bad_input(env):
   app, _, free, u = env
   free["b"] = W.MIN_FREE - 1
-  assert req(u + "/api/rec/start", "POST", {}, token=app.token)[0] == 507
+  assert req(u + "/api/rec/start", "POST", {})[0] == 507
   free["b"] = 50 * GB
-  assert req(u + "/api/rec/start", "POST", {"max_s": "abc"}, token=app.token)[0] == 400
+  assert req(u + "/api/rec/start", "POST", {"max_s": "abc"})[0] == 400
   assert not app.rec.req.exists()
 
 
 def test_rec_busy_stale_and_watchdog(env):
   app, clk, _, u = env
   ui_state(app, clk)
-  assert req(u + "/api/rec/start", "POST", {}, token=app.token)[0] == 409
+  assert req(u + "/api/rec/start", "POST", {})[0] == 409
   clk.t += 30
   ui_state(app, clk, started=clk.t - 30)
   s = app.rec.status()
@@ -151,7 +120,7 @@ def test_rec_busy_stale_and_watchdog(env):
   clk.t += W.STALE_S + 1  # UI died: state not refreshed
   s = app.rec.status()
   assert not s["recording"] and s["stale"]
-  assert req(u + "/api/rec/start", "POST", {}, token=app.token)[0] == 200
+  assert req(u + "/api/rec/start", "POST", {})[0] == 200
 
 
 def test_rec_unclaimed_request_expires(env):
@@ -166,10 +135,10 @@ def test_rec_stop_and_no_delete_while_recording(env):
   app, clk, _, u = env
   (app.rec.dir / "a.mp4").write_bytes(b"x")
   ui_state(app, clk)
-  assert req(u + "/api/recs/a.mp4", "DELETE", token=app.token)[0] == 409
-  assert req(u + "/api/rec/stop", "POST", {}, token=app.token)[0] == 200 and app.rec.stop_f.exists()
+  assert req(u + "/api/recs/a.mp4", "DELETE")[0] == 409
+  assert req(u + "/api/rec/stop", "POST", {})[0] == 200 and app.rec.stop_f.exists()
   ui_state(app, clk, recording=False)
-  assert req(u + "/api/recs/a.mp4", "DELETE", token=app.token)[0] == 200
+  assert req(u + "/api/recs/a.mp4", "DELETE")[0] == 200
 
 
 def test_mock_stats_labelled(tmp_path):
@@ -195,5 +164,18 @@ def test_fonts_public_whitelisted(env):
   for f in W.FONTS:
     code, body, h = req(u + "/font/" + f, raw=True)
     assert code == 200 and h["Content-Type"] == "font/ttf" and len(body) > 10000
-  for bad in ("Inter-Bold.ttf", "..%2Fwebgui_token", "../../common/params.py", "TESLA-LICENSE.txt"):
-    assert req(u + "/font/" + bad)[0] in (401, 404)
+  for bad in ("Inter-Bold.ttf", "..%2Fsecret.png", "../../common/params.py", "TESLA-LICENSE.txt"):
+    assert req(u + "/font/" + bad)[0] == 404
+
+
+def test_no_auth_and_no_token_file(env):
+  app, _, _, u = env
+  assert req(u + "/", raw=True)[0] == 200 and req(u + "/api/stats")[0] == 200 and req(u + "/api/rec")[0] == 200
+  assert not (app.data / "webgui_token").exists()
+
+
+def test_post_requires_json(env):
+  app, _, _, u = env
+  for path in ("/api/shots", "/api/rec/start", "/api/rec/stop"):
+    assert req(u + path, "POST", {}, ctype="text/plain")[0] == 415, path
+  assert not app.rec.req.exists() and not app.rec.stop_f.exists() and not app.shot_req.exists()

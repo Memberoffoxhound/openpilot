@@ -8,7 +8,7 @@ Tesla fork on openpilot 0.11.2. Reports 0.11.23 to Connect. See README.md.
 * Optional custom HUD: Tesla Autopilot-blue theme, compass
 * Today / Week home stats. Boot uses the JSON cache; parked fold fills history
 * Statistics widget (ring, weekly, monthly). Theme accents. WIP
-* LAN deviceweb on :8088 — stats + screenshot gallery. WIP
+* Opt-in LAN web GUI on :8089 — stats, screenshots, UI screen recording
 * 3s display-hold screenshots
 * Delorean 88mph clip (off by default)
 

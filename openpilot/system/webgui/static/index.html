@@ -23,7 +23,6 @@ padding:calc(env(safe-area-inset-top) + 14px) 20px 12px;background:linear-gradie
 .wm{display:inline-flex;align-items:baseline;white-space:nowrap;line-height:1;font-size:17px}
 .wm .t{font-family:TPTesla,var(--f);letter-spacing:.16em;color:var(--tx)}
 .wm .p{font-family:TPInter,var(--f);font-weight:600;letter-spacing:.06em;color:var(--g);font-size:.92em}
-.wm.lg{font-size:30px;display:flex;justify-content:center;margin:6px 0 18px}
 .pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:var(--mu);background:var(--card);
 border:1px solid var(--line);border-radius:99px;padding:6px 11px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
@@ -90,8 +89,6 @@ nav button.act{color:var(--tx)} nav button.act svg{color:var(--g)}
 @keyframes up{from{transform:translateY(40px)}}
 .pane img,.pane video{width:100%;border-radius:14px;background:#000;display:block}
 .pane .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
-input{width:100%;font:inherit;font-size:22px;letter-spacing:.2em;text-align:center;color:var(--tx);background:#0d1013;border:1px solid var(--line);border-radius:16px;padding:15px;margin:14px 0;outline:none}
-input:focus{border-color:var(--g)}
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#22272d;border:1px solid var(--line);padding:10px 16px;border-radius:14px;font-size:14px;z-index:20;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
@@ -148,6 +145,7 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
       <div class="row"><em>Commit</em><span id="cm" style="font-family:ui-monospace,monospace;font-size:13px">—</span></div>
       <div class="src" data-src="sw"></div>
     </div>
+
   </section>
 
   <section class="page" id="p-shots">
@@ -182,13 +180,6 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
   <button data-p="rec"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>Record</button>
 </nav>
 
-<div class="sheet" id="login"><div class="pane">
-  <div class="wm lg" aria-label="TeslaPilot"><span class="t">TESLA</span><span class="p">PILOT</span></div>
-  <div class="lbl">Device token</div>
-  <p class="sub">This page needs the token from the comma: <span style="font-family:ui-monospace,monospace">cat /data/webgui_token</span> over SSH.</p>
-  <input id="tok" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="••••••••••">
-  <button class="btn" id="tokGo">Unlock</button>
-</div></div>
 <div class="sheet" id="view"><div class="pane" id="viewPane"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -202,11 +193,8 @@ const fmtD=(m,dp=1)=>{const v=dist(m);return v==="—"?v:(v>=1000?Math.round(v).
 const spd=v=>v==null?"—":Math.round(v*(S.metric?3.6:2.2369));
 const clock=s=>{s=Math.max(0,Math.floor(s));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 async function api(u,o={}){const r=await fetch(u,{credentials:"same-origin",...o,headers:{"Content-Type":"application/json",...(o.headers||{})}});
-  if(r.status===401&&u!=="/api/auth"){$("login").classList.add("open");throw new Error("auth")}
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
 
-async function login(t){try{await api("/api/auth",{method:"POST",body:JSON.stringify({token:t})});$("login").classList.remove("open");refresh()}catch(e){toast(e.message==="401"?"Wrong token":e.message)}}
-$("tokGo").onclick=()=>login($("tok").value);$("tok").onkeydown=e=>e.key==="Enter"&&login($("tok").value);
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{S.page=b.dataset.p;
   document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("act",x===b));
@@ -282,9 +270,7 @@ async function refresh(){try{
   else renderRec(await api("/api/rec"));}catch(e){}}
 
 const pg=location.hash.match(/p=(stats|shots|rec)/);if(pg)document.querySelector(`nav [data-p=${pg[1]}]`).click();
-const h=location.hash.match(/t=([a-z0-9]+)/);if(h){history.replaceState(null,"",location.pathname);login(h[1])}
-else api("/api/auth").then(r=>{if(!r.ok)$("login").classList.add("open");else refresh()});
-setInterval(()=>{if(!document.hidden&&!$("login").classList.contains("open"))refresh()},2000);
+refresh();setInterval(()=>{if(!document.hidden)refresh()},2000);
 </script>
 </body>
 </html>
