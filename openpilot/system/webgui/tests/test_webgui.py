@@ -188,3 +188,12 @@ def test_param_keys_exist():
   used = set(re.findall(r'p\.get(?:_bool)?\("(\w+)"', Path(stats.__file__).read_text()) +
              re.findall(r'_s\(p, "(\w+)"\)', Path(stats.__file__).read_text()))
   assert used and used <= set(stats.PARAMS)
+
+
+def test_fonts_public_whitelisted(env):
+  _, _, _, u = env
+  for f in W.FONTS:
+    code, body, h = req(u + "/font/" + f, raw=True)
+    assert code == 200 and h["Content-Type"] == "font/ttf" and len(body) > 10000
+  for bad in ("Inter-Bold.ttf", "..%2Fwebgui_token", "../../common/params.py", "TESLA-LICENSE.txt"):
+    assert req(u + "/font/" + bad)[0] in (401, 404)

@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>TeslaPilot</title>
 <style>
+@font-face{font-family:TPTesla;src:url(/font/TESLA.ttf) format("truetype");font-display:swap}
+@font-face{font-family:TPInter;src:url(/font/Inter-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
 :root{--bg:#07080a;--card:#14171b;--card2:#1b1f24;--line:rgba(255,255,255,.07);--tx:#f3f5f7;--mu:#8b929b;--dim:#5b626b;
 --g:#3fd77a;--gd:rgba(63,215,122,.14);--red:#ff4f4f;--amb:#ffb340;--r:24px;
 --f:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Helvetica Neue",Roboto,system-ui,sans-serif}
@@ -18,8 +20,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 a{color:inherit;text-decoration:none}
 header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
 padding:calc(env(safe-area-inset-top) + 14px) 20px 12px;background:linear-gradient(#0c0e11 60%,rgba(12,14,17,0));}
-.brand{font-weight:600;letter-spacing:.32em;font-size:13px}
-.brand b{color:var(--g);font-weight:600}
+.wm{display:inline-flex;align-items:baseline;white-space:nowrap;line-height:1;font-size:17px}
+.wm .t{font-family:TPTesla,var(--f);letter-spacing:.16em;color:var(--tx)}
+.wm .p{font-family:TPInter,var(--f);font-weight:600;letter-spacing:.06em;color:var(--g);font-size:.92em}
+.wm.lg{font-size:30px;display:flex;justify-content:center;margin:6px 0 18px}
 .pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:var(--mu);background:var(--card);
 border:1px solid var(--line);border-radius:99px;padding:6px 11px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
@@ -94,7 +98,7 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
 </style>
 </head>
 <body>
-<header><div class="brand">TESLA<b>PILOT</b></div><div class="pill" id="pill"><span class="dot"></span><span id="pillt">—</span></div></header>
+<header><div class="wm" aria-label="TeslaPilot"><span class="t">TESLA</span><span class="p">PILOT</span></div><div class="pill" id="pill"><span class="dot"></span><span id="pillt">—</span></div></header>
 <main>
   <div class="mock" id="mock">MOCK DATA — not from a device. Real values appear when this runs on the comma.</div>
 
@@ -179,6 +183,7 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
 </nav>
 
 <div class="sheet" id="login"><div class="pane">
+  <div class="wm lg" aria-label="TeslaPilot"><span class="t">TESLA</span><span class="p">PILOT</span></div>
   <div class="lbl">Device token</div>
   <p class="sub">This page needs the token from the comma: <span style="font-family:ui-monospace,monospace">cat /data/webgui_token</span> over SSH.</p>
   <input id="tok" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="••••••••••">

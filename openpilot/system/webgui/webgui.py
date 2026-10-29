@@ -21,6 +21,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 STATIC = Path(__file__).parent / "static" / "index.html"
+FONT_DIR = Path(__file__).parents[2] / "selfdrive/assets/fonts"
+FONTS = ("TESLA.ttf", "Inter-SemiBold.ttf")  # wordmark only: TESLA in TESLA.ttf (as on the device home), PILOT in Inter
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 COOKIE = "tpgui"
@@ -208,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
     return path, [p for p in path.split("/") if p]
 
   def _gate(self, path: str) -> bool:
-    if path in ("/", "/index.html", "/api/auth") or self.app.authed(self.headers):
+    if path in ("/", "/index.html", "/api/auth") or path.startswith("/font/") or self.app.authed(self.headers):
       return True
     self._json(401, {"error": "token required"})
     return False
@@ -222,6 +224,8 @@ class Handler(BaseHTTPRequestHandler):
       return self._send(200, STATIC.read_bytes(), "text/html; charset=utf-8", {"Content-Security-Policy": CSP})
     if path == "/api/auth":
       return self._json(200, {"ok": a.authed(self.headers), "mock": a.mock})
+    if len(parts) == 2 and parts[0] == "font" and parts[1] in FONTS:
+      return self._send(200, (FONT_DIR / parts[1]).read_bytes(), "font/ttf", {"Cache-Control": "public, max-age=86400"})
     if path == "/api/stats":
       return self._json(200, a.stats())
     if path == "/api/shots":
