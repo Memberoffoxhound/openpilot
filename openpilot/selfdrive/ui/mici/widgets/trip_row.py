@@ -22,14 +22,13 @@ def fmt_trip(meters: float, eng_m: float, metric: bool) -> str:
 def _fit(roman: rl.Font, bold: rl.Font, pairs, ls: int, avail_fn) -> tuple[int, int]:
   """Label / value sizes from ls / BLOCK_VALUE, shrinking together until avail_fn(widths) holds."""
   vs = BLOCK_VALUE
-  while ls > 20 and not avail_fn([(measure_text_cached(roman, lbl.strip(), ls).x, measure_text_cached(bold, val, vs).x) for lbl, val in pairs]):
+  while ls > 20 and not avail_fn([(measure_text_cached(roman, lbl, ls).x, measure_text_cached(bold, val, vs).x) for lbl, val in pairs]):
     ls, vs = ls - 1, vs - 1
   return ls, vs
 
 
 def _draw_pair(roman: rl.Font, bold: rl.Font, x: float, y: float, lbl: str, val: str, ls: int, vs: int) -> float:
   """Grey roman label + white bold value on one baseline (the card's stat style). Returns the end x."""
-  lbl = lbl.strip()
   rl.draw_text_ex(roman, lbl, rl.Vector2(x, y + (vs - ls) * 0.8 * 1.16), ls, 0, GREY)
   x += measure_text_cached(roman, lbl, ls).x + 10
   rl.draw_text_ex(bold, val, rl.Vector2(x, y), vs, 0, WHITE)

@@ -414,11 +414,11 @@ def test_home_row_day_label_fit(monkeypatch):
   tr = importlib.import_module("openpilot.selfdrive.ui.mici.widgets.trip_row")
   assert tr.HOME_LABEL == tr.BLOCK_VALUE == 34 and tr.ROW_GAP == 14 and tr.BLOCK_LABEL == 30
   for src in ("mici/layouts/home.py", "mici/widgets/drive_summary_card.py"):
-    assert '("Day ", ' in (UI / src).read_text() and '"Today ' not in (UI / src).read_text()
-  monkeypatch.setattr(tr, "_draw_pair", lambda r, b, x, y, lbl, val, ls, vs: x + tr.measure_text_cached(0, lbl.strip(), ls).x + 10 +
+    assert '("Day", ' in (UI / src).read_text() and '"Today ' not in (UI / src).read_text()
+  monkeypatch.setattr(tr, "_draw_pair", lambda r, b, x, y, lbl, val, ls, vs: x + tr.measure_text_cached(0, lbl, ls).x + 10 +
                       tr.measure_text_cached(0, val, vs).x)
-  row = (("Day ", "52mi 24%"), ("Week ", "330mi 64%"))
-  need = sum(0.5 * 34 * (len(lbl.strip()) + len(val)) + 10 for lbl, val in row) + tr.ROW_GAP
+  row = (("Day", "52mi 24%"), ("Week", "330mi 64%"))
+  need = sum(0.5 * 34 * (len(lbl) + len(val)) + 10 for lbl, val in row) + tr.ROW_GAP
   assert tr.draw_trip_row(None, None, 0, 0, need, *row) == (need, 34)
   w, vs = tr.draw_trip_row(None, None, 0, 0, need - 1, *row)
   assert vs == 33 and w <= need - 1

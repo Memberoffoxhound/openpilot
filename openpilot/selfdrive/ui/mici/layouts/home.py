@@ -202,8 +202,8 @@ class MiciHomeLayout(Widget):
     self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
-    self._day_txt = ("Day ", "0mi 0%")
-    self._week_txt = ("Week ", "0mi 0%")
+    self._day_txt = ("Day", "0mi 0%")
+    self._week_txt = ("Week", "0mi 0%")
     self._trip_hit = rl.Rectangle(0, 0, 0, 0)
     self._on_stats_click: Callable | None = None
 
@@ -216,8 +216,8 @@ class MiciHomeLayout(Widget):
       return
     self._trip_at = now
     t = stats_view()
-    self._day_txt = ("Day ", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
-    self._week_txt = ("Week ", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
+    self._day_txt = ("Day", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
+    self._week_txt = ("Week", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     on_stats: Callable | None = None,
