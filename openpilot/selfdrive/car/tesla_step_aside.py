@@ -219,7 +219,6 @@ class TeslaStepAside:
     self.stepped_aside = stepped_aside(params)   # sticky across an onroad cycle we asked for
     self.startup_owned = False
     self.controller: StepAsideController | None = None
-    self._start_t = now
 
   def observe(self, now: float) -> bool:
     return self.detector.update(read_signals(self.CI.can_parsers), now)
