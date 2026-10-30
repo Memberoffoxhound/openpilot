@@ -70,17 +70,25 @@ On by default. If Tesla Autosteer, FSD, or Summon is selected or active, TeslaPi
 
 ### Drive stats, kept on your device
 
-Turn on **Settings → toggles → go offroad in park**. When you shift into Park, a **trip summary card** shows distance, percent engaged, day streak, best stretch, and a timeline of the drive. It stays up for 20 seconds or until you tap it, then the screen moves to Home. Swipe back to see it again until your next drive.
+Your drive stats stay on the comma. Nothing is uploaded. To turn them on, use **Settings → toggles → go offroad in park** (why it's needed on a Tesla is explained below).
+
+**Trip summary card.** When a drive ends, a card shows the distance, percent engaged, day streak, best engaged stretch, and a timeline of the drive in comma connect's colors. It stays up for 20 seconds or until you tap it, then the screen moves to Home. Swipe back to see it again until your next drive.
 
 ![Trip summary card](docs/screenshots/trip-card.png)
 
-**Home** shows **Day** and **Week** distance and percent engaged. Day resets at midnight and Week resets on Sunday, in the comma's local time zone. The comma finds its time zone from GPS. To set it yourself, tap **Use this phone's time zone** on the web page below. Tap the row to open **Statistics**, which you can also find in **Settings → statistics**.
+**Day and Week on Home.** Home shows today's and this week's distance and percent engaged. Tap the row to open **Statistics**, which you can also find in **Settings → statistics**.
 
 ![Home with Day and Week stats](docs/screenshots/home-stats.png)
 
 | Engaged | Weekly | Monthly |
 |:---:|:---:|:---:|
 | ![Engaged](docs/screenshots/stats-ring.jpg) | ![Weekly](docs/screenshots/stats-weekly.jpg) | ![Monthly](docs/screenshots/stats-monthly.jpg) |
+
+**How a drive is counted.** The comma saves the drive in progress every 30 seconds. If it loses power, the drive is kept up to that point, and the card comes up once at the next start as "last trip summary".
+
+**What counts as today.** Day resets at midnight and Week resets on Sunday, in the local time where the car is. The comma finds its time zone from GPS, using a built-in map, so it works offline. Until it has a GPS fix, it uses its own clock's time zone. A drive counts on the day it ends, and driving into a new time zone never moves old drives.
+
+**Ending a drive on a Tesla.** A Tesla has no ignition to turn off, so openpilot would stay onroad in Park. With **go offroad in park** on, when you shift into Park, the card comes up and the comma goes offroad. Shifting to R or D starts a new drive.
 
 The badge in Home's footer shows which system controls gas and brake:
 

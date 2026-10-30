@@ -332,7 +332,7 @@ def test_ui_restart_mid_drive_keeps_what_was_driven(monkeypatch, tmp_path):
 
 
 def test_web_gui_reads_the_same_numbers(monkeypatch, tmp_path):
-  from openpilot.system.webgui import stats
+  stats = pytest.importorskip("openpilot.system.webgui.stats")   # a fork without the web GUI skips this
   w = World(monkeypatch, tmp_path)
   w.run(1, started=True)
   w.run(ts.SAVE_S + 1, v=20.0, engaged=True)

@@ -90,7 +90,7 @@ def _collect(data: str) -> dict:
   out["src"] = {
     "trips": "DriveSummaryLast via tripstats (same as Home/Statistics)",
     "current": "DriveSummaryLast drive in progress (saved every 30 s)",
-    "timezone": "params TimezoneOverride (this page), else Timezone (GPS), else the system zone",
+    "timezone": "params Timezone (from the last GPS fix), else the system zone",
     "sw": "params Version/GitBranch/GitCommit",
     "state": "params IsOffroad/IsEngaged/LongitudinalPersonality/CurrentRoute",
     "drives_on_device": "route dirs in /data/media/0/realdata (rotates out)",

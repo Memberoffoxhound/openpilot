@@ -137,7 +137,6 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
       <div class="row"><em>Network</em><span id="net">—</span></div>
       <div class="row"><em>Thermal</em><span id="therm">—</span></div>
       <div class="row"><em>Time zone</em><span id="tz">—</span></div>
-      <div class="acts"><button class="btn ghost" id="tzSet">Use this phone's time zone</button><button class="btn ghost" id="tzClr">Use GPS</button></div>
       <div class="src" data-src="device panda storage timezone"></div>
     </div>
     <div class="card">
@@ -226,7 +225,7 @@ function renderStats(d){
   const s=d.storage;if(s){const used=100*(1-s.free/s.total);$("disk").textContent=`${mb(s.free)} free of ${mb(s.total)}`;$("diskBar").style.width=used+"%"}
   if(dev){$("mem").textContent=dev.mem_pct+"%";$("memBar").style.width=dev.mem_pct+"%";$("net").textContent=dev.network;$("therm").textContent=dev.thermal}
   $("panda").textContent=d.panda?(d.panda.connected?`${d.panda.type} · ignition ${d.panda.ignition?"on":"off"}`:"not connected"):"no data";
-  const z=d.timezone;$("tz").textContent=z?`${z.name||"—"} · ${{phone:"set from phone",gps:"from GPS",system:"system"}[z.source]||z.source}`:"—";
+  const z=d.timezone;$("tz").textContent=z?`${z.name||"—"} · ${{gps:"from GPS",system:"system"}[z.source]||z.source}`:"—";
   const sw=d.sw||{};$("ver").textContent=sw.version||"—";$("br").textContent=sw.branch||"—";$("cm").textContent=sw.commit||"—";
   document.querySelectorAll("[data-src]").forEach(e=>e.textContent="Source: "+[...new Set(e.dataset.src.split(" ").map(k=>(d.src||{})[k]).filter(Boolean))].join(" · "));
 }
@@ -245,8 +244,6 @@ function openMedia(kind,name,f){
   $("del").onclick=async()=>{if(!confirm("Delete "+name+"?"))return;try{await api(`/api/${kind}/${encodeURIComponent(name)}`,{method:"DELETE"});$("view").classList.remove("open");toast("Deleted");refresh()}catch(e){toast(e.message)}};
 }
 $("view").onclick=e=>{if(e.target===$("view")){$("view").classList.remove("open");$("viewPane").innerHTML=""}};
-const setTz=async tz=>{try{await api("/api/timezone",{method:"POST",body:JSON.stringify({tz})});toast(tz?"Time zone "+tz:"Time zone from GPS");refresh()}catch(e){toast(e.message)}};
-$("tzSet").onclick=()=>setTz(Intl.DateTimeFormat().resolvedOptions().timeZone||"");$("tzClr").onclick=()=>setTz("");
 $("snap").onclick=async()=>{toast("Capturing…");try{const r=await api("/api/shots",{method:"POST"});toast(r.pending?"Requested — screen may be off":"Saved "+r.name);refresh()}catch(e){toast(e.message)}};
 
 const DURS=[[30,"30 s"],[60,"1 min"],[120,"2 min"],[300,"5 min"]];
