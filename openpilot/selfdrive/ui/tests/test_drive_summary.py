@@ -128,7 +128,7 @@ def test_recorder_is_brand_free():
   for fn in [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in swap]:
     tries = [t for t in ast.walk(fn) if isinstance(t, ast.Try)]
     assert tries and any(isinstance(i, ast.ImportFrom) and i.module == swap[fn.name] for i in tries[0].body), fn.name
-  allowed = {"openpilot.common.swaglog", *swap.values()}
+  allowed = {"openpilot.common.swaglog", "openpilot.common.params_compat", *swap.values()}
   mods = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
   mods += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
   assert all(m.split(".")[0] not in ("openpilot", "opendbc", "cereal") or m in allowed for m in mods), mods
@@ -181,10 +181,10 @@ class FakeParams:
   def get(self, key, return_default=False):
     return self.d.get(key)
 
-  def put(self, key, value):
+  def put(self, key, value, block=False):
     self.d[key] = value
 
-  def put_bool(self, key, value):
+  def put_bool(self, key, value, block=False):
     self.d[key] = value
 
 

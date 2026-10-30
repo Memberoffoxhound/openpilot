@@ -37,8 +37,9 @@ older than these keys falls back to the raw params file.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+
+from openpilot.common.params_compat import get_bool, put_bool
 
 PARAM_ENABLED = "TeslaStepAside"       # Settings toggle, default on
 PARAM_STEPPED = "TeslaSteppedAside"    # this onroad session is stepped aside
@@ -160,40 +161,6 @@ class StepAsideController:
     elif owns and not op_enabled and now - self.owns_since >= ENTER_DEBOUNCE_S:
       self.requested = ENTER
     return self.requested
-
-
-# -- params, tolerant of a params library older than these keys --------------
-
-def _raw_path(params, key: str) -> str:
-  return os.path.join(params.get_param_path(), key)
-
-
-def get_bool(params, key: str, default: bool) -> bool:
-  try:
-    params.check_key(key)
-  except Exception:
-    try:
-      with open(_raw_path(params, key), "rb") as f:
-        return f.read().strip() in (b"1", b"true", b"True")
-    except OSError:
-      return default
-  try:
-    raw = params.get(key, return_default=True)
-  except Exception:
-    return default
-  return default if raw is None else bool(raw)
-
-
-def put_bool(params, key: str, value: bool, block: bool = False) -> None:
-  try:
-    params.put_bool(key, value, block=block)
-  except Exception:
-    path = _raw_path(params, key)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "wb") as f:
-      f.write(b"1" if value else b"0")
-    os.replace(tmp, path)
 
 
 def enabled(params) -> bool:

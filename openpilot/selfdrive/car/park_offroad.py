@@ -21,9 +21,10 @@ No openpilot imports at the top level, so it unit-tests without a build.
 """
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from typing import NamedTuple
+
+from openpilot.common.params_compat import get, get_bool, put, put_bool as put_bool
 
 PARAM_ENABLED = "ParkOffroad"           # Settings toggle (PERSISTENT, default 0)
 PARAM_STATE = "ParkOffroadState"        # parkd's output (CLEAR_ON_MANAGER_START only: manager's
@@ -181,59 +182,15 @@ class ParkOffroad:
     return self.parked
 
 
-# -- params, tolerant of a params library older than these keys --------------
-
-def _raw_path(params, key: str) -> str:
-  return os.path.join(params.get_param_path(), key)
-
-
-def _get(params, key: str):
-  try:
-    params.check_key(key)
-  except Exception:
-    try:
-      with open(_raw_path(params, key), "rb") as f:
-        return f.read().strip()
-    except OSError:
-      return None
-  try:
-    return params.get(key, return_default=True)
-  except Exception:
-    return None
-
-
-def get_bool(params, key: str, default: bool = False) -> bool:
-  raw = _get(params, key)
-  if isinstance(raw, bytes):
-    return raw in (b"1", b"true", b"True")
-  return default if raw is None else bool(raw)
-
-
 def get_state(params) -> int:
   try:
-    return int(_get(params, PARAM_STATE) or NONE)
+    return int(get(params, PARAM_STATE) or NONE)
   except (TypeError, ValueError):
     return NONE
 
 
-def _put(params, key: str, write, raw: bytes) -> None:
-  try:
-    write()
-  except Exception:
-    path = _raw_path(params, key)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "wb") as f:
-      f.write(raw)
-    os.replace(tmp, path)
-
-
-def put_bool(params, key: str, value: bool, block: bool = False) -> None:
-  _put(params, key, lambda: params.put_bool(key, value, block=block), b"1" if value else b"0")
-
-
 def put_state(params, state: int, block: bool = False) -> None:
-  _put(params, PARAM_STATE, lambda: params.put(PARAM_STATE, int(state), block=block), b"%d" % state)
+  put(params, PARAM_STATE, int(state), b"%d" % state, block)
 
 
 def enabled(params) -> bool:

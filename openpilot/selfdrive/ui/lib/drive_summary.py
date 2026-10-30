@@ -9,10 +9,10 @@ Params are read tolerantly: a params library without these keys just loses the f
 """
 from __future__ import annotations
 
-import json
-import os
 import time
 from datetime import date, datetime, timedelta
+
+from openpilot.common.params_compat import get_bool, get_json, put_bool as put_bool, put_json
 
 PARAM_ENABLED = "DriveSummary"
 PARAM_LAST = "DriveSummaryLast"
@@ -314,68 +314,6 @@ def accent_rgb() -> tuple[int, int, int]:
     return r, g, b
   except Exception:
     return COMMA_GREEN
-
-
-# -- params, tolerant of a params library older than these keys --------------
-
-def _raw_path(params, key: str) -> str:
-  return os.path.join(params.get_param_path(), key)
-
-
-def _known(params, key: str) -> bool:
-  try:
-    params.check_key(key)
-    return True
-  except Exception:
-    return False
-
-
-def get_bool(params, key: str, default: bool = False) -> bool:
-  try:
-    if _known(params, key):
-      raw = params.get(key, return_default=True)
-      return default if raw is None else bool(raw)
-    with open(_raw_path(params, key), "rb") as f:
-      return f.read().strip() in (b"1", b"true", b"True")
-  except Exception:
-    return default
-
-
-def put_bool(params, key: str, value: bool) -> None:
-  if _known(params, key):
-    params.put_bool(key, value)
-    return
-  _raw_write(params, key, b"1" if value else b"0")
-
-
-def get_json(params, key: str) -> dict | None:
-  try:
-    if _known(params, key):
-      raw = params.get(key)
-    else:
-      with open(_raw_path(params, key), "rb") as f:
-        raw = f.read()
-    if isinstance(raw, (bytes, str)):
-      raw = json.loads(raw)
-    return raw if isinstance(raw, dict) else None
-  except Exception:
-    return None
-
-
-def put_json(params, key: str, value: dict) -> None:
-  if _known(params, key):
-    params.put(key, value)
-    return
-  _raw_write(params, key, json.dumps(value).encode())
-
-
-def _raw_write(params, key: str, data: bytes) -> None:
-  path = _raw_path(params, key)
-  os.makedirs(os.path.dirname(path), exist_ok=True)
-  tmp = f"{path}.tmp{os.getpid()}"
-  with open(tmp, "wb") as f:
-    f.write(data)
-  os.replace(tmp, path)
 
 
 # -- UI hook ---------------------------------------------------------------------

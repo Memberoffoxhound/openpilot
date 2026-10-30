@@ -4,9 +4,9 @@
 
 No Tesla, TeslaPilot or Jetlink code, no gear detection, no assets.
 
-**Copy:** `selfdrive/ui/lib/drive_summary.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,trip_row}.py`, `selfdrive/ui/tests/test_drive_summary.py`.
+**Copy:** `common/params_compat.py`, `selfdrive/ui/lib/drive_summary.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,trip_row}.py`, `selfdrive/ui/tests/test_drive_summary.py`.
 
-**Params** (`common/params_keys.h`; read tolerantly, so an older params library just turns the feature off):
+**Params** (`common/params_keys.h`; read and written through `common/params_compat.py`, so an older params library without these keys falls back to the raw params files instead of raising):
 ```
 {"DriveSummary", {PERSISTENT, BOOL, "0"}},
 {"DriveSummaryLast", {PERSISTENT, JSON}},
@@ -39,7 +39,7 @@ parkd publishes one param, `ParkOffroadState` (0 none, 1 parking, 2 parked). A p
 
 | Piece | Where |
 | --- | --- |
-| State machine, decoders, `parkd` | `selfdrive/car/park_offroad.py`. A brand adds a `ParkSource` to `PARK_SOURCES`; parkd publishes 0 and idles without one. |
+| State machine, decoders, `parkd` | `selfdrive/car/park_offroad.py`, with `common/params_compat.py`. A brand adds a `ParkSource` to `PARK_SOURCES`; parkd publishes 0 and idles without one. |
 | Onroad condition | hardwared: `onroad_conditions["not_parked"] = park_offroad.not_parked(params)`; only state 2 with `ParkOffroad` on. |
 | Shutdown timing | hardwared: `off_ts = park_timer.update(...)` restarts the timer at ignition off. |
 | Process | `RestartingPythonProcess("parkd", ..., park_offroad.should_run)` while the toggle is on. |
