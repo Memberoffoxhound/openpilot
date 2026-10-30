@@ -36,19 +36,19 @@ def _draw_pair(roman: rl.Font, bold: rl.Font, x: float, y: float, lbl: str, val:
   return x + measure_text_cached(bold, val, vs).x
 
 
-def draw_trip_row(roman: rl.Font, bold: rl.Font, x: float, y: float, avail: float, last_txt: tuple[str, str],
+def draw_trip_row(roman: rl.Font, bold: rl.Font, x: float, y: float, avail: float, day_txt: tuple[str, str],
                   week_txt: tuple[str, str]) -> tuple[float, int]:
   """Home: Day / Week on one line, the card's fonts and colors, label as big as the value. Returns (width, value size)."""
-  ls, vs = _fit(roman, bold, (last_txt, week_txt), HOME_LABEL, lambda ws: sum(lw + 10 + vw for lw, vw in ws) + ROW_GAP <= avail)
-  end = _draw_pair(roman, bold, x, y, *last_txt, ls, vs)
+  ls, vs = _fit(roman, bold, (day_txt, week_txt), HOME_LABEL, lambda ws: sum(lw + 10 + vw for lw, vw in ws) + ROW_GAP <= avail)
+  end = _draw_pair(roman, bold, x, y, *day_txt, ls, vs)
   end = _draw_pair(roman, bold, end + ROW_GAP, y, *week_txt, ls, vs)
   return end - x, vs
 
 
-def draw_trip_block(roman: rl.Font, bold: rl.Font, x: float, y: float, w: float, last_txt: tuple[str, str],
+def draw_trip_block(roman: rl.Font, bold: rl.Font, x: float, y: float, w: float, day_txt: tuple[str, str],
                     week_txt: tuple[str, str]) -> None:
   """Card: two columns, grey label + white bold value on one baseline, shrinking together to fit."""
   col_w = w / 2
-  ls, vs = _fit(roman, bold, (last_txt, week_txt), BLOCK_LABEL, lambda ws: all(lw + 10 + vw <= col_w - 12 for lw, vw in ws))
-  for i, (lbl, val) in enumerate((last_txt, week_txt)):
+  ls, vs = _fit(roman, bold, (day_txt, week_txt), BLOCK_LABEL, lambda ws: all(lw + 10 + vw <= col_w - 12 for lw, vw in ws))
+  for i, (lbl, val) in enumerate((day_txt, week_txt)):
     _draw_pair(roman, bold, x + i * col_w, y, lbl, val, ls, vs)

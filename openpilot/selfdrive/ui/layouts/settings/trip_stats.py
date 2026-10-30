@@ -158,8 +158,6 @@ def _streaks(days: dict) -> tuple[int, int]:
   while _f(days.get(cursor.isoformat()) or {}, "e") > 1:
     current += 1
     cursor = cursor - timedelta(days=1)
-    if current > 4000:
-      break
   return current, longest
 
 

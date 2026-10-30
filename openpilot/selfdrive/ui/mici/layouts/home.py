@@ -202,7 +202,7 @@ class MiciHomeLayout(Widget):
     self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
-    self._last_txt = ("Day ", "0mi 0%")
+    self._day_txt = ("Day ", "0mi 0%")
     self._week_txt = ("Week ", "0mi 0%")
     self._trip_hit = rl.Rectangle(0, 0, 0, 0)
     self._on_stats_click: Callable | None = None
@@ -210,17 +210,14 @@ class MiciHomeLayout(Widget):
   def _update_state(self):
     self._refresh_trip()
 
-  def _fmt_trip(self, meters: float, eng_m: float) -> str:
-    return fmt_trip(meters, eng_m, ui_state.is_metric)
-
   def _refresh_trip(self):
     now = time.monotonic()
     if now - self._trip_at < 1.0:
       return
     self._trip_at = now
     t = stats_view()
-    self._last_txt = ("Day ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0))
-    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0))
+    self._day_txt = ("Day ", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
+    self._week_txt = ("Week ", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     on_stats: Callable | None = None,
@@ -291,7 +288,7 @@ class MiciHomeLayout(Widget):
 
       y2 = version_pos.y + self._date_label.font_size + 7
       avail = self.rect.width - HOME_PADDING * 2
-      row_w, lsz = draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY), version_pos.x, y2, avail, self._last_txt, self._week_txt)
+      row_w, lsz = draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY), version_pos.x, y2, avail, self._day_txt, self._week_txt)
       self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz * 1.16 + 8)
 
     # ***** Center-aligned bottom section icons *****

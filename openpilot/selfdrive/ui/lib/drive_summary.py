@@ -221,7 +221,7 @@ def day_streak(data: dict | None, today: date | None = None) -> int:
 
   cur = today if engaged(today) else today - timedelta(days=1)
   n = 0
-  while engaged(cur) and n < 4000:
+  while engaged(cur):
     n += 1
     cur -= timedelta(days=1)
   return n
