@@ -45,7 +45,6 @@ def list_files(d: Path, ext: str) -> list[dict]:
   return [{"name": f.name, "size": f.stat().st_size, "mtime": int(f.stat().st_mtime)} for f in sorted(fs, key=lambda f: f.name, reverse=True)][:500]
 
 
-
 class Recorder:
   """Server half of screen recording: guards + state. The UI half (screenrec.py) owns ffmpeg."""
   def __init__(self, data: Path, wall=time.monotonic, free=None):

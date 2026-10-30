@@ -62,7 +62,6 @@ class ScreenRecorder:
     self.path = ""
     self.fps = 10
     self.max_s = 60
-    self._t0 = 0.0
     self._started = 0.0
     self._frames = 0
     self._proc = None
@@ -88,7 +87,7 @@ class ScreenRecorder:
       _rm(REC_REQ)
       self._start(req)
     if self.active:
-      if now - self._t0 >= self.max_s:
+      if now - self._started >= self.max_s:
         self.stop("max duration")
       elif self._size() >= MAX_BYTES:
         self.stop("max size")
@@ -112,7 +111,7 @@ class ScreenRecorder:
     self.fps = max(1, min(30, int(req.get("fps") or 10)))
     self.max_s = max(1, min(MAX_S, int(req.get("max_s") or 60)))
     self.active, self.error, self._frames = True, "", 0
-    self._t0 = self._started = self._clock()
+    self._started = self._clock()
     self._next_frame = 0.0
     self._write_state()
 

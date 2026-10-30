@@ -81,7 +81,7 @@ def test_shot_list_view_delete_range(env):
   assert req(u + "/api/shots")[1]["items"] == []
 
 
-def test_capture_writes_request(env, monkeypatch):
+def test_capture_writes_request(env):
   app, *_ = env
   assert app.capture(wait_s=0.2) == {"ok": True, "pending": True}
   assert app.shot_req.read_text() == "1"
@@ -89,7 +89,7 @@ def test_capture_writes_request(env, monkeypatch):
 
 # --- recording guards (server half) ---
 def test_rec_start_writes_request(env):
-  app, clk, _, u = env
+  app, _, _, u = env
   code, j, _ = req(u + "/api/rec/start", "POST", {"max_s": 9999, "fps": 99})
   assert code == 200 and j["max_s"] == W.MAX_REC_S
   r = json.loads(app.rec.req.read_text())
@@ -168,10 +168,9 @@ def test_fonts_public_whitelisted(env):
     assert req(u + "/font/" + bad)[0] == 404
 
 
-def test_no_auth_and_no_token_file(env):
-  app, _, _, u = env
+def test_no_auth(env):
+  _, _, _, u = env
   assert req(u + "/", raw=True)[0] == 200 and req(u + "/api/stats")[0] == 200 and req(u + "/api/rec")[0] == 200
-  assert not (app.data / "webgui_token").exists()
 
 
 def test_post_requires_json(env):

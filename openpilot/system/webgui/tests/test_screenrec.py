@@ -139,4 +139,5 @@ def test_full_queue_drops_not_blocks(R):
   finally:
     gate.set()
     FakeProc.write = orig
+  assert 0 < rec._frames < 50  # the queue filled and the rest were dropped
   rec.stop()

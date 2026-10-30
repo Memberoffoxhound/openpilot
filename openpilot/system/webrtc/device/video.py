@@ -60,8 +60,7 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
     self._sock = None
 
   def _sock_name(self, camera_type: str) -> str:
-    params = getattr(self, "params", None) or Params()
-    if params.get_bool("IsOffroad"):
+    if self.params.get_bool("IsOffroad"):
       return self.live_socks[camera_type]
     return self.onroad_socks[camera_type]
 
