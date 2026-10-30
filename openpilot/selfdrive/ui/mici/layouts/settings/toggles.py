@@ -83,50 +83,6 @@ class _ParamCycle(BigButton):
     self.refresh()
 
 
-class OnroadUiCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "onroad UI", onroad_ui_label, next_onroad_ui,
-      lambda nxt, p: set_onroad_ui(nxt, p),
-    )
-
-class CompassSizeCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "compass size", compass_size_label, next_compass_size,
-      lambda nxt, p: p.put("CompassSize", nxt, block=True),
-    )
-
-
-class LaneColorCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "theme", lane_color_label, next_lane_color,
-      lambda nxt, p: p.put("LaneColor", nxt, block=True),
-    )
-
-
-class DeloreanCycle(BigButton):
-  def __init__(self):
-    super().__init__("delorean", "")
-    self.refresh()
-
-  def refresh(self):
-    value = "on" if delorean_on() else "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    on = not delorean_on()
-    set_delorean(on)
-    self.set_value("on" if on else "off")
-
-
 class DeloreanPreview(BigButton):
   def __init__(self):
     super().__init__("delorean preview", "tap")
@@ -139,14 +95,12 @@ class DeloreanPreview(BigButton):
 class ThemeLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
-    self._onroad_ui = OnroadUiCycle()
-    self._compass_size = CompassSizeCycle()
-    self._lane_color = LaneColorCycle()
-    self._delorean = DeloreanCycle()
-    self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
-      self._onroad_ui, self._compass_size, self._lane_color,
-      self._delorean, self._delorean_preview,
+      _ParamCycle("onroad UI", onroad_ui_label, next_onroad_ui, set_onroad_ui),
+      _ParamCycle("compass size", compass_size_label, next_compass_size, lambda nxt, p: p.put("CompassSize", nxt, block=True)),
+      _ParamCycle("theme", lane_color_label, next_lane_color, lambda nxt, p: p.put("LaneColor", nxt, block=True)),
+      _ParamCycle("delorean", lambda p: "on" if delorean_on() else "off", lambda p: not delorean_on(), lambda on, p: set_delorean(on)),
+      DeloreanPreview(),
     ])
 
 
