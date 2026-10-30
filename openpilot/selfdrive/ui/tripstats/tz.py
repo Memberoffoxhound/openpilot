@@ -2,13 +2,15 @@
 
 No Timezone yet, or a name this device's tzdata doesn't know: the system zone.
 zone_at() reads tzgrid.bin (build_tzgrid.py): one zone per 0.05 degree cell, about 190 KB.
+first_day() reads weekstart.json (build_weekstart.py): the zones whose week does not start Monday, about 3 KB.
 """
 from __future__ import annotations
 
 import json
 import struct
 import zlib
-from datetime import datetime
+from datetime import datetime, tzinfo
+from functools import cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,6 +18,9 @@ from openpilot.common.params_compat import get, put
 
 PARAM = "Timezone"
 GRID = Path(__file__).with_name("tzgrid.bin")
+WEEK = Path(__file__).with_name("weekstart.json")
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")    # index = date.weekday()
+SUNDAY = 6
 
 
 def zone_at(lat: float, lon: float, grid: Path = GRID) -> str:
@@ -31,6 +36,25 @@ def zone_at(lat: float, lon: float, grid: Path = GRID) -> str:
     if pos > target:
       return h["zones"][z]
   raise ValueError("short grid")
+
+
+@cache
+def _week_table(path: Path = WEEK) -> tuple[dict[str, int], int]:
+  t = json.loads(path.read_text())
+  return {z: DAYS.index(d) for d, zs in t["zones"].items() for z in zs}, DAYS.index(t["default"])
+
+
+def first_day(zone: tzinfo | str | None) -> int:
+  """First day of the week where zone is (date.weekday(): 0 Monday .. 6 Sunday), from the country it is in.
+  No zone (system zone), an Etc/ zone or a missing table: Sunday."""
+  name = zone if isinstance(zone, str) else getattr(zone, "key", None) or ""
+  try:
+    table, default = _week_table()
+  except Exception:
+    return SUNDAY
+  if name in table:
+    return table[name]
+  return default if "/" in name and not name.startswith("Etc/") else SUNDAY
 
 
 def _name(params, key: str) -> str:

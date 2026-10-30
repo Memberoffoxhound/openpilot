@@ -111,16 +111,17 @@ def streaks(days: dict, today: date) -> tuple[int, int]:
   return cur, longest
 
 
-def view(data: dict, open_drives=(), at: datetime | None = None, tz: tzinfo | None = None) -> dict:
-  """Day, Week (from Sunday), the week's days, six months, lifetime, streaks, best stretch, in tz
-  (None: the system zone). Open drives count today."""
+def view(data: dict, open_drives=(), at: datetime | None = None, tz: tzinfo | None = None, first: int = 6) -> dict:
+  """Day, Week, the week's days, six months, lifetime, streaks, best stretch, in tz (None: the system zone).
+  The week starts on first (date.weekday(), 6 = Sunday) and holds the current local week; stored days are
+  bucketed by today's rule. Open drives count today."""
   now = (at or datetime.now(UTC)).timestamp()
   for d in open_drives:
     data = add_drive(data, stamp(d, now, tz))
   days, today = data["days"], date.fromisoformat(day_key(now, offset(now, tz)))
-  sunday = today - timedelta(days=(today.weekday() + 1) % 7)
+  start = today - timedelta(days=(today.weekday() - first) % 7)
   week = []
-  for k in ((sunday + timedelta(days=i)).isoformat() for i in range(7)):
+  for k in ((start + timedelta(days=i)).isoformat() for i in range(7)):
     m, e = days.get(k, (0.0, 0.0))
     week.append({"id": k, "m": m, "e": e})
   ym = today.year * 12 + today.month - 1
@@ -133,7 +134,7 @@ def view(data: dict, open_drives=(), at: datetime | None = None, tz: tzinfo | No
   wm, we = sum(d["m"] for d in week), sum(d["e"] for d in week)
   (lm, le), (cur, longest) = data["life"], streaks(days, today)
   return {"today_m": tm, "today_e": te, "today_pct": engaged_pct(te, tm),
-          "week_m": wm, "week_e": we, "week_pct": engaged_pct(we, wm), "week_days": week, "today_i": (today - sunday).days,
+          "week_m": wm, "week_e": we, "week_pct": engaged_pct(we, wm), "week_days": week, "today_i": (today - start).days,
           "months": months,
           "life_m": lm, "life_e": le, "pct": engaged_pct(le, lm), "longest_m": data["record_m"],
           "streak_days": max(data["streak_max"], longest), "streak_now": cur}

@@ -29,12 +29,14 @@ The card's timeline uses the same colors as comma connect: blue when openpilot i
 
 ## How "today" is decided
 
-Day resets at midnight and Week resets on Sunday, in the local time where you are. The comma works out that time zone from GPS:
+Day resets at midnight and Week resets at the start of the local week, in the local time where you are. The comma works out that time zone from GPS:
 
 1. GPS saves the car's last position about once a minute (`LastGPSPosition`).
 2. A small built-in map of the world's time zones, `tzgrid.bin`, turns that position into a zone name such as `America/Chicago`. It works offline.
 3. The result goes into the `Timezone` param. It is checked 10 seconds after the screen starts and every 5 minutes after that.
 4. Until the comma has a GPS fix, it uses its own clock's time zone instead.
+
+Week starts on the day weeks start in that country: Sunday in places like the US, Canada, Mexico and Japan, Monday in most of Europe, Australia and China, and Saturday in much of the Middle East. Until the comma knows its zone, Week starts Sunday. A second small file, `weekstart.json`, lists which zones start the week on a day other than Monday.
 
 There is no way to set the zone by hand. Within about 5 km of a time zone border, the map can pick the zone next door.
 
@@ -44,6 +46,7 @@ A few rules keep the days right:
 - **Old drives never move.** Each drive is saved with the time it ended and the time zone offset at that moment. If you drive into a new zone, only new drives and "today" follow it.
 - **A wrong clock waits.** A comma can start up with an old clock until GPS or the internet corrects it. A drive that ends before then waits and is counted once the clock is right. It is never filed on the wrong day.
 - **Daylight saving** just changes the offset. A 23 or 25 hour day keeps its date.
+- **Crossing into a country with a different week** only changes which days "this week" covers. Every day keeps its own total.
 
 ## Why Tesla needs Park logic
 
@@ -64,10 +67,11 @@ Other cars that stay awake without a normal ignition may need their own version 
 | `card.py` | What the card shows and when. |
 | `tz.py` | The time zone: looks up the GPS position in `tzgrid.bin`, else the system zone. |
 | `tzgrid.bin` | The time zone map, 190 KB, built by `build_tzgrid.py`. |
+| `weekstart.json` | Which zones start the week on Sunday, Saturday or Friday instead of Monday, 3 KB, built by `build_weekstart.py`. |
 | `__init__.py` | What the UI calls: `tick`, `view`, `due_summary`, `missed_trip`, `mark_shown`, `enabled`, `set_enabled`. |
 | `tests/` | `pytest selfdrive/ui/tripstats`. No build needed. |
 
-The time zone map is built from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Keep this credit if you ship the file.
+The time zone map is built from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Keep this credit if you ship the file. The first day of each country's week comes from the [Unicode CLDR](https://cldr.unicode.org/) (© Unicode, Inc., [Unicode License v3](https://www.unicode.org/license.txt)) and the zone to country list from the public-domain tz database.
 
 ## Porting
 

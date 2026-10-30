@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import time
+from datetime import date
 
 import pyray as rl
 
@@ -222,6 +223,14 @@ class StatsEngageWidget(_StatsPage):
       y += row_h
 
 
+def _week_labels(week: list) -> list[str]:
+  """Sun..Sat, or Mon..Sun etc.: the row names follow the week's dates, so they match where the week starts."""
+  try:
+    return [WEEKDAYS_H[(date.fromisoformat(d["id"]).weekday() + 1) % 7] for d in week]
+  except (KeyError, TypeError, ValueError):
+    return list(WEEKDAYS_H)
+
+
 class StatsWeekHWidget(_StatsPage):
   def _render(self, _):
     v = self._view
@@ -237,7 +246,7 @@ class StatsWeekHWidget(_StatsPage):
     engaged = [float(d.get("e") or 0) for d in week]
     current = int(v.get("today_i") or 0)
     chart = rl.Rectangle(r.x + pad, r.y + 46, r.width - pad - 18, r.height - 54)
-    _draw_hbars(chart, totals, engaged, current, list(WEEKDAYS_H))
+    _draw_hbars(chart, totals, engaged, current, _week_labels(week))
 
 
 class StatsHistoryHWidget(_StatsPage):

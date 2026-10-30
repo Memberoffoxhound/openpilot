@@ -86,7 +86,7 @@ Your drive stats stay on the comma. Nothing is uploaded. To turn them on, use **
 
 **How a drive is counted.** The comma saves the drive in progress every 30 seconds. If it loses power, the drive is kept up to that point, and the card comes up once at the next start as "last trip summary".
 
-**What counts as today.** Day resets at midnight and Week resets on Sunday, in the local time where the car is. The comma finds its time zone from GPS, using a built-in map, so it works offline. Until it has a GPS fix, it uses its own clock's time zone. A drive counts on the day it ends, and driving into a new time zone never moves old drives.
+**What counts as today.** Day resets at midnight and Week resets at the start of the local week, in the local time where the car is. Weeks start on Sunday in the US, Canada and Japan, and on Monday in most of Europe and Australia, based on where GPS puts the car. The comma finds its time zone from GPS, using a built-in map, so it works offline. Until it has a GPS fix, it uses its own clock's time zone. A drive counts on the day it ends, and driving into a new time zone never moves old drives.
 
 **Ending a drive on a Tesla.** A Tesla has no ignition to turn off, so openpilot would stay onroad in Park. With **go offroad in park** on, when you shift into Park, the card comes up and the comma goes offroad. Shifting to R or D starts a new drive.
 
@@ -141,6 +141,7 @@ TeslaPilot is built on the work of these people and projects. Thank you.
 | TESLA font (wordmark) | KAYOver, based on TeslaNikolaCaps by Shane Milburn | [dafont](https://www.dafont.com/tesla.font) |
 | Inter font | Rasmus Andersson | [rsms/inter](https://github.com/rsms/inter) |
 | Time zone table (`tzgrid.bin`) | timezone-boundary-builder by Evan Siroky, from OpenStreetMap data | [evansiroky/timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) |
+| First day of the week (`weekstart.json`) | Unicode CLDR | [cldr.unicode.org](https://cldr.unicode.org/) |
 
 ## License
 
@@ -149,5 +150,6 @@ openpilot and TeslaPilot are released under the [MIT license](LICENSE). Some par
 - **TESLA font**: [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/), non-commercial use only. See `openpilot/selfdrive/assets/fonts/TESLA-LICENSE.txt`.
 - **Inter font**: [SIL Open Font License 1.1](https://openfontlicense.org).
 - **Time zone table** (`openpilot/selfdrive/ui/tripstats/tzgrid.bin`): built from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+- **First day of the week** (`openpilot/selfdrive/ui/tripstats/weekstart.json`): from Unicode CLDR data, © Unicode, Inc., under the [Unicode License v3](https://www.unicode.org/license.txt).
 
 TeslaPilot isn't affiliated with Tesla, Inc. or comma.ai. The wordmark isn't Tesla's official logo.

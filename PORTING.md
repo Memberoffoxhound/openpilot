@@ -62,12 +62,14 @@ flowchart TD
 
 ## How "today" is decided
 
-Day resets at midnight and Week resets on Sunday, in the local time where the car is. The comma works this out from GPS, with no internet needed:
+Day resets at midnight and Week resets at the start of the local week, in the local time where the car is. The comma works this out from GPS, with no internet needed:
 
 1. GPS saves the car's last position about once a minute (`LastGPSPosition`).
 2. A small built-in time zone map, `tzgrid.bin`, turns that position into a zone such as `America/Chicago`.
 3. The zone is saved in the `Timezone` param. This is checked every 5 minutes.
 4. Until there is a GPS fix, the comma uses its own clock's time zone.
+
+Week starts on the day weeks start in that country: Sunday in places like the US, Canada, Mexico and Japan, Monday in most of Europe, Australia and China, and Saturday in much of the Middle East. Until the comma knows its zone, Week starts Sunday. That list is `weekstart.json`.
 
 The zone can't be set by hand. Within about 5 km of a zone border, the map can pick the zone next door.
 
@@ -91,7 +93,7 @@ git fetch https://github.com/Memberoffoxhound/openpilot port/tripstats && git ch
 
 `port/tripstats` is a single commit on top of comma master `0152aab` (Oct 29, 2026). It adds:
 
-- `selfdrive/ui/tripstats/`: the module, its tests and `tzgrid.bin`
+- `selfdrive/ui/tripstats/`: the module, its tests, `tzgrid.bin` and `weekstart.json`
 - `common/params_compat.py`
 - the card and the Day / Week row (`mici/widgets/drive_summary_card.py`, `trip_row.py`)
 - the Statistics page (`mici/layouts/settings/stats.py`), with a button in Settings
@@ -111,7 +113,7 @@ The params go through `params_compat.py`. A device whose params library was buil
 
 Highland's web page is not part of the port. Its tests skip when it isn't there.
 
-`tzgrid.bin` is built by `build_tzgrid.py` from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Keep that credit if you ship the file.
+`tzgrid.bin` is built by `build_tzgrid.py` from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Keep that credit if you ship the file. `weekstart.json` is built by `build_weekstart.py` from [Unicode CLDR](https://cldr.unicode.org/) data (© Unicode, Inc., [Unicode License v3](https://www.unicode.org/license.txt)) and the tz database's `zone.tab`.
 
 `selfdrive/ui/tripstats/README.md` has the store format and the edge cases.
 
