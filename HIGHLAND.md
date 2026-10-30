@@ -42,17 +42,15 @@ This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs)
 | `ParkOffroadState` | 0 | parkd's output: 0 none, 1 parking, 2 parked. Cleared on manager start only, re-asserted every second. |
 | `DriveSummary` | off | Trip card as the onroad page when a trip ends (stopped, ≥ 0.1 mi / 30 s); stock scroll to home after 20 s (`SHOW_S`) or a tap; swipe back to see it until the next drive. With `ParkOffroad`: up at the first Park sample with brightness held, and R/D skips `ONROAD_DELAY` and the brightness ramp. Any car; see PORTING.md. |
 | `DriveSummaryLast` | — | The one trip-stats store (JSON): 400 days of totals, lifetime, best stretch, best streak, last drive, drives not stored yet. See `selfdrive/ui/tripstats/README.md`. |
-| `Timezone` | — | IANA zone at `LastGPSPosition`, from an offline 190 KB table, for trip-stats days. Written off the UI thread after the UI is up. |
-| `TimezoneOverride` | — | IANA zone set from the web GUI ("Use this phone's time zone"); wins over `Timezone`. Empty: GPS. |
+| `Timezone` | — | Time zone for trip-stats days, looked up from `LastGPSPosition` in the offline 190 KB map (`tzgrid.bin`). Empty until the first GPS fix, then the system zone is used. Written off the UI thread. There is no manual override. |
 
 ## Trip stats
 
-One store, the `DriveSummaryLast` param, fed by one recorder in the UI (`selfdrive/ui/tripstats`). Home's Day / Week,
-the card and Statistics all read `tripstats.view()`. No qlog scans, no `/data` files, no background jobs.
-Days are local days in the device zone (`TimezoneOverride`, else `Timezone` from GPS, else the system zone). Each
-drive stores its UTC end and the zone offset then, so a zone change never moves it; it is held until the clock is
-valid. The drive in progress is saved every 30 s; after a power cut it closes at that stamp, and its card comes up
-once at the next start as "last trip summary". Weeks start Sunday. Details: `selfdrive/ui/tripstats/README.md`.
+Trip stats live in one param, `DriveSummaryLast`, written by one recorder in the UI (`selfdrive/ui/tripstats`). Home's Day / Week, the card, Statistics and the web page all read the same numbers from it. There are no qlog scans, no `/data` files and no background jobs.
+
+A drive is saved every 30 s while it runs. If power is cut, it closes at its last save, and its card comes up once at the next start as "last trip summary".
+
+Days follow the device's time zone. GPS gives the position, `tzgrid.bin` turns it into a zone, and the zone goes in `Timezone`. With no GPS fix yet, the system zone is used. Each drive is saved with its end time and the zone offset at that moment, so a later zone change never moves it. A drive that ends on a wrong clock waits until the clock is valid. Weeks start Sunday. Details: `selfdrive/ui/tripstats/README.md`.
 
 Older builds left `/data/trip_stats.json`, `/data/trip_seed_cache.json`, `/data/trip_meter.json` and
 `/data/trip_*.lock` behind. Nothing reads them now, and they are safe to delete.

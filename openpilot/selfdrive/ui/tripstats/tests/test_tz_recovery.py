@@ -1,4 +1,4 @@
-"""Time zone (offline GPS lookup, phone override), stamped drives that don't move when the zone does,
+"""Time zone (offline GPS lookup, then the system zone), stamped drives that don't move when the zone does,
 power-loss recovery at the last stamp, and the last trip summary card's shown flag."""
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -40,18 +40,16 @@ def test_grid_is_small_and_complete():
   assert tz.zone_at(90, 0) and tz.zone_at(-90, 0) and tz.zone_at(0, -180) == tz.zone_at(0, 180)
 
 
-def test_override_wins_bad_names_fall_back(tmp_path):
+def test_gps_zone_else_system_zone(tmp_path):
   p = Params(tmp_path)
-  assert tz.current(p)[2] == "system" and tz.zone(p) is None
+  assert tz.current(p)[2] == "system" and tz.zone(p) is None                       # no fix yet: system zone
   p.d[tz.PARAM] = "Asia/Tokyo"
+  assert tz.current(p)[1:] == ("Asia/Tokyo", "gps") and tz.zone(p) == ZoneInfo("Asia/Tokyo")
+  p.d["TimezoneOverride"] = "Europe/London"                                         # left over from an old build: ignored
   assert tz.current(p)[1:] == ("Asia/Tokyo", "gps")
-  assert tz.set_override(p, "Europe/London") and tz.current(p)[1:] == ("Europe/London", "phone")
-  for bad in ("Mars/Base", "../../etc/passwd", "/etc/localtime", "x" * 200, "Europe/London\\n"):
-    assert not tz.set_override(p, bad)
-  assert tz.current(p)[1] == "Europe/London"
-  assert tz.set_override(p, "") and tz.current(p)[1:] == ("Asia/Tokyo", "gps")      # cleared: GPS again
+  assert not hasattr(tz, "set_override") and not hasattr(tz, "PARAM_OVERRIDE")
   p.d[tz.PARAM] = "Not/AZone"
-  assert tz.zone(p) is None                                                           # unknown here: system zone
+  assert tz.zone(p) is None and tz.current(p)[2] == "system"                        # unknown here: system zone
 
 
 def test_update_from_last_gps_position(tmp_path):
@@ -176,13 +174,15 @@ def test_no_last_trip_after_a_normal_card_or_with_the_toggle_off(monkeypatch, tm
   assert ts.missed_trip(w.params) is None                      # toggle off: no card
 
 
-def test_web_gui_sets_the_override(monkeypatch, tmp_path):
+def test_web_gui_shows_the_zone_but_cannot_set_it(monkeypatch, tmp_path):
   import json
-  from openpilot.system.webgui import stats, webgui
+  stats = pytest.importorskip("openpilot.system.webgui.stats")   # a fork without the web GUI skips this
+  webgui = pytest.importorskip("openpilot.system.webgui.webgui")
   p = Params(tmp_path)
   monkeypatch.setattr("openpilot.common.params.Params", lambda: p)
-  app = webgui.App(tmp_path)
-  assert app.set_timezone("Asia/Tokyo") == (200, {"ok": True, "tz": "Asia/Tokyo"})
-  assert app.set_timezone("Nowhere/Land")[0] == 400 and p.d[tz.PARAM_OVERRIDE] == "Asia/Tokyo"
-  assert stats._collect(str(tmp_path))["timezone"] == {"name": "Asia/Tokyo", "source": "phone"}
+  assert not hasattr(webgui.App, "set_timezone")
+  p.d[tz.PARAM] = "Asia/Tokyo"
+  assert stats._collect(str(tmp_path))["timezone"] == {"name": "Asia/Tokyo", "source": "gps"}
   assert json.dumps(stats.mock()["timezone"])
+  html = webgui.STATIC.read_text()
+  assert "/api/timezone" not in html and "tzSet" not in html

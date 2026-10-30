@@ -1,13 +1,11 @@
-"""The device's time zone for Day / Week: an IANA name in a param, found offline from the last GPS fix.
+"""The device's time zone for Day / Week: an IANA name in the Timezone param, found offline from the last GPS fix.
 
-TimezoneOverride (set from the web GUI, the phone browser's zone) wins over Timezone (from GPS).
-Neither, or a name this device's tzdata doesn't know: the system zone.
+No Timezone yet, or a name this device's tzdata doesn't know: the system zone.
 zone_at() reads tzgrid.bin (build_tzgrid.py): one zone per 0.05 degree cell, about 190 KB.
 """
 from __future__ import annotations
 
 import json
-import re
 import struct
 import zlib
 from datetime import datetime
@@ -17,9 +15,7 @@ from zoneinfo import ZoneInfo
 from openpilot.common.params_compat import get, put
 
 PARAM = "Timezone"
-PARAM_OVERRIDE = "TimezoneOverride"
 GRID = Path(__file__).with_name("tzgrid.bin")
-NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")
 
 
 def zone_at(lat: float, lon: float, grid: Path = GRID) -> str:
@@ -43,33 +39,18 @@ def _name(params, key: str) -> str:
 
 
 def current(params) -> tuple[ZoneInfo | None, str, str]:
-  """(zone, name, source): the phone's override, else the GPS zone, else (None, abbreviation, "system")."""
-  for key, src in ((PARAM_OVERRIDE, "phone"), (PARAM, "gps")):
-    try:
-      if name := _name(params, key):
-        return ZoneInfo(name), name, src
-    except Exception:
-      pass
+  """(zone, name, source): the GPS zone, else (None, abbreviation, "system")."""
+  try:
+    if name := _name(params, PARAM):
+      return ZoneInfo(name), name, "gps"
+  except Exception:
+    pass
   return None, datetime.now().astimezone().tzname() or "", "system"
 
 
 def zone(params) -> ZoneInfo | None:
   """The zone Day / Week use, or None for the system zone."""
   return current(params)[0]
-
-
-def set_override(params, name: str) -> bool:
-  """Set from the web GUI (the phone browser's zone); "" clears it. False for a name this device doesn't know."""
-  name = name.strip()
-  if name:
-    try:
-      if not NAME_RE.fullmatch(name):
-        return False
-      ZoneInfo(name)
-    except Exception:
-      return False
-  put(params, PARAM_OVERRIDE, name, name.encode())
-  return True
 
 
 def last_fix(params) -> tuple[float, float] | None:
