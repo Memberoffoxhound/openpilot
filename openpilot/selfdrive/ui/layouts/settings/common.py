@@ -237,7 +237,7 @@ def tick_trip() -> None:
     d = v * dt if v > 0.15 else 0.0
     if d > 0:
       from openpilot.selfdrive.ui.layouts.settings.trip_stats import add_live
-      add_live(d, d if engaged else 0.0, str(route), d if engaged else 0.0)
+      add_live(d, d if engaged else 0.0, route)
   else:
     _trip_t = now
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
   CACHE_KEEP_SEC, TZ, _f, _iter_qlogs, _load_seg_cache, _save_seg_cache,
-  _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, engaged_pct, sunday_id,
+  _cache_hit, _read_qlog, _seg_tuple, chicago_now, day_id, engaged_pct, seg_entry, sunday_id,
 )
 from openpilot.selfdrive.ui.layouts.settings.trip_overlay import (
   empty_live, empty_pending, normalize_live, normalize_pending,
@@ -42,9 +42,7 @@ def run_fold(load_stats, save_stats, is_offroad, current_route, skip_name,
     got = _read_qlog(q)
     if got is None:
       continue
-    t0, meters, eng, streak = got
-    cache[name] = {"sz": int(sz), "mt": float(mt), "t0": float(t0),
-                   "m": float(meters), "e": float(eng), "s": float(streak)}
+    cache[name] = seg_entry(sz, mt, *got)
     dirty_cache = True
     n_new += 1
   if dirty_cache:
@@ -55,7 +53,7 @@ def run_fold(load_stats, save_stats, is_offroad, current_route, skip_name,
 
   days: dict = {}
   months: dict = {}
-  folded: list[str] = []
+  n_folded = 0
   life_m = life_e = 0.0
   max_s = _f(st, "max_streak_m")
   for name, hit in cache.items():
@@ -79,7 +77,7 @@ def run_fold(load_stats, save_stats, is_offroad, current_route, skip_name,
     life_m += meters
     life_e += eng
     max_s = max(max_s, streak)
-    folded.append(name)
+    n_folded += 1
 
   for k, v in old_days.items():
     if k not in days:
@@ -132,17 +130,15 @@ def run_fold(load_stats, save_stats, is_offroad, current_route, skip_name,
   life_e = max(life_e + add_e, sum(_f(v, "e") for v in days.values()))
   current, window = streaks(days)
   st = {
-    "v": stats_ver, "days": days, "months": months, "folded": folded[-8000:],
+    "v": stats_ver, "days": days, "months": months,
     "life_m": life_m, "life_e": life_e, "max_streak_m": max_s,
     "max_day_streak": max(int(st.get("max_day_streak") or 0), current, window),
     "live": live, "pending": pending,
   }
   save_stats(st)
   from openpilot.common.swaglog import cloudlog
-  cloudlog.info(
-    f"trip_stats rebuilt segs={len(folded)} new={n_new} days={len(days)} "
-    f"life_m={life_m:.1f} pending_m={pending['m']:.1f} offroad={offroad}"
-  )
+  cloudlog.info(f"trip_stats rebuilt segs={n_folded} new={n_new} days={len(days)} life_m={life_m:.1f} "
+                + f"pending_m={pending['m']:.1f} offroad={offroad}")
 
 
 def run_view(st: dict, is_offroad, streaks) -> dict:

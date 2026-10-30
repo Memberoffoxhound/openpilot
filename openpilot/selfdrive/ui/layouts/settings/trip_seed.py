@@ -28,6 +28,10 @@ def _f(d: dict, k: str) -> float:
     return 0.0
 
 
+def wall() -> float:
+  return time.time()  # noqa: TID251  compared against file mtimes
+
+
 def chicago_now() -> datetime:
   return datetime.now(TZ)
 
@@ -46,11 +50,6 @@ def sunday_id(dt: datetime | None = None) -> str:
   return sun.date().isoformat()
 
 
-def _offroad() -> bool:
-  from openpilot.selfdrive.ui.layouts.settings.trip_stats import _is_offroad as _is_offroad
-  return _is_offroad()
-
-
 def _pid_alive(pid: int) -> bool:
   if pid <= 0:
     return False
@@ -67,7 +66,7 @@ def _pid_alive(pid: int) -> bool:
 
 def _lock_stale(path: Path, stale_sec: float) -> bool:
   try:
-    age = time.time() - path.stat().st_mtime
+    age = wall() - path.stat().st_mtime
   except OSError:
     return True
   pid = None
@@ -87,7 +86,7 @@ def _lock_stale(path: Path, stale_sec: float) -> bool:
 
 def acquire_file_lock(path: Path, stale_sec: float) -> bool:
   """Exclusive lock. Steals the file if the owner pid is dead or the lock is old."""
-  payload = f"{os.getpid()} {time.time():.0f}\n".encode()
+  payload = f"{os.getpid()} {wall():.0f}\n".encode()
 
   def _create() -> bool:
     try:
@@ -147,7 +146,7 @@ def _load_seg_cache() -> dict:
 
 
 def _save_seg_cache(seg: dict) -> None:
-  keep_after = time.time() - CACHE_KEEP_SEC
+  keep_after = wall() - CACHE_KEEP_SEC
   pruned = {k: v for k, v in seg.items()
             if isinstance(v, dict) and float(v.get("mt") or 0) >= keep_after}
   tmp = str(CACHE_PATH) + ".tmp"
@@ -215,15 +214,9 @@ def _read_qlog(path: Path) -> tuple[float, float, float, float] | None:
     if origin_wall is None:
       wt = 0.0
       if which == "initData":
-        try:
-          wt = float(msg.initData.wallTimeNanos) / 1e9
-        except Exception:
-          wt = 0.0
+        wt = msg.initData.wallTimeNanos / 1e9
       elif which == "clocks":
-        try:
-          wt = float(msg.clocks.wallTimeNanos) / 1e9
-        except Exception:
-          wt = 0.0
+        wt = msg.clocks.wallTimeNanos / 1e9
       if wt > 1e9:
         origin_wall = wt
       continue
@@ -252,6 +245,10 @@ def _read_qlog(path: Path) -> tuple[float, float, float, float] | None:
   return origin_wall, meters, eng, streak
 
 
+def seg_entry(sz: int, mt: float, t0: float, meters: float, eng: float, streak: float) -> dict:
+  return {"sz": int(sz), "mt": float(mt), "t0": float(t0), "m": float(meters), "e": float(eng), "s": float(streak)}
+
+
 def _seg_tuple(hit: dict) -> tuple[float, float, float, float]:
   return (
     float(hit.get("t0") or 0),
@@ -263,91 +260,70 @@ def _seg_tuple(hit: dict) -> tuple[float, float, float, float]:
 
 def _fill_seg_cache(lookback_sec: float = STATS_LOOKBACK_SEC) -> int:
   """LogReader finished qlogs that are not already cached. Returns new entries."""
-  min_mt = time.time() - lookback_sec
   cache = _load_seg_cache()
   wrote = 0
   dirty = False
-  for name, q, sz, mt in _iter_qlogs(min_mt):
-    if (time.time() - mt) < HOT_SEC:
-      continue
-    if _cache_hit(cache, name, sz, mt) is not None:
+  for name, q, sz, mt in _iter_qlogs(wall() - lookback_sec):
+    if wall() - mt < HOT_SEC or _cache_hit(cache, name, sz, mt) is not None:
       continue
     got = _read_qlog(q)
     time.sleep(0.05)
     if got is None:
       continue
-    t0, meters, eng, streak = got
-    cache[name] = {
-      "sz": int(sz), "mt": float(mt), "t0": float(t0),
-      "m": float(meters), "e": float(eng), "s": float(streak),
-    }
+    cache[name] = seg_entry(sz, mt, *got)
     wrote += 1
     dirty = True
     if wrote % 8 == 0:
       _save_seg_cache(cache)
       dirty = False
-  if dirty or wrote:
+  if dirty:
     _save_seg_cache(cache)
   return wrote
 
 
-def _fold() -> None:
-  from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
-  fold_stats_history()
-
-
-def _with_cache_lock() -> bool:
-  return acquire_file_lock(CACHE_LOCK, LOCK_STALE_CACHE_SEC)
-
-
-def _unlock() -> None:
-  release_file_lock(CACHE_LOCK)
-
-
 def cache_segments_idle() -> None:
   """Parked, after a drive. Commit overlays first so a short park still lands miles."""
-  if not _with_cache_lock():
+  from openpilot.common.swaglog import cloudlog
+  from openpilot.selfdrive.ui.layouts.settings.trip_stats import fold_stats_history
+  if not acquire_file_lock(CACHE_LOCK, LOCK_STALE_CACHE_SEC):
     try:
-      _fold()
+      fold_stats_history()
     except Exception:
-      from openpilot.common.swaglog import cloudlog
       cloudlog.exception("trip cache fold-only")
     return
   try:
-    _fold()
+    fold_stats_history()
     n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
-    _fold()
-    from openpilot.common.swaglog import cloudlog
+    fold_stats_history()
     cloudlog.info(f"trip_cache wrote={n}")
   except Exception:
-    from openpilot.common.swaglog import cloudlog
     cloudlog.exception("trip cache")
   finally:
-    _unlock()
+    release_file_lock(CACHE_LOCK)
 
 
 def _rebuild() -> None:
   """Statistics / boot. Fold first, recent qlogs, then the long scan only if parked."""
   from openpilot.common.swaglog import cloudlog
-  if not _with_cache_lock():
+  from openpilot.selfdrive.ui.layouts.settings.trip_stats import _is_offroad, fold_stats_history
+  if not acquire_file_lock(CACHE_LOCK, LOCK_STALE_CACHE_SEC):
     try:
-      _fold()
+      fold_stats_history()
     except Exception:
       cloudlog.exception("trip rebuild fold-only")
     return
   try:
-    _fold()
+    fold_stats_history()
     n = _fill_seg_cache(lookback_sec=STATS_LOOKBACK_SEC)
-    _fold()
-    if _offroad():
+    fold_stats_history()
+    if _is_offroad():
       n += _fill_seg_cache(lookback_sec=CACHE_KEEP_SEC)
-      _fold()
-    off = _offroad()
-    cloudlog.info(f"trip_rebuild wrote={n} offroad={off}")
+      fold_stats_history()
+    cloudlog.info(f"trip_rebuild wrote={n} offroad={_is_offroad()}")
   except Exception:
     cloudlog.exception("trip rebuild")
   finally:
-    _unlock()
+    release_file_lock(CACHE_LOCK)
 
 
 if __name__ == "__main__":

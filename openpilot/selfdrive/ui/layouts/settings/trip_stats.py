@@ -4,13 +4,12 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.layouts.settings.trip_seed import (
-  _f, chicago_now, day_id, HOT_SEC, LOCK_STALE_STATS_SEC,
+  _f, chicago_now, day_id, wall, HOT_SEC, LOCK_STALE_STATS_SEC,
   acquire_file_lock, release_file_lock,
 )
 from openpilot.selfdrive.ui.layouts.settings.trip_overlay import (
@@ -32,7 +31,7 @@ _live_dirty = False
 
 def empty_stats() -> dict:
   return {
-    "v": STATS_VER, "days": {}, "months": {}, "folded": [],
+    "v": STATS_VER, "days": {}, "months": {},
     "life_m": 0.0, "life_e": 0.0, "max_streak_m": 0.0, "max_day_streak": 0,
     "live": empty_live(), "pending": empty_pending(),
   }
@@ -40,10 +39,7 @@ def empty_stats() -> dict:
 
 def _current_route() -> str:
   try:
-    r = Params().get("CurrentRoute") or ""
-    if isinstance(r, bytes):
-      r = r.decode(errors="replace")
-    return str(r)
+    return Params().get("CurrentRoute") or ""
   except Exception:
     return ""
 
@@ -55,14 +51,12 @@ def _is_offroad() -> bool:
     return True
 
 
-def _migrate_poison(st: dict) -> dict:
-  st["v"] = STATS_VER
+def _normalize(st: dict) -> dict:
+  st.pop("folded", None)  # dropped: segment names written on every fold, never read
   if not isinstance(st.get("days"), dict):
     st["days"] = {}
   if not isinstance(st.get("months"), dict):
     st["months"] = {}
-  if not isinstance(st.get("folded"), list):
-    st["folded"] = []
   st["live"] = normalize_live(st.get("live"))
   st["pending"] = normalize_pending(st.get("pending"))
   st["life_m"] = _f(st, "life_m")
@@ -87,19 +81,9 @@ def load_stats() -> dict:
     raw = json.loads(STATS_PATH.read_text(encoding="utf-8"))
     if isinstance(raw.get("days"), dict):
       st.update(raw)
-      st["folded"] = st["folded"] if isinstance(st.get("folded"), list) else []
-      st["days"] = st["days"] if isinstance(st.get("days"), dict) else {}
-      st["months"] = st["months"] if isinstance(st.get("months"), dict) else {}
-      st["max_day_streak"] = int(st.get("max_day_streak") or 0)
-      st["live"] = normalize_live(st.get("live"))
-      st["pending"] = normalize_pending(st.get("pending"))
-      try:
-        ver = int(st.get("v") or 0)
-      except (TypeError, ValueError):
-        ver = 0
-      if ver != STATS_VER:
-        st = _migrate_poison(st)
-        migrated = True
+      migrated = st.get("v") != STATS_VER
+      st = _normalize(st)
+      st["v"] = STATS_VER
   except Exception:
     pass
   with _lock:
@@ -179,7 +163,7 @@ def _streaks(days: dict) -> tuple[int, int]:
   return current, longest
 
 
-def add_live(meters: float, eng: float, route: str, dt_streak: float) -> None:
+def add_live(meters: float, eng: float, route: str) -> None:
   global _live_mem, _live_dirty
   if _cache is None:
     load_stats()
@@ -207,7 +191,7 @@ def add_live(meters: float, eng: float, route: str, dt_streak: float) -> None:
       live["day"] = today
     live["m"] = _f(live, "m") + float(meters or 0)
     live["e"] = _f(live, "e") + float(eng or 0)
-    live["streak_m"] = _f(live, "streak_m") + float(dt_streak or 0) if eng > 0 else 0.0
+    live["streak_m"] = _f(live, "streak_m") + eng if eng > 0 else 0.0
     _live_mem = live
     _live_dirty = True
     if _cache is not None:
@@ -246,11 +230,9 @@ def fold_stats_history() -> None:
 
 
 def _skip_name(name: str, route: str, offroad: bool, mt: float) -> bool:
-  if (time.time() - mt) < HOT_SEC:
+  if wall() - mt < HOT_SEC:
     return True
-  if (not offroad) and route and route in str(name):
-    return True
-  return False
+  return bool(not offroad and route and route in name)
 
 
 def _fold_stats_history() -> None:
