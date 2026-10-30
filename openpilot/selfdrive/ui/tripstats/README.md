@@ -76,6 +76,17 @@ so Home and the card count it before it is stored, and the numbers don't change 
   ending today, or yesterday until today counts, and `streak_days`, the best run ever. The card's
   "day streak" and Statistics' "N Day Streak" show `streak_days`, as before this rewrite.
 
+## The timeline
+
+The card's bar uses comma connect's route timeline colors (connect `src/components/Timeline/index.jsx`,
+`src/theme.js` `palette.states`): blue not engaged, green engaged, grey overriding or preEnabled,
+orange a userPrompt alert, red a critical alert, yellow a bookmark ("Bookmark Saved", 1 s wide). Layering
+follows connect too (`src/actions/cached.js` parseEvents): engage, alert and overriding are separate events,
+and the one that started last is on top; a bookmark is above everything (`recorder.Layers`). The bar has
+connect's darker-toward-the-bottom gradient. Each bucket shows a bookmark or alert if it has any, otherwise
+its longest state. Stored drives keep one letter per bucket
+(`recorder.CODES`); the old "s" (stopped) reads as blue, as connect has no stopped color.
+
 ## How a drive ends: ignition, or Park on a Tesla
 
 The recorder is brand-free. A drive runs while `ui_state.started`. It ends once `started` has been false

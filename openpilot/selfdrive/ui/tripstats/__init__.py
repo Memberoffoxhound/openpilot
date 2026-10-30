@@ -141,16 +141,15 @@ def tick(ui_state) -> None:
     data = _store(params)
     sm = ui_state.sm
     started = bool(ui_state.started)
-    v = engaged = gas = False
-    state, alert = "", "normal"
+    v = engaged = False
+    state, alert, alert_type = "", "normal", ""
     if started:
       cs = sm["carState"]
       v = max(0.0, float(cs.vEgo))
-      gas = bool(cs.gasPressed)
       if sm.recv_frame["selfdriveState"] >= ui_state.started_frame:
         ss = sm["selfdriveState"]
         engaged = bool(ss.enabled)
-        state, alert = str(ss.state), str(ss.alertStatus)
+        state, alert, alert_type = str(ss.state), str(ss.alertStatus), str(ss.alertType)
     route = ""
     now = time.monotonic()
     if started and (not live.active or live.drive_id.startswith("t")) and now - _route_t > 1.0:
@@ -158,7 +157,7 @@ def tick(ui_state) -> None:
       route = params.get("CurrentRoute") or ""
       if isinstance(route, bytes):
         route = route.decode(errors="replace")
-    done = live.update(started, now, wall_now(), float(v), engaged, state, alert, gas, str(route))
+    done = live.update(started, now, wall_now(), float(v), engaged, state, alert, alert_type, str(route))
     if done is not None:
       _held.append(done)
     if _held and system_time_valid():     # a stale clock would date it on the wrong day: wait for a valid one

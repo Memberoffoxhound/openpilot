@@ -20,23 +20,53 @@ def drive(rec, seconds, v, enabled, t0, wall0=1_760_000_000.0, dt=0.05, **kw):
 
 
 def test_classify():
-  assert rc.classify(True, "enabled", "normal", False, 20) == rc.ENGAGED
-  assert rc.classify(True, "overriding", "normal", False, 20) == rc.OVERRIDE
-  assert rc.classify(True, "enabled", "normal", True, 20) == rc.OVERRIDE       # gas while engaged
-  assert rc.classify(False, "disabled", "normal", True, 20) == rc.MANUAL       # gas while manual is just manual
-  assert rc.classify(False, "disabled", "normal", False, 0.0) == rc.STANDBY
-  assert rc.classify(True, "enabled", "userPrompt", False, 20) == rc.PROMPT
-  assert rc.classify(False, "disabled", "critical", False, 20) == rc.CRITICAL
+  assert rc.classify(True, "enabled", "normal") == rc.ENGAGED
+  assert rc.classify(True, "overriding", "normal") == rc.OVERRIDE
+  assert rc.classify(True, "preEnabled", "normal") == rc.OVERRIDE
+  assert rc.classify(False, "disabled", "normal") == rc.MANUAL          # stopped or moving: connect's blue
+  assert rc.classify(True, "enabled", "userPrompt") == rc.PROMPT
+  assert rc.classify(True, "overriding", "userPrompt") == rc.OVERRIDE   # same start: connect pushes overriding last
+  assert rc.classify(False, "disabled", "critical") == rc.CRITICAL
+  assert rc.classify(True, "enabled", "critical", "userBookmark/permanent") == rc.FLAG
+  assert rc.classify(False, "disabled", "normal", "userBookmarkNotPaired/permanent") == rc.FLAG
 
 
 def test_connect_palette():
-  # commaai/connect src/theme.js palette.states / src/colors.js
-  assert rc.COLORS[rc.ENGAGED] == (0x17, 0x86, 0x45)    # engagedGreen green400
-  assert rc.COLORS[rc.MANUAL] == (0x17, 0x58, 0x86)     # drivingBlue blue500
-  assert rc.COLORS[rc.PROMPT] == (0xda, 0x6f, 0x25)     # alertOrange orange50
-  assert rc.COLORS[rc.CRITICAL] == (0xc9, 0x22, 0x31)   # alertRed red100
-  assert rc.COLORS[rc.STANDBY] == (0x91, 0x9b, 0x95)    # engagedGrey
-  assert rc.COLORS[rc.OVERRIDE] == (0xe3, 0xd7, 0x56)   # yellow500
+  # commaai/connect src/theme.js palette.states / src/colors.js; Timeline/index.jsx segmentColor
+  assert rc.COLORS[rc.MANUAL] == (0x17, 0x58, 0x86)     # drivingBlue blue500 (segment background)
+  assert rc.COLORS[rc.ENGAGED] == (0x17, 0x86, 0x45)    # engagedGreen green400 (.engage)
+  assert rc.COLORS[rc.OVERRIDE] == (0x91, 0x9b, 0x95)   # engagedGrey (.overriding)
+  assert rc.COLORS[rc.PROMPT] == (0xda, 0x6f, 0x25)     # alertOrange orange50 (.alert.userPrompt)
+  assert rc.COLORS[rc.CRITICAL] == (0xc9, 0x22, 0x31)   # alertRed red100 (.alert.critical)
+  assert rc.COLORS[rc.FLAG] == (0xe3, 0xd7, 0x56)       # userBookmark yellow500 (.bookmark)
+  assert set(rc.COLORS) == set(range(len(rc.CODES)))
+
+
+# route 3e2de7ed673817c2/00000095--637348a3fa (Tesla, Highland 387ed94): (t, enabled, state) changes.
+# Each engage starts in "overriding" (gas held): connect shows grey there, and no alert or bookmark.
+ROUTE_95 = [(0.0, False, "disabled"), (25.5, True, "overriding"), (27.4, True, "enabled"), (31.5, True, "overriding"),
+            (32.0, True, "enabled"), (32.5, True, "overriding"), (33.1, False, "disabled"), (37.4, True, "overriding"),
+            (38.4, True, "enabled"), (44.0, False, "disabled"), (73.0, True, "overriding"), (73.8, True, "enabled"),
+            (78.7, False, "disabled"), (109.8, True, "overriding"), (111.7, True, "enabled"), (127.9, False, "disabled"),
+            (137.7, True, "overriding"), (139.0, True, "enabled"), (161.0, False, "disabled"), (172.9, False, "disabled")]
+
+
+def test_route_95_has_no_yellow():
+  rec = rc.DriveRecorder()
+  for (t0, en, st), (t1, _, _) in zip(ROUTE_95[:-1], ROUTE_95[1:], strict=True):
+    drive(rec, t1 - t0, 5.0, en, t0, state=st)
+  runs = tc.timeline_runs(rec.timeline.codes())
+  assert {r[0] for r in runs} == {rc.MANUAL, rc.ENGAGED, rc.OVERRIDE}
+  assert rc.FLAG not in {r[0] for r in runs} and rc.COLORS[rc.OVERRIDE] == (0x91, 0x9b, 0x95)
+  assert rec.timeline.codes()[:14] == "m" * 13 + "o"     # 25.5 s blue, then the engage's grey
+
+
+def test_bookmark_shows_over_everything():
+  rec = rc.DriveRecorder()
+  t = drive(rec, 11, 20.0, True, 0.0, state="enabled")
+  t = drive(rec, 0.1, 20.0, True, t, state="enabled", alert_status="critical", alert_type="userBookmark/permanent")
+  drive(rec, 9, 20.0, True, t, state="enabled")
+  assert rec.timeline.codes() == "eeeeefeeeee"           # a 0.1 s bookmark still colors its 2 s bucket
 
 
 def test_timeline_buckets_and_dominance():
@@ -82,7 +112,7 @@ def test_recorder_distance_engaged_best_stretch():
   assert out["best_m"] == pytest.approx(2000, rel=0.01)
   assert out["dur"] == pytest.approx(180, rel=0.01)
   assert store.engaged_pct(out["e"], out["m"]) == 94
-  assert out["tl"][0] == "e" and "m" in out["tl"] and out["tl"][-1] == "s"
+  assert out["tl"][0] == "e" and "m" in out["tl"] and out["tl"][-1] == "m"
   assert out["end"] == pytest.approx(1_760_000_000.0 + t)      # ends when offroad began
   assert rec.update(False, t + 10, 0, 0, False) is None      # only once
 
@@ -165,6 +195,7 @@ def test_timeline_runs():
   assert tc.timeline_runs("eeemmoeec") == [(rc.ENGAGED, 0, 3), (rc.MANUAL, 3, 2), (rc.OVERRIDE, 5, 1),
                                            (rc.ENGAGED, 6, 2), (rc.CRITICAL, 8, 1)]
   assert tc.timeline_runs("") == []
+  assert tc.timeline_runs("ssmo") == [(rc.MANUAL, 0, 3), (rc.OVERRIDE, 3, 1)]   # stored before: "s" (stopped) is blue now
 
 
 def test_accent_uses_theme_else_comma_green(monkeypatch):
@@ -234,3 +265,34 @@ def test_due_summary_rules(monkeypatch):
   assert ts.due_summary(None, _rec(active=False)) is None     # nothing recorded: stock
   monkeypatch.setattr(ts, "enabled", lambda params: False)
   assert ts.due_summary(None, _rec()) is None                 # toggle off: stock
+
+
+def test_layers_last_started_is_on_top():
+  # connect draws each engage / overriding / alert event in start order, so the newest one shows
+  ly = rc.Layers()
+  assert ly.status(0.0, False, "disabled", "normal") == rc.MANUAL
+  assert ly.status(1.0, False, "disabled", "userPrompt", "a") == rc.PROMPT
+  assert ly.status(2.0, True, "enabled", "userPrompt", "a") == rc.ENGAGED      # engage started after the alert
+  assert ly.status(3.0, True, "enabled", "userPrompt", "b") == rc.ENGAGED      # same alertStatus: same event
+  assert ly.status(3.5, True, "enabled", "normal") == rc.ENGAGED
+  assert ly.status(3.6, True, "enabled", "userPrompt", "b") == rc.PROMPT       # a new alert event
+  assert ly.status(4.0, True, "overriding", "userPrompt", "b") == rc.OVERRIDE  # override started last
+  ly2 = rc.Layers()
+  assert ly2.status(0.0, True, "preEnabled", "normal") == rc.OVERRIDE
+  assert ly2.status(1.0, True, "preEnabled", "userPrompt") == rc.PROMPT          # alert started after it
+  assert ly2.status(2.0, True, "overriding", "userPrompt") == rc.OVERRIDE        # a new state is a new event
+  assert ly.status(5.0, True, "overriding", "critical", "c") == rc.CRITICAL
+  assert ly.status(6.0, True, "overriding", "normal", "c") == rc.OVERRIDE
+  assert ly.status(6.5, True, "preEnabled", "normal") == rc.OVERRIDE
+  assert ly.status(7.0, True, "enabled", "normal", "userBookmark/permanent") == rc.FLAG   # bookmark always on top
+  assert ly.status(7.9, True, "enabled", "normal", "userBookmark/permanent") == rc.FLAG
+  assert ly.status(8.0, True, "enabled", "normal", "userBookmark/permanent") == rc.ENGAGED  # connect: 1 s wide
+  assert ly.status(8.5, True, "enabled", "normal") == rc.ENGAGED
+  assert ly.status(9.0, False, "disabled", "normal") == rc.MANUAL
+
+
+def test_recorder_uses_start_order():
+  rec = rc.DriveRecorder()
+  t = drive(rec, 4, 20.0, False, 0.0, state="disabled", alert_status="userPrompt", alert_type="x")
+  drive(rec, 4, 20.0, True, t, state="enabled", alert_status="userPrompt", alert_type="x")
+  assert rec.timeline.codes() == "ppee"                 # the later engage covers the earlier alert, as in connect
