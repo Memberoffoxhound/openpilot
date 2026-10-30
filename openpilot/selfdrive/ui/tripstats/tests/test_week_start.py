@@ -1,8 +1,10 @@
 """Where the week starts: the country of the GPS zone (CLDR), Sunday with no zone, and the current week rule
 applied to stored days without moving any of them."""
 import copy
+import importlib.util
 import json
 import zlib
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -90,6 +92,9 @@ def test_ui_uses_the_gps_zone_rule(monkeypatch, tmp_path):
 
 def test_statistics_rows_follow_the_week():
   pytest.importorskip("pyray")
+  common = Path(importlib.util.find_spec("openpilot.common.params").origin).parent
+  if not any(common.glob("libparams_c.*")):                  # a tree without the built params library skips this
+    pytest.skip("params library not built (libparams_c)")
   from openpilot.selfdrive.ui.mici.layouts.settings.stats import _week_labels
   assert _week_labels(store.view(fresh(), at=at(2026, 10, 28, 12), first=MON)["week_days"])[::6] == ["Mon", "Sun"]
   assert _week_labels(store.view(fresh(), at=at(2026, 10, 28, 12), first=SAT)["week_days"])[:2] == ["Sat", "Sun"]
