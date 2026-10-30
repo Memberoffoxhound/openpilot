@@ -72,9 +72,11 @@ def _open() -> list[dict]:
 
 def view(params, drive: dict | None = None) -> dict:
   """Now, in the device zone; or as of a stored drive's end, in its offset."""
+  z = zone(params)
+  first = tz.first_day(z)                    # the week rule where the car is now, also for a stored drive
   if drive is None:
-    return store.view(_store(params), _open(), datetime.fromtimestamp(wall_now(), UTC), zone(params))
-  return store.view(_store(params), (), datetime.fromtimestamp(drive["end"], UTC), timezone(timedelta(seconds=drive["off"])))
+    return store.view(_store(params), _open(), datetime.fromtimestamp(wall_now(), UTC), z, first)
+  return store.view(_store(params), (), datetime.fromtimestamp(drive["end"], UTC), timezone(timedelta(seconds=drive["off"])), first)
 
 
 def enabled(params) -> bool:

@@ -45,7 +45,7 @@ def _collect(data: str) -> dict:
   try:
     from openpilot.selfdrive.ui.tripstats import store, tz
     st, (zone, name, src) = store.load(p), tz.current(p)
-    v, cur = store.view(st, st["open"], tz=zone), (st["open"] or [{}])[-1]
+    v, cur = store.view(st, st["open"], tz=zone, first=tz.first_day(zone)), (st["open"] or [{}])[-1]
     out["timezone"] = {"name": name, "source": src}
     out["trips"] = {k: v[k] for k in ("today_m", "today_e", "today_pct", "week_m", "week_e", "week_pct",
                                       "life_m", "life_e", "pct", "streak_days", "longest_m", "week_days", "today_i")}
