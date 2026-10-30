@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import time
 
 from openpilot.cereal import log
 import pyray as rl
@@ -13,6 +14,8 @@ from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, TextAlignment, TextAlignmentVertical
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.common.version import RELEASE_BRANCHES
+from openpilot.selfdrive.ui import tripstats
+from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_row, fmt_trip
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
@@ -153,17 +156,34 @@ class MiciHomeLayout(Widget):
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
-    self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._trip_at = 0.0
+    self._day_txt = ("Day", "0mi 0%")
+    self._week_txt = ("Week", "0mi 0%")
+    self._trip_hit = rl.Rectangle(0, 0, 0, 0)
+    self._on_stats_click: Callable | None = None
+
+  def _update_state(self):
+    now = time.monotonic()
+    if now - self._trip_at >= 1.0:
+      self._trip_at = now
+      t = tripstats.view(ui_state.params)
+      self._day_txt = ("Day", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
+      self._week_txt = ("Week", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
+                    on_stats: Callable | None = None,
                     alert_count_callback: Callable[[], int] | None = None,
                     alert_icon_callback: Callable[[], rl.Texture | None] | None = None):
     self._on_settings_click = on_settings
     self._on_alerts_click = on_alerts
+    self._on_stats_click = on_stats
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, alert_icon_callback)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
+    if self._on_stats_click and self._trip_hit.width > 0 and rl.check_collision_point_rec(mouse_pos, self._trip_hit):
+      self._on_stats_click()
+      return
     relative_x = mouse_pos.x - self.rect.x
     has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
     if has_alerts and relative_x > self.rect.width - ALERTS_ZONE_WIDTH:
@@ -213,11 +233,11 @@ class MiciHomeLayout(Widget):
       self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
       self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+      # 2nd line: Day / Week (tripstats); tap for Statistics
+      y2 = version_pos.y + self._date_label.font_size + 7
+      avail = self.rect.width - HOME_PADDING * 2
+      row_w, lsz = draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY), version_pos.x, y2, avail, self._day_txt, self._week_txt)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz * 1.16 + 8)
 
     # ***** Center-aligned bottom section icons *****
     usb_connected = ui_state.usb_connected

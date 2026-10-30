@@ -7,6 +7,7 @@ from openpilot.selfdrive.ui.mici.layouts.settings.device.device_layout import De
 from openpilot.selfdrive.ui.mici.layouts.settings.developer import DeveloperLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.software import SoftwareLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.firehose import FirehoseLayout
+from openpilot.selfdrive.ui.mici.layouts.settings.stats import StatsLayoutMici
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 
 
@@ -23,6 +24,10 @@ class SettingsLayout(NavScroller):
     toggles_panel = TogglesLayoutMici()
     toggles_btn = SettingsBigButton("toggles", "", gui_app.texture("icons_mici/settings.png", 64, 64))
     toggles_btn.set_click_callback(lambda: gui_app.push_widget(toggles_panel))
+
+    self._stats_layout = StatsLayoutMici()
+    stats_btn = SettingsBigButton("statistics", "", gui_app.texture("icons_mici/wheel.png", 64, 64))
+    stats_btn.set_click_callback(lambda: gui_app.push_widget(self._stats_layout))
 
     network_panel = NetworkLayoutMici()
     network_btn = SettingsBigButton("network", "", gui_app.texture("icons_mici/settings/network/wifi_strength_full.png", 76, 56))
@@ -46,6 +51,7 @@ class SettingsLayout(NavScroller):
 
     self._scroller.add_widgets([
       toggles_btn,
+      stats_btn,
       network_btn,
       self._device_button,
       software_btn,
@@ -54,6 +60,10 @@ class SettingsLayout(NavScroller):
     ])
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
+
+  @property
+  def stats_layout(self):
+    return self._stats_layout
 
   def show_pairing(self):
     gui_app.push_widget(self)

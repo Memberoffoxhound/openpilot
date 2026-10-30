@@ -143,5 +143,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutRetry", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
+    // tripstats (selfdrive/ui/tripstats); readers fall back to the raw param file if the params library predates these
+    {"DriveSummary", {PERSISTENT, BOOL, "0"}},
+    {"DriveSummaryLast", {PERSISTENT, JSON}},
+    {"Timezone", {PERSISTENT, STRING}},
     {"Version", {PERSISTENT, STRING}},
 };

@@ -5,6 +5,7 @@ from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamContro
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui import tripstats
 from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -33,6 +34,9 @@ class TogglesLayoutMici(NavScroller):
                                  toggle_callback=restart_needed_callback,
                                  description="Record microphone audio while driving.\n" +
                                              "Audio is included in dashcam videos in comma connect.")
+    drive_summary = BigToggle("drive summary", initial_state=tripstats.enabled(ui_state.params),
+                              toggle_callback=lambda on: tripstats.set_enabled(ui_state.params, on),
+                              description="Show a trip summary card when the car is turned off.")
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback,
                                        description="Enable to use openpilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
@@ -45,6 +49,7 @@ class TogglesLayoutMici(NavScroller):
       always_on_dm_toggle,
       record_front,
       record_mic,
+      drive_summary,
       enable_openpilot,
     ])
 
