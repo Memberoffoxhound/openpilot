@@ -9,7 +9,7 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.radard import RADAR_TO_CAMERA
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
-from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, THEME_TESLA_RGB, THEME_OPENPILOT_RGB
+from openpilot.selfdrive.ui.layouts.settings.common import custom_onroad_ui, tesla_theme, THEME_TESLA_RGB, THEME_OPENPILOT_RGB
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -268,13 +268,7 @@ class ModelRenderer(Widget):
     self._path_gradient.stops = gradient_stops
 
   def _engaged_ll_color(self):
-    try:
-      if not custom_onroad_ui():
-        return STOCK_LANE_GREEN
-      mode = ui_state.params.get("LaneColor", return_default=True)
-    except Exception:
-      mode = 1
-    return TESLA_LANE_BLUE if mode == 1 else STOCK_LANE_GREEN
+    return TESLA_LANE_BLUE if custom_onroad_ui() and tesla_theme() else STOCK_LANE_GREEN
 
   def _get_ll_color(self, prob: float, adjacent: bool, left: bool):
     alpha = np.clip(prob, 0.0, 0.7)
