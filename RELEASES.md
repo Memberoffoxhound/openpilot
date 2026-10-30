@@ -8,9 +8,8 @@ Tesla fork on openpilot 0.11.2. Reports 0.11.23 to Connect. See README.md.
 * Optional custom HUD: Tesla Autopilot-blue theme, compass
 * Today / Week home stats. Boot uses the JSON cache; parked fold fills history
 * Statistics widget (ring, weekly, monthly). Theme accents. WIP
-* LAN deviceweb on :8088 — stats + screenshot gallery. WIP
+* LAN web GUI on :8089, always on — stats, screenshots, UI screen recording
 * 3s display-hold screenshots
-* Delorean 88mph clip (off by default)
 
 Version 0.11.12 — TeslaPilot Highland (2026-08-22)
 ========================================
@@ -26,7 +25,17 @@ Tesla Model 3 Highland fork on top of openpilot 0.11.2. See CHANGELOG.md.
 * On-Air local Wi-Fi viewer (removed in 0.11.23)
 * White Tesla T boot mark; home wordmark DELAMAIN
 
-Version 0.11.2 (2026-08-12)
+Version 0.11.3 (2026-XX-XX)
+========================
+* Autospeed
+  * On supported cars, openpilot will intelligently decide what speed to drive based on the scene, including:
+    * stopping at red lights, and going at green lights
+    * slowing down for curves
+    * adjusting speed based on surrounding traffic
+  * This behavior was previously available with openpilot's "Experimental mode", but is now out of beta and always enabled
+  * With openpilot deciding which speed to drive, the car's cruise speed is treated as a maximum speed openpilot will not exceed
+
+Version 0.11.2 (2026-10-14)
 =======================
 * New driving model
   * Big model with 880M parameters

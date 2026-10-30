@@ -24,7 +24,8 @@ class ScreenShotter:
     self._t = None
     self.pending = True
     try:
-      open(SHOT_PLAY, "w").write("1")
+      with open(SHOT_PLAY, "w") as f:
+        f.write("1")
     except OSError:
       pass
 
@@ -54,7 +55,7 @@ class ScreenShotter:
   def capture(self, render_texture=None) -> str | None:
     try:
       os.makedirs(SHOT_DIR, exist_ok=True)
-      if render_texture is not None and getattr(render_texture, "texture", None):
+      if render_texture is not None:
         img = rl.load_image_from_texture(render_texture.texture)
         rl.image_flip_vertical(img)
       else:

@@ -1,6 +1,5 @@
 import math
 import os
-import json
 import threading
 import numpy as np
 import time
@@ -28,15 +27,6 @@ SHOT_WAVS = (
   "/data/shutter.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/shutter.wav",
 )
-EIGHTY_WAVS = (
-  "/data/88mph.wav",
-  BASEDIR + "/openpilot/selfdrive/assets/sounds/88mph.wav",
-)
-DELOREAN_MODE = "/data/delorean_sound"
-DELOREAN_PLAY = "/data/delorean_play"
-DELOREAN_GATE = "/data/delorean_gate.json"
-DELOREAN_HOLD_S = 1.5
-DELOREAN_OFFROAD_RESET_S = 10.0
 
 
 def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
@@ -147,11 +137,12 @@ def _clear(path: str) -> None:
 
 
 MIN_VOLUME = 0.1
-ALERT_RAMP_TIME = 4 # seconds to ramp to max volume for warningImmediate
+ALERT_RAMP_TIME = 4 # seconds to ramp critical alerts to max volume
+ALERT_MAX_TIME = 8 # seconds before critical alerts switch to the max sound
 SELFDRIVE_STATE_TIMEOUT = 5 # 5 seconds
 FILTER_DT = 1. / (micd.SAMPLE_RATE / micd.FFT_SAMPLES)
 
-AMBIENT_DB = 26 # DB where MIN_VOLUME is applied
+AMBIENT_DB = 22 # DB where MIN_VOLUME is applied
 DB_SCALE = 30 # AMBIENT_DB + DB_SCALE is where MAX_VOLUME is applied
 
 VOLUME_BASE = 20
@@ -160,6 +151,7 @@ if HARDWARE.get_device_type() == "tizi":
   VOLUME_BASE = 10
 
 AudibleAlert = log.SelfdriveState.AudibleAlert
+CRITICAL_MAX = -1 # internal sound key, not an AudibleAlert
 
 
 sound_list: dict[int, tuple[str, int | None, float]] = {
@@ -176,6 +168,7 @@ sound_list: dict[int, tuple[str, int | None, float]] = {
 
   AudibleAlert.warningSoft: ("critical.wav", None, MAX_VOLUME),
   AudibleAlert.warningImmediate: ("dm_critical.wav", None, MAX_VOLUME),
+  CRITICAL_MAX: ("dm_critical_max.wav", None, MAX_VOLUME),
 }
 
 def check_selfdrive_timeout_alert(sm):
@@ -194,12 +187,9 @@ class Soundd:
     self.oneshots: list[list] = []  # [np.ndarray, index, tag]
     self._queue: list[list] = []
     self._lock = threading.Lock()
-    self._play_eighty = False
-    self._onroad_t0, self._eighty_played = self._load_gate()
-    self._started_since = 0.0
-    self._offroad_since = 0.0
 
     self.current_alert = AudibleAlert.none
+    self.current_sound = AudibleAlert.none
     self.current_volume = MIN_VOLUME
     self.current_sound_frame = 0
 
@@ -211,23 +201,6 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
-  def _load_gate(self) -> tuple[float, bool]:
-    try:
-      j = json.loads(open(DELOREAN_GATE, encoding="utf-8").read())
-      return float(j.get("onroad_t0") or 0), bool(j.get("eighty_played", False))
-    except Exception:
-      return 0.0, False
-
-  def _save_gate(self) -> None:
-    try:
-      with open(DELOREAN_GATE, "w", encoding="utf-8") as f:
-        json.dump({
-          "onroad_t0": self._onroad_t0,
-          "eighty_played": self._eighty_played,
-        }, f)
-    except OSError:
-      pass
-
   def _push(self, tag: str, paths: tuple[str, ...], *, prep: bool = True) -> None:
     # Decode here (20 Hz thread), never in the PortAudio callback. Buffer dies with the oneshot.
     w = load_wav(*paths, prep=prep)
@@ -236,19 +209,10 @@ class Soundd:
     with self._lock:
       self._queue.append([w, 0, tag])
 
-  def _tag_busy(self, tag: str) -> bool:
-    with self._lock:
-      return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
-
   def _drain_flags(self) -> None:
     if _flag(SHOT_PLAY):
       self._push("shot", SHOT_WAVS)
       _clear(SHOT_PLAY)
-    if self._play_eighty or _flag(DELOREAN_PLAY):
-      if not self._tag_busy("eighty"):
-        self._push("eighty", EIGHTY_WAVS)
-        self._play_eighty = False
-        _clear(DELOREAN_PLAY)
 
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}
@@ -271,7 +235,7 @@ class Soundd:
 
     if self.current_alert != AudibleAlert.none:
       num_loops = sound_list[self.current_alert][1]
-      sound_data = self.loaded_sounds[self.current_alert]
+      sound_data = self.loaded_sounds[self.current_sound]
       written_frames = 0
 
       current_sound_frame = self.current_sound_frame % len(sound_data)
@@ -311,10 +275,8 @@ class Soundd:
           idx = np.arange(n, dtype=np.float32) + i
           t = idx / sr
           env = np.ones(n, dtype=np.float32)
-          if fi > 0:
-            env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
-          if fo > 0:
-            env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
+          env = np.where(t < fi, np.clip(t / fi, 0.0, 1.0), env)
+          env = np.where(t > dur - fo, np.clip((dur - t) / fo, 0.0, 1.0), env)
           out[:n] += arr[i:i + n] * env
         i += n
       if i < len(arr):
@@ -329,7 +291,7 @@ class Soundd:
     data_out[:frames, 0] = self.get_sound_data(frames)
 
   def update_alert(self, new_alert):
-    current_alert_played_once = self.current_alert == AudibleAlert.none or self.current_sound_frame >= len(self.loaded_sounds[self.current_alert])
+    current_alert_played_once = self.current_alert == AudibleAlert.none or self.current_sound_frame >= len(self.loaded_sounds[self.current_sound])
     # let looping sounds finish the current loop instead of cutting off mid tone
     if new_alert == AudibleAlert.none and self.current_alert != AudibleAlert.none and sound_list[self.current_alert][1] is None:
       if current_alert_played_once:
@@ -340,10 +302,11 @@ class Soundd:
       return
     self.pending_stop = False
     if self.current_alert != new_alert and (new_alert != AudibleAlert.none or current_alert_played_once):
-      if new_alert == AudibleAlert.warningImmediate:
+      if new_alert in (AudibleAlert.warningSoft, AudibleAlert.warningImmediate):
         self.ramp_start_volume = self.current_volume
         self.ramp_start_time = time.monotonic()
       self.current_alert = new_alert
+      self.current_sound = new_alert
       self.current_sound_frame = 0
 
   def get_audible_alert(self, sm):
@@ -391,40 +354,17 @@ class Soundd:
 
         self.get_audible_alert(sm)
 
-        now = time.time()
-        started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
-
-        if started:
-          self._offroad_since = 0.0
-          if not self._started_since:
-            self._started_since = now
-          if not self._onroad_t0:
-            self._onroad_t0 = now
-            self._save_gate()
-          if (now - self._started_since) >= DELOREAN_HOLD_S and _flag(DELOREAN_MODE) and not self._eighty_played:
-            self._play_eighty = True
-            self._eighty_played = True
-            self._save_gate()
-        else:
-          self._started_since = 0.0
-          if self._onroad_t0:
-            if not self._offroad_since:
-              self._offroad_since = now
-            if (now - self._offroad_since) >= DELOREAN_OFFROAD_RESET_S:
-              self._onroad_t0 = 0.0
-              self._eighty_played = False
-              self._play_eighty = False
-              self._offroad_since = 0.0
-              self._save_gate()
-
-        if self.current_alert != AudibleAlert.warningImmediate:
+        if self.current_alert not in (AudibleAlert.warningSoft, AudibleAlert.warningImmediate):
           self._drain_flags()
 
-        # Ramp up immediate warning sound over 4s
-        if self.current_alert == AudibleAlert.warningImmediate:
+        # Ramp up warning sounds (comma: soft + immediate)
+        if self.current_alert in (AudibleAlert.warningSoft, AudibleAlert.warningImmediate):
           elapsed = time.monotonic() - self.ramp_start_time
           ramp_vol = float(np.interp(elapsed, [0, ALERT_RAMP_TIME], [self.ramp_start_volume, MAX_VOLUME]))
           self.current_volume = max(self.current_volume, ramp_vol)
+          if elapsed >= ALERT_MAX_TIME and self.current_sound != CRITICAL_MAX:
+            self.current_sound = CRITICAL_MAX
+            self.current_sound_frame = 0
 
         rk.keep_time()
 

@@ -28,6 +28,8 @@ from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.chestnut.monitoring import chestnut_state_thread
 from openpilot.system.hardware.chestnut.status import ChestnutStatus
+from openpilot.system.hardware.jetlink_power import JetlinkPower
+from openpilot.selfdrive.car import park_offroad
 from openpilot.common.version import terms_version, training_version
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 
@@ -41,9 +43,10 @@ PANDA_STATES_TIMEOUT = round(1000 / SERVICE_LIST['pandaStates'].frequency * 1.5)
 ONROAD_CYCLE_TIME = 1  # seconds to wait offroad after requesting an onroad cycle
 
 class Chestnut:
-  # flash offroad, modeld ignores chestnut until the product string matches
+  # flash before going onroad, modeld ignores chestnut until the product string matches
   MAX_ATTEMPTS = 3
   RETRY_INTERVAL = 20.
+  STARTUP_TIMEOUT = 30.
 
   def __init__(self):
     self.thread: threading.Thread | None = None
@@ -51,6 +54,10 @@ class Chestnut:
     self.last_attempt = 0.
     self.flashed = False
     self.mismatch = False
+
+  @property
+  def flashing(self) -> bool:
+    return self.thread is not None and self.thread.is_alive() and time.monotonic() - self.last_attempt < self.STARTUP_TIMEOUT
 
   @property
   def failed(self) -> bool:
@@ -73,7 +80,7 @@ class Chestnut:
       return
     if self.thread is not None and self.thread.is_alive():
       return
-    if time.monotonic() - self.last_attempt < self.RETRY_INTERVAL:
+    if self.attempts > 0 and time.monotonic() - self.last_attempt < self.RETRY_INTERVAL:
       return
 
     self.attempts += 1
@@ -222,7 +229,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     network_strength=NetworkStrength.unknown,
     network_stats={'wwanTx': -1, 'wwanRx': -1},
     modem_temps=[],
-    usb_state=[],
+    usb_state=get_usb_state(),
   )
 
   all_temp_filter = FirstOrderFilter(0., TEMP_TAU, DT_HW, initialized=False)
@@ -246,6 +253,8 @@ def hardware_thread(end_event, hw_queue) -> None:
   fan_controller = FanController(int(1./DT_HW))
   chestnut = Chestnut()
   chestnut_status = ChestnutStatus()
+  jetlink_power = JetlinkPower(log=cloudlog)
+  park_timer = park_offroad.OffroadTimer()
   branch = get_short_branch()
 
   while not end_event.is_set():
@@ -259,6 +268,8 @@ def hardware_thread(end_event, hw_queue) -> None:
       params.put_bool("OnroadCycleRequested", False, block=True)
       offroad_cycle_count = sm.frame
     onroad_conditions["not_onroad_cycle"] = (sm.frame - offroad_cycle_count) >= ONROAD_CYCLE_TIME * SERVICE_LIST['pandaStates'].frequency
+    # Park-offroad (Tesla, ParkOffroad toggle): only ever removes an onroad condition; see park_offroad.py
+    onroad_conditions["not_parked"] = park_offroad.not_parked(params)
 
     if sm.updated['pandaStates'] and len(pandaStates) > 0:
 
@@ -313,9 +324,10 @@ def hardware_thread(end_event, hw_queue) -> None:
     chestnut.update(started_ts is None, last_hw_state.usb_state)
     chestnut_state = sm["chestnutState"]
     chestnut_valid = sm.alive["chestnutState"] and sm.valid["chestnutState"]
-    chestnut_status.update(started_ts is None, branch, last_hw_state.usb_state, chestnut.failed,
+    chestnut_status.update(started_ts is None or not onroad_conditions["ignition"], branch, last_hw_state.usb_state, chestnut.failed,
                            params.get_bool("ChestnutLoading"), params.get("ChestnutActive"),
                            chestnut_state if chestnut_valid else None, set_offroad_alert_if_changed)
+    jetlink_power.alerts(set_offroad_alert_if_changed)
     # this subset is only used for offroad
     temp_sources = [
       msg.deviceState.memoryTempC,
@@ -349,6 +361,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     startup_conditions["up_to_date"] = params.get("Offroad_ConnectivityNeeded") is None or params.get_bool("DisableUpdates") or params.get_bool("SnoozeUpdate")
     startup_conditions["no_excessive_actuation"] = params.get("Offroad_ExcessiveActuation") is None
     startup_conditions["not_uninstalling"] = not params.get_bool("DoUninstall")
+    startup_conditions["not_powering_off"] = not jetlink_power.powering_off
     startup_conditions["accepted_terms"] = params.get("HasAcceptedTerms") == terms_version
 
     # with 2% left, we killall, otherwise the phone will take a long time to boot
@@ -358,6 +371,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     # must be at an engageable thermal band to go onroad
     startup_conditions["device_temp_engageable"] = thermal_status < ThermalStatus.overheated
+
+    startup_conditions["not_flashing_chestnut"] = not chestnut.flashing
 
     # ensure device is fully booted
     startup_conditions["device_booted"] = startup_conditions.get("device_booted", False) or HARDWARE.booted()
@@ -423,6 +438,10 @@ def hardware_thread(end_event, hw_queue) -> None:
       if off_ts is None:
         off_ts = time.monotonic()
 
+    # Park-offroad: the shutdown timer starts at ignition off, as without it
+    off_ts = park_timer.update(onroad_conditions["not_parked"], started_ts is not None, onroad_conditions["ignition"],
+                               off_ts, time.monotonic())
+
     # Offroad power monitoring
     voltage = None if peripheralState.pandaType == log.PandaState.PandaType.unknown else peripheralState.voltage
     power_monitor.calculate(voltage, onroad_conditions["ignition"])
@@ -435,8 +454,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.somPowerDrawW = som_power_draw
 
     # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
-      cloudlog.warning(f"shutting device down, offroad since {off_ts}")
+    # Jetlink: ask an accelerator on its own supply to power off first (jetlink_power.py)
+    if jetlink_power.shutdown_ready(power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen), off_ts):
       params.put_bool("DoShutdown", True, block=True)
 
     msg.deviceState.started = started_ts is not None

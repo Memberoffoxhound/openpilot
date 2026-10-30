@@ -56,6 +56,11 @@ sleep infinity
 EOF
 chmod +x "$CONTINUE_PATH"
 
+# a DUT that booted with a continue.sh that launches openpilot is still running it, which fights the tests
+if pgrep -f launch_chffrplus.sh > /dev/null; then
+  sudo systemctl stop comma
+fi
+
 export GIT_LFS_SKIP_SMUDGE=1
 pull_lfs() {
   if [ -n "${CHESTNUT:-}" ]
@@ -64,9 +69,8 @@ pull_lfs() {
     return
   fi
 
-  # The big driving model is not used on these devices yet. Keep its pointer in
-  # the worktree, but don't download or copy the 1.8 GB LFS object.
-  LFS_EXCLUDE="openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx"
+  # Keep the precompiled big model as a pointer on devices without Chestnut.
+  LFS_EXCLUDE="openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl"
 
   git config --local lfs.fetchexclude "$LFS_EXCLUDE"
   git lfs pull --exclude="$LFS_EXCLUDE"

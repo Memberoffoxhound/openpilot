@@ -1,17 +1,18 @@
 # Screenshots
 
-Device photos used in the root [README](../../README.md).
+Images used in the root [README](../../README.md).
+
+The GIF and the `onroad-tesla`, `trip-card` and `home-stats` stills were rendered at 3x scale from public route
+`3e2de7ed673817c2/00000076--63bd4c94a4` (Oct 29, 2026), replayed through the device UI code. The lead car marker is hidden in the render.
 
 | File | Shot |
 |---|---|
-| `onroad-custom.jpg` | Custom HUD in the car |
-| `onroad-stock.jpg` | Stock HUD |
-| `home-tacc.jpg` | Home, Tesla TACC |
-| `home-long.jpg` | Home, openpilot LONG + experimental |
+| `teslapilot-demo.gif` | Onroad Tesla theme with compass, trip summary card, Home, swipe back |
+| `onroad-tesla.jpg` | Custom onroad UI, Tesla blue, small compass |
+| `trip-card.png` | Trip summary card |
+| `home-stats.png` | Home with Day and Week stats |
 | `icon-tacc.png` | TACC badge |
 | `icon-long.png` | LONG badge |
-| `icon-experimental.png` | Experimental atom |
-| `settings-statistics.jpg` | Settings → statistics |
-| `stats-ring.jpg` | Engaged ring |
-| `stats-weekly.jpg` | Weekly Engaged |
-| `stats-monthly.jpg` | Monthly Engaged |
+| `stats-ring.jpg` | Statistics: engaged ring |
+| `stats-weekly.jpg` | Statistics: weekly engaged |
+| `stats-monthly.jpg` | Statistics: monthly engaged |

@@ -6,9 +6,8 @@ import time
 
 import pyray as rl
 
-from openpilot.selfdrive.ui.layouts.settings.common import spawn_trip_job, theme_color
-from openpilot.selfdrive.ui.layouts.settings.trip_seed import chicago_now
-from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui import tripstats
+from openpilot.selfdrive.ui.layouts.settings.common import theme_color
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -98,20 +97,18 @@ def _draw_hbars(rect: rl.Rectangle, totals: list[float], engaged: list[float],
   track_w = max(40.0, rect.width - label_w)
   bar_h = max(18.0, row_h - 2)
   accent = theme_color()
-  for i, tot in enumerate(totals):
-    eng = engaged[i] if i < len(engaged) else 0.0
+  for i, (tot, eng, lab) in enumerate(zip(totals, engaged, labels, strict=False)):
     y = rect.y + i * (row_h + gap)
     cy = y + row_h / 2
-    lab = labels[i] if i < len(labels) else ""
     lw = measure_text_cached(lfont, lab, lab_sz)
     rl.draw_text_ex(lfont, lab, rl.Vector2(rect.x, cy - lw.y / 2), lab_sz, 0, LABEL)
     ty = cy - bar_h / 2
     rl.draw_rectangle_rounded(rl.Rectangle(track_x, ty, track_w, bar_h), 0.35, 6, TRACK)
-    tw = 0.0 if scale <= 0 else track_w * min(1.0, tot / scale)
+    tw = track_w * min(1.0, tot / scale)
     if tw > 6:
       fill_col = WHITE if i == current else BAR
       rl.draw_rectangle_rounded(rl.Rectangle(track_x, ty, tw, bar_h), 0.35, 6, fill_col)
-    ew = 0.0 if scale <= 0 else track_w * min(1.0, eng / scale)
+    ew = track_w * min(1.0, eng / scale)
     if ew > 6:
       rl.draw_rectangle_rounded(rl.Rectangle(track_x, ty, ew, bar_h), 0.35, 6, accent)
     txt = _fmt_pair(eng, tot)
@@ -120,17 +117,10 @@ def _draw_hbars(rect: rl.Rectangle, totals: list[float], engaged: list[float],
       val_sz -= 1
       vw = measure_text_cached(vfont, txt, val_sz)
     pad_x = 10.0
-    if tw >= vw.x + pad_x * 2:
-      tx = track_x + pad_x
-      if ew >= vw.x + pad_x * 2:
-        ink = WHITE
-      elif i == current:
-        ink = BLACK
-      else:
-        ink = WHITE
-    else:
-      tx = min(track_x + max(tw + 8, pad_x), track_x + track_w - vw.x - 6)
-      ink = WHITE
+    inside = tw >= vw.x + pad_x * 2
+    # dark text only on the white (current) bar where the accent fill doesn't cover it
+    ink = BLACK if inside and i == current and ew < vw.x + pad_x * 2 else WHITE
+    tx = track_x + pad_x if inside else min(track_x + max(tw + 8, pad_x), track_x + track_w - vw.x - 6)
     rl.draw_text_ex(vfont, txt, rl.Vector2(tx, cy - vw.y / 2), val_sz, 0, ink)
 
 
@@ -139,14 +129,14 @@ class _StatsPage(Widget):
     super().__init__()
     self.set_rect(rl.Rectangle(0, 0, float(gui_app.width), float(gui_app.height)))
     self._at = 0.0
-    self._view: dict = stats_view()
+    self._view: dict = tripstats.view(ui_state.params)
 
   def _update_state(self):
     now = time.monotonic()
     if now - self._at < 1.0:
       return
     self._at = now
-    self._view = stats_view()
+    self._view = tripstats.view(ui_state.params)
 
 
 class StatsEngageWidget(_StatsPage):
@@ -162,12 +152,8 @@ class StatsEngageWidget(_StatsPage):
       ("Engaged", _fmt_dist(float(v.get("life_e") or 0)), WHITE),
       ("Longest streak", _fmt_dist(float(v.get("longest_m") or 0), tenths=True), theme_color()),
     )
-    sizes = ((36, 34, 36), (36, 32, 36), (34, 30, 34), (32, 28, 32))
-    lab_sz = val_sz = tsz = 36
     gap_lv = 12.0
-    pair_w = 0.0
-    ring_d = 176.0
-    for lab_sz, val_sz, tsz in sizes:
+    for lab_sz, val_sz in ((36, 34), (36, 32), (34, 30), (32, 28)):
       pair_w = 0.0
       for label, val, _col in rows:
         pair_w = max(pair_w, measure_text_cached(lfont, label, lab_sz).x + gap_lv +
@@ -210,10 +196,9 @@ class StatsEngageWidget(_StatsPage):
 
     y = r.y + 8
     streak = int(v.get("streak_days") or 0)
-    title = f"{streak} Day Streak" if streak != 1 else "1 Day Streak"
-    tfont = gui_app.font(FontWeight.BOLD)
-    tw = measure_text_cached(tfont, title, tsz)
-    rl.draw_text_ex(tfont, title, rl.Vector2(right - tw.x, y), tsz, 0, WHITE)
+    title = f"{streak} Day Streak"
+    tw = measure_text_cached(vfont, title, lab_sz)
+    rl.draw_text_ex(vfont, title, rl.Vector2(right - tw.x, y), lab_sz, 0, WHITE)
     y += 40
 
     week = v.get("week_days") or []
@@ -250,7 +235,7 @@ class StatsWeekHWidget(_StatsPage):
     week = v.get("week_days") or [{"m": 0.0, "e": 0.0}] * 7
     totals = [float(d.get("m") or 0) for d in week]
     engaged = [float(d.get("e") or 0) for d in week]
-    current = (chicago_now().weekday() + 1) % 7
+    current = int(v.get("today_i") or 0)
     chart = rl.Rectangle(r.x + pad, r.y + 46, r.width - pad - 18, r.height - 54)
     _draw_hbars(chart, totals, engaged, current, list(WEEKDAYS_H))
 
@@ -290,10 +275,3 @@ class StatsLayoutMici(NavScroller):
     self._scroller._pad = 0
     self._items = (StatsEngageWidget(), StatsWeekHWidget(), StatsHistoryHWidget())
     self._scroller.add_widgets(list(self._items))
-    self._folded = False
-
-  def show_event(self):
-    super().show_event()
-    if not self._folded:
-      self._folded = True
-      spawn_trip_job("stats")

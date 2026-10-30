@@ -1,6 +1,11 @@
-TESLA.ttf — Dies / KAYOver
-https://fontmeme.com/fonts/tesla-font/
+TESLA.ttf, Copyright KAYOver 2016
+Based on "TeslaNikolaCaps" by Shane Milburn (http://fontstruct.com/fontstructors/show/652435/fartheststar),
+which is based on "TeslaNikolaMixed" by Shane Milburn. Built with FontStruct.
+https://fontstruct.com/fontstructions/show/1319947/teslanikolacaps-21
 https://www.dafont.com/tesla.font
-Creative Commons Attribution-ShareAlike 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
 
-Not affiliated with Tesla, Inc. Not Tesla's official wordmark. Personal use only.
+License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0
+(https://creativecommons.org/licenses/by-nc-sa/3.0/), as embedded in the font file.
+Non-commercial use only.
+
+Not affiliated with Tesla, Inc. Not Tesla's official wordmark.

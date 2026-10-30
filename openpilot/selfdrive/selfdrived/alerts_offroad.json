@@ -21,20 +21,20 @@
     "text": "Chestnut detected! Switch to the release-chestnut branch to use chestnut-class models.",
     "severity": -1
   },
+  "Offroad_ChestnutModelError": {
+    "text": "Chestnut model error. Restart the car to retry.",
+    "severity": 0
+  },
   "Offroad_ChestnutNotDetected": {
-    "text": "Chestnut not detected. Check USB and 12V connections.",
+    "text": "Chestnut not detected. Check USB and 12V connections, then restart the car.",
     "severity": 0
   },
   "Offroad_ChestnutOverheated": {
-    "text": "Chestnut overheated. Ensure good airflow. Current GPU temperature is %1.",
+    "text": "Chestnut overheated. Ensure good airflow.",
     "severity": 0
   },
   "Offroad_ChestnutPcieUnavailable": {
     "text": "%1",
-    "severity": 0
-  },
-  "Offroad_ChestnutUncompiled": {
-    "text": "Chestnut model not compiled. Keep ignition on and reboot the comma.",
     "severity": 0
   },
   "Offroad_ChestnutUpdateFailed": {
@@ -49,6 +49,10 @@
     "text": "Failed to register with comma.ai backend. It will not connect or upload to comma.ai servers, and receives no support from comma.ai. If this is a device purchased at comma.ai/shop, open a ticket at https://comma.ai/support.",
     "severity": 1
   },
+  "Offroad_UploadsIgnored": {
+    "text": "Uploads ignored due to a potential detected safety policy violation. Contact comma.ai/support if you believe this was made in error.",
+    "severity": 1
+  },
   "Offroad_CarUnrecognized": {
     "text": "openpilot was unable to identify your car. Your car is either unsupported or its ECUs are not recognized. Please submit a pull request to add the firmware versions to the proper vehicle. Need help? Join discord.comma.ai.",
     "severity": 0
@@ -61,9 +65,18 @@
     "text": "Poor visibility detected for driver monitoring. Ensure the device has a clear view of the driver. This can be checked in the device settings. Extreme lighting conditions and/or unconventional mounting positions may also trigger this alert.",
     "severity": 0
   },
+  "Offroad_AcceleratorUnavailable": {
+    "text": "Jetlink unavailable: %1",
+    "severity": 0
+  },
   "Offroad_ExcessiveActuation": {
     "text": "Excessive %1 actuation detected on your last drive. Please contact support at https://comma.ai/support and share your device's Dongle ID for troubleshooting.",
     "severity": 1,
     "_comment": "Set extra field to lateral or longitudinal."
+  },
+  "Offroad_Pairing": {
+    "text": "Finish setup. Pair your device with comma connect to view recent drives and bookmarked routes.",
+    "severity": -2,
+    "icon": "icons_mici/settings/device/green_settings.png"
   }
 }

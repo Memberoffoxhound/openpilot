@@ -15,14 +15,13 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.selfdrive.ui.layouts.settings.trip_seed import engaged_pct
-from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui import tripstats
+from openpilot.selfdrive.ui.mici.widgets.trip_row import GREY, WHITE, draw_trip_row, fmt_trip
 from openpilot.common.version import RELEASE_BRANCHES
 
 HOME_PADDING = 8
 ALERTS_ZONE_WIDTH = 180
 MICI_WORDMARK_SIZE = 80
-LABEL_WHITE = rl.Color(255, 255, 255, int(255 * 0.9))
 
 
 def _wordmark_font() -> rl.Font:
@@ -162,8 +161,8 @@ class LongModeBadge(Widget):
     gap = max(0.0, (self.H - sum(s.y for s in sizes)) / (len(letters) + 1))
     lx = x + self.LOGO_W + 2
     cy = y + gap
-    for ch, sz in zip(letters, sizes):
-      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, LABEL_WHITE)
+    for ch, sz in zip(letters, sizes, strict=False):
+      rl.draw_text_ex(self._font, ch, rl.Vector2(lx + (self.COL_W - sz.x) / 2, cy), lsz, 0, WHITE)
       cy += sz.y + gap
 
 
@@ -177,9 +176,6 @@ class MiciHomeLayout(Widget):
     self._version_text = self._get_version_text()
     self._wordmark_font = _wordmark_font()
 
-    self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
-    self._experimental_icon.set_enabled(True)
-    self._experimental_icon.set_click_callback(self._toggle_experimental)
     self._long_badge = LongModeBadge()
     self._usb_icon = IconWidget("icons_mici/usb.png", (62, 40))
     self._chestnut_icon = IconWidget("icons_mici/chestnut_green.png", (54, 40))
@@ -194,7 +190,6 @@ class MiciHomeLayout(Widget):
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
       self._long_badge,
-      self._experimental_icon,
       self._usb_icon,
       self._chestnut_icon,
       self._chestnut_loading_icon,
@@ -203,33 +198,26 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
-    self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
+    self._version_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._date_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+    self._branch_label = UnifiedLabel("", font_size=36, text_color=GREY, font_weight=FontWeight.ROMAN, scroll=True)
     self._trip_at = 0.0
-    self._last_txt = ("Today ", "0mi 0%")
-    self._week_txt = ("Week ", "0mi 0%")
+    self._day_txt = ("Day", "0mi 0%")
+    self._week_txt = ("Week", "0mi 0%")
     self._trip_hit = rl.Rectangle(0, 0, 0, 0)
     self._on_stats_click: Callable | None = None
 
   def _update_state(self):
     self._refresh_trip()
 
-  def _fmt_trip(self, meters: float, eng_m: float) -> str:
-    if ui_state.is_metric:
-      dist, unit = meters / 1000.0, "km"
-    else:
-      dist, unit = meters / 1609.344, "mi"
-    return f"{int(round(dist))}{unit} {engaged_pct(eng_m, meters)}%"
-
   def _refresh_trip(self):
     now = time.monotonic()
     if now - self._trip_at < 1.0:
       return
     self._trip_at = now
-    t = stats_view()
-    self._last_txt = ("Today ", self._fmt_trip(t.get("today_m", 0) or 0, t.get("today_e", 0) or 0))
-    self._week_txt = ("Week ", self._fmt_trip(t.get("week_m", 0) or 0, t.get("week_e", 0) or 0))
+    t = tripstats.view(ui_state.params)
+    self._day_txt = ("Day", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
+    self._week_txt = ("Week", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
 
   def set_callbacks(self, on_settings: Callable | None = None, on_alerts: Callable | None = None,
                     on_stats: Callable | None = None,
@@ -241,17 +229,7 @@ class MiciHomeLayout(Widget):
     self._alert_count_callback = alert_count_callback
     self._alerts_pill.set_alert_count_callback(alert_count_callback, alert_icon_callback)
 
-  def _toggle_experimental(self):
-    if not ui_state.has_longitudinal_control or not ui_state.experimental_mode_confirmed:
-      return
-    on = not ui_state.experimental_mode
-    ui_state.experimental_mode = on
-    ui_state.params.put_bool("ExperimentalMode", on)
-
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    if (self._experimental_icon.is_visible and self._experimental_icon.enabled and
-        rl.check_collision_point_rec(mouse_pos, self._experimental_icon.rect)):
-      return
     if (self._on_stats_click and self._trip_hit.width > 0 and
         rl.check_collision_point_rec(mouse_pos, self._trip_hit)):
       self._on_stats_click()
@@ -290,7 +268,7 @@ class MiciHomeLayout(Widget):
       if measure_text_cached(self._wordmark_font, mark, wm).x <= avail:
         break
       wm -= 2
-    rl.draw_text_ex(self._wordmark_font, mark, text_pos, wm, 0, LABEL_WHITE)
+    rl.draw_text_ex(self._wordmark_font, mark, text_pos, wm, 0, WHITE)
 
     if self._version_text is not None:
       release_branch = self._version_text[1] in RELEASE_BRANCHES
@@ -309,45 +287,26 @@ class MiciHomeLayout(Widget):
       self._branch_label.render()
 
       y2 = version_pos.y + self._date_label.font_size + 7
-      f = gui_app.font(FontWeight.ROMAN)
-      ll, lv = self._last_txt
-      wl, wv = self._week_txt
       avail = self.rect.width - HOME_PADDING * 2
-      lsz = 36
-      while lsz > 22:
-        vsz = max(18, lsz - 6)
-        w = (measure_text_cached(f, ll, lsz).x + measure_text_cached(f, lv, vsz).x +
-             16 + measure_text_cached(f, wl, lsz).x + measure_text_cached(f, wv, vsz).x)
-        if w <= avail:
-          break
-        lsz -= 1
-      vsz = max(18, lsz - 6)
-      x = version_pos.x
-      vy = y2 + (lsz - vsz)
-      rl.draw_text_ex(f, ll, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
-      x += measure_text_cached(f, ll, lsz).x
-      rl.draw_text_ex(f, lv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
-      x += measure_text_cached(f, lv, vsz).x + 16
-      rl.draw_text_ex(f, wl, rl.Vector2(x, y2), lsz, 0, rl.GRAY)
-      x += measure_text_cached(f, wl, lsz).x
-      rl.draw_text_ex(f, wv, rl.Vector2(x, vy), vsz, 0, LABEL_WHITE)
-      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4,
-                                    min(avail, x - version_pos.x) + 8, lsz + 8)
+      row_w, lsz = draw_trip_row(gui_app.font(FontWeight.ROMAN), gui_app.font(FontWeight.DISPLAY), version_pos.x, y2, avail, self._day_txt, self._week_txt)
+      self._trip_hit = rl.Rectangle(version_pos.x - 4, y2 - 4, min(avail, row_w) + 8, lsz * 1.16 + 8)
 
     # ***** Center-aligned bottom section icons *****
-    op_long = bool(ui_state.has_longitudinal_control)
-    self._experimental_icon.set_visible(op_long)
-    self._experimental_icon.set_enabled(op_long)
-    self._experimental_icon._opacity = 1.0 if ui_state.experimental_mode else 0.4
     usb_connected = ui_state.usb_connected
     usb_unknown = ui_state.usb_unknown
     chestnut_state = ui_state.chestnut_state
+    # zoompilot's chestnut icons (sunnypilot/mici/layouts/home.py _set_chestnut_visibility),
+    # which also show Jetlink: ui_state.chestnut_state is the link's with no chestnut fitted
+    loading = chestnut_state == ChestnutState.LOADING
+    # ready, and only a swap window away: steady rather than the loading pulse,
+    # dim rather than the solid green of a model that is driving
+    waiting = chestnut_state == ChestnutState.WAITING
     self._usb_icon.set_visible(usb_connected and usb_unknown)
-    self._chestnut_icon.set_visible(not usb_unknown and chestnut_state not in
-                                    (ChestnutState.LOADING, ChestnutState.UNCOMPILED, ChestnutState.FAILED) and
-                                    (usb_connected or chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE)))
-    self._chestnut_loading_icon.set_visible(not usb_unknown and chestnut_state == ChestnutState.LOADING)
     self._chestnut_loading_icon.set_opacity(0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0)))
+    self._chestnut_loading_icon.set_visible(not usb_unknown and loading)
+    self._chestnut_icon.set_opacity(0.5 if waiting else 1.0)
+    self._chestnut_icon.set_visible(not usb_unknown and not loading and
+                                    chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE, ChestnutState.WAITING))
     self._chestnut_failed_icon.set_visible(not usb_unknown and chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
     self._mic_icon.set_visible(ui_state.recording_audio)
     self._body_icon.set_visible(bool(ui_state.is_body))

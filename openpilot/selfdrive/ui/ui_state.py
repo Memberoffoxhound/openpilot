@@ -12,8 +12,12 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.lib.prime_state import PrimeState
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.hardware import HARDWARE, PC
-from openpilot.common.hardware.usb import TYPEC_CC_ORIENTATION_PATH, get_usb_state, is_chestnut_usb_id, read_int
+from openpilot.common.hardware.usb import cable_connected, get_usb_state, is_chestnut_usb_id
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled
+from openpilot.selfdrive.car import tesla_step_aside, park_offroad
+from openpilot.selfdrive.ui.lib.park_view import HOLD, JUMP, ParkView
+from openpilot.selfdrive import jetlink_adapter
+from openpilot.selfdrive.selfdrived.alertmanager import OFFROAD_ALERTS
 
 BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
 PARAM_UPDATE_TIME = 1 / 5.0
@@ -32,6 +36,9 @@ class ChestnutState(Enum):
   LOADING = "loading"
   ACTIVE = "active"
   FAILED = "failed"
+  # onroad, an off-board accelerator only (Jetlink): loaded and waiting for a
+  # window to switch. A board is loaded before the first modelV2 and never sees this
+  WAITING = "waiting"
 
 
 class UIState:
@@ -65,6 +72,8 @@ class UIState:
         "longitudinalPlan",
         "gpsLocationExternal",
         "deviceMotion",
+        "gpsLocation",
+        "navInstruction",
         "carOutput",
         "carControl",
         "vehicleParameters",
@@ -84,19 +93,29 @@ class UIState:
 
     # Core state variables
     self.is_metric: bool = self.params.get_bool("IsMetric")
+    self.initial_cruise_speed: int = self.params.get("InitialCruiseSpeedKph", return_default=True)
     self.is_release = self.params.get_bool("IsReleaseBranch")
     self.always_on_dm: bool = self.params.get_bool("AlwaysOnDM")
-    self.experimental_mode: bool = self.params.get_bool("ExperimentalMode")
-    self.experimental_mode_confirmed: bool = self.params.get_bool("ExperimentalModeConfirmed")
+    self.navigation_enabled: bool = self.params.get_bool("NavigationEnabled")
+    self.nav_destination_set: bool = self.params.get("NavDestination") is not None
     self.chestnut_present: bool = False
     self.chestnut_compiled: bool = chestnut_compiled()
     self.chestnut_active: bool | None = None
     self.chestnut_loading: bool = False
+    self.chestnut_alert: bool = False
     self.usb_connected: bool = False
     self.usb_connected_ts: float | None = None
     self.usb_disconnected_ts: float | None = None
     self.usb_unknown: bool = False
     self.chestnut_state = ChestnutState.DISCONNECTED
+    # Jetlink, as zoompilot's ui_state_zp: jetlink's snapshot (jetlink.openpilot.Status)
+    # from the params pass, None with a chestnut fitted or the link off; the
+    # joining model's state off modeld's runtime record (zoompilot reads it off
+    # modelDataV2SP, which Highland lacks); Jetlink holding the USB port, so ADB
+    # is off and its toggle greyed out
+    self.jetlink = None
+    self.adb_blocked: bool = False
+    self._accelerator_state_name: str = 'none'
     self.started: bool = False
     self.ignition: bool = False
     self.recording_audio: bool = False
@@ -106,6 +125,9 @@ class UIState:
     self.is_body: bool | None = False
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
+    self.tesla_stepped_aside: bool = False  # card stepped aside for Tesla Autosteer/FSD
+    self.park = ParkView()                  # park-offroad: parkd's ParkOffroadState, see lib/park_view.py
+    self._park_state = park_offroad.NONE
 
     self._params_thread: threading.Thread | None = None
 
@@ -174,6 +196,7 @@ class UIState:
 
     # Update started state
     self.started = self.sm["deviceState"].started and self.ignition
+    self.park.update(time.monotonic(), self.started, self.ignition, self._park_state)
 
     # Update body state
     if self.CP is not None and self.is_body != self.CP.notCar:
@@ -203,18 +226,59 @@ class UIState:
         self.status = UIStatus.DISENGAGED
         self.started_frame = self.sm.frame
         self.started_time = time.monotonic()
-        self.chestnut_present = self.sm["deviceState"].chestnutPresent
+        self.chestnut_present = self.sm["deviceState"].chestnutPresent or (self.chestnut_compiled and self.usb_connected)
 
       for callback in self._offroad_transition_callbacks:
         callback()
 
       self._started_prev = self.started
 
+  @property
+  def jetlink_view(self):
+    """jetlink's snapshot when the chestnut icon is the link's: no chestnut
+    fitted, and something to show. Presence comes from jetlink: the comma is
+    the gadget and enumerates nothing."""
+    return self.jetlink if self.jetlink is not None and self.jetlink.shown else None
+
+  def _jetlink_state(self, view) -> 'ChestnutState':
+    """ChestnutState for the link: progress and the records offroad, modelV2
+    and the joining model's state onroad (zoompilot ui_state_zp._jetlink_state)."""
+    model_seen = self.sm.recv_frame["modelV2"] > self.started_frame
+    running_big = self.sm.alive["modelV2"] and self.sm["modelV2"].big
+    try:
+      return ChestnutState(view.icon(self.started, model_seen, running_big, self._accelerator_state_name))
+    except Exception:
+      return ChestnutState.DISCONNECTED
+
+  def _update_jetlink(self) -> None:
+    """On the params pass, not per frame in a layout; a fitted chestnut owns
+    chestnut_state. With the link off status() is None without importing jetlink."""
+    try:
+      self.jetlink = None if self.sm['deviceState'].chestnutPresent else jetlink_adapter.status()
+      runtime = jetlink_adapter.runtime() if self.jetlink is not None else None
+      self._accelerator_state_name = (getattr(runtime, 'state', None) or 'none') if runtime is not None else 'none'
+    except Exception:
+      self.jetlink, self._accelerator_state_name = None, 'none'
+    self._enforce_usb_port()
+
+  def _enforce_usb_port(self) -> None:
+    """ADB and Jetlink both need the comma's USB port: the link on turns ADB
+    off, and the developer panel greys its toggle out (zoompilot
+    ui_state_zp._enforce_usb_port). jetlinkd also turns it off at its start."""
+    self.adb_blocked = self.jetlink is not None and bool(self.jetlink.holds_port)
+    if self.adb_blocked:
+      jetlink_adapter.release_adb(link_on=True)
+
   def _update_chestnut_state(self) -> None:
+    if (view := self.jetlink_view) is not None:
+      self.chestnut_state = self._jetlink_state(view)
+      return
+
     detected = self.sm["deviceState"].chestnutPresent
     if not self.started:
       self.chestnut_present = detected
-      self.chestnut_state = (ChestnutState.READY if detected and self.chestnut_compiled else
+      self.chestnut_state = (ChestnutState.FAILED if self.chestnut_alert else
+                             ChestnutState.READY if detected and self.chestnut_compiled else
                              ChestnutState.UNCOMPILED if detected else ChestnutState.DISCONNECTED)
       return
 
@@ -223,10 +287,10 @@ class UIState:
       self.chestnut_state = ChestnutState.DISCONNECTED
     elif not self.chestnut_compiled:
       self.chestnut_state = ChestnutState.UNCOMPILED
-    elif self.chestnut_state == ChestnutState.FAILED or not detected or (model_seen and (not self.sm.alive["modelV2"] or not self.sm["modelV2"].big)):
-      self.chestnut_state = ChestnutState.FAILED
     elif self.chestnut_loading or not model_seen:
       self.chestnut_state = ChestnutState.LOADING
+    elif self.chestnut_state == ChestnutState.FAILED or not detected or (model_seen and (not self.sm.alive["modelV2"] or not self.sm["modelV2"].big)):
+      self.chestnut_state = ChestnutState.FAILED
     elif self.chestnut_active is False:
       self.chestnut_state = ChestnutState.FAILED
     else:
@@ -244,28 +308,34 @@ class UIState:
         self.has_longitudinal_control = self.CP.openpilotLongitudinalControl
 
     self.recording_audio = self.params.get_bool("RecordAudio") and self.started
+    self.tesla_stepped_aside = self.started and tesla_step_aside.stepped_aside(self.params)
+    self._park_state = park_offroad.get_state(self.params) if park_offroad.enabled(self.params) else park_offroad.NONE
     self.is_metric = self.params.get_bool("IsMetric")
+    self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
-    self.experimental_mode = self.params.get_bool("ExperimentalMode")
-    self.experimental_mode_confirmed = self.params.get_bool("ExperimentalModeConfirmed")
-    # Stock TACC / no OP long: experimental is not available.
-    if CP_bytes is not None and not self.has_longitudinal_control:
-      if self.experimental_mode:
-        self.params.put_bool("ExperimentalMode", False)
-      self.experimental_mode = False
+    self.navigation_enabled = self.params.get_bool("NavigationEnabled")
+    self.nav_destination_set = self.params.get("NavDestination") is not None
     if not self.chestnut_compiled:
       self.chestnut_compiled = chestnut_compiled()
     self.chestnut_active = self.params.get("ChestnutActive")
     self.chestnut_loading = self.params.get_bool("ChestnutLoading")
+    self.chestnut_alert = any(self.params.get(k) is not None for k, a in OFFROAD_ALERTS.items() if k.startswith("Offroad_Chestnut") and a["severity"] >= 0)
+    self._update_jetlink()
+    # the Jetson configures the gadget ~25 s after a cold boot, after the one-shot
+    # usb_unknown decision; recognising it late still clears "unknown"
+    if (view := self.jetlink_view) is not None and view.present and self.usb_unknown:
+      self.usb_unknown = False
     now = time.monotonic()
-    if read_int(TYPEC_CC_ORIENTATION_PATH) != 0:
+    if cable_connected():
       self.usb_disconnected_ts = None
       if not self.usb_connected:
         self.usb_connected = True
         self.usb_connected_ts = now
         self.usb_unknown = False
       elif self.usb_connected_ts is not None and now - self.usb_connected_ts > 10.:
-        self.usb_unknown = not any(is_chestnut_usb_id(d["vendorId"], d["productId"], True) for d in get_usb_state())
+        # the comma is the gadget for an off-board accelerator and enumerates nothing
+        self.usb_unknown = not (self.jetlink_view is not None or
+                                any(is_chestnut_usb_id(d["vendorId"], d["productId"], True) for d in get_usb_state()))
         self.usb_connected_ts = None
     elif self.usb_connected:
       if self.usb_disconnected_ts is None:
@@ -284,6 +354,7 @@ class Device:
     self._interactive_timeout_callbacks: list[Callable] = []
     self._prev_timed_out = False
     self._awake: bool = True
+    self._stepped_aside_t: float | None = None
 
     self._offroad_brightness: int = BACKLIGHT_OFFROAD
     self._last_brightness: int = 0
@@ -356,7 +427,14 @@ class Device:
 
       clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [30, 100]))
 
-    brightness = round(self._brightness_filter.update(clipped_brightness))
+    park = ui_state.park.brightness(time.monotonic(), ui_state.started, ui_state.light_sensor >= 0)
+    if park == HOLD:
+      brightness = round(self._brightness_filter.x)
+    elif park == JUMP:
+      self._brightness_filter.x = clipped_brightness
+      brightness = round(clipped_brightness)
+    else:
+      brightness = round(self._brightness_filter.update(clipped_brightness))
     if not self._awake:
       brightness = 0
 
@@ -379,7 +457,16 @@ class Device:
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake(ui_state.ignition or not interaction_timeout or PC)
+    # Tesla step-aside: show the alert for ALERT_S, then the display goes off
+    # (burn-in) for as long as Tesla drives; a touch wakes it for the usual timeout
+    if ui_state.tesla_stepped_aside:
+      if self._stepped_aside_t is None:
+        self._stepped_aside_t = time.monotonic()
+    else:
+      self._stepped_aside_t = None
+    step_aside_dark = self._stepped_aside_t is not None and time.monotonic() - self._stepped_aside_t > tesla_step_aside.ALERT_S
+
+    self._set_awake((ui_state.ignition and not step_aside_dark) or not interaction_timeout or PC)
 
   def _set_awake(self, on: bool):
     if on != self._awake:

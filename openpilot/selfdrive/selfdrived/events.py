@@ -369,7 +369,7 @@ def longitudinal_maneuver_alert(CP: car.CarParams, CS: car.CarState, sm: messagi
 
 def personality_changed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   personality = str(personality).title()
-  return NormalPermanentAlert(f"Driving Personality: {personality}", duration=1.5)
+  return NormalPermanentAlert(f"Following Distance: {personality}", duration=1.5)
 
 
 def invalid_lkas_setting_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
@@ -443,6 +443,44 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: NormalPermanentAlert("Dashcam Mode",
                                        "Security Key Not Available",
                                        priority=Priority.HIGH),
+  },
+
+  EventName.teslaStepAside: {
+    ET.PERMANENT: NormalPermanentAlert("Tesla FSD/Autopilot active",
+                                       "openpilot stepped aside",
+                                       priority=Priority.MID, duration=5.),
+    ET.NO_ENTRY: NoEntryAlert("Tesla FSD/Autopilot active"),
+  },
+
+  # Jetlink (zoompilot develop events_zp.py:223-245, events_zp.py:50-55): a big
+  # model ready while openpilot is engaged swaps in only once it is not, so the
+  # driver is told once, for 3 s (jetlink events.OFFER_S)
+  EventName.jetlinkBigModelAvailable: {
+    ET.PERMANENT: Alert(
+      "Big Model Ready",
+      "Re-engage to switch",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .2),
+  },
+
+  # the link lost or too slow while engaged: the small model drives on from a
+  # reset history and nothing disengages. As loud as a soft disable for 5 s
+  # (jetlink events.HANDBACK_S), but it says what happened, not TAKE CONTROL
+  EventName.jetlinkBigModelLost: {
+    ET.WARNING: Alert(
+      "Big Model Lost",
+      "Using small model",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.steerRequired, AudibleAlert.warningSoft, .2),
+  },
+
+  # a second after the swap, when the driver can engage on the big model
+  EventName.jetlinkBigModelActive: {
+    ET.PERMANENT: Alert(
+      "Big Model Active",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 2.),
   },
 
   EventName.dashcamMode: {
@@ -1007,6 +1045,10 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
 
   EventName.userBookmark: {
     ET.PERMANENT: NormalPermanentAlert("Bookmark Saved", duration=1.5),
+  },
+
+  EventName.userBookmarkNotPaired: {
+    ET.PERMANENT: NormalPermanentAlert("Bookmark Saved", "pair to connect\nto view", duration=1.5),
   },
 }
 

@@ -10,9 +10,11 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
-  delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.car import tesla_step_aside, park_offroad
+from openpilot.selfdrive.ui import tripstats
+from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -37,6 +39,21 @@ class AutoLaneChangeConfirmPage(NavScroller):
       "to check for a vehicle in the adjacent lane prior to merging.",
       "You are still responsible for ensuring the lane of travel is clear",
       "and agree to intervene as necessary.",
+    ], on_confirm)
+
+
+class ParkOffroadConfirmPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    _wire_confirm(self, "enabling\ngo offroad in park", [
+      "Tesla: TeslaPilot goes offroad after Park is held 3 s.",
+      "Only D or R brings it back onroad, as a new route. The car staying on does not.",
+      "Ignition starts TeslaPilot as before. Turning the car off and on resets it.",
+      "Every Park splits the route. After D/R, TeslaPilot needs several seconds to be ready.",
+      "Parked offroad with the car on, uploads and updates run as offroad.",
+      "The shutdown timer starts only once the car powers off.",
+      "Summon and Autopark keep it offroad, relay open. FSD from Park goes through step aside.",
+      "Also turns on the drive summary card.",
     ], on_confirm)
 
 
@@ -65,95 +82,13 @@ class _ParamCycle(BigButton):
     self.refresh()
 
 
-class OnroadUiCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "onroad UI", onroad_ui_label, next_onroad_ui,
-      lambda nxt, p: set_onroad_ui(nxt, p),
-    )
-
-class CompassSizeCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "compass size", compass_size_label, next_compass_size,
-      lambda nxt, p: p.put("CompassSize", nxt, block=True),
-    )
-
-
-class LaneColorCycle(_ParamCycle):
-  def __init__(self):
-    super().__init__(
-      "theme", lane_color_label, next_lane_color,
-      lambda nxt, p: p.put("LaneColor", nxt, block=True),
-    )
-
-
-class DeloreanCycle(BigButton):
-  def __init__(self):
-    super().__init__("delorean", "")
-    self.refresh()
-
-  def refresh(self):
-    value = "on" if delorean_on() else "off"
-    if value != self.value:
-      self.set_value(value)
-
-  def show_event(self):
-    super().show_event()
-    self.refresh()
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    on = not delorean_on()
-    set_delorean(on)
-    self.set_value("on" if on else "off")
-
-
-class DeloreanPreview(BigButton):
-  def __init__(self):
-    super().__init__("delorean preview", "tap")
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    request_delorean_play()
-
-
 class ThemeLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
-    self._onroad_ui = OnroadUiCycle()
-    self._compass_size = CompassSizeCycle()
-    self._lane_color = LaneColorCycle()
-    self._delorean = DeloreanCycle()
-    self._delorean_preview = DeloreanPreview()
     self._scroller.add_widgets([
-      self._onroad_ui, self._compass_size, self._lane_color,
-      self._delorean, self._delorean_preview,
-    ])
-
-
-class ExperimentalModeConfirmPage(NavScroller):
-  def __init__(self, on_confirm: Callable[[], None]):
-    super().__init__()
-
-    accept = BigConfirmationCircleButton("enable\nexperimental mode",
-                                         gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64),
-                                         lambda: self.dismiss(on_confirm))
-
-    self._scroller.add_widgets([
-      GreyBigButton("enabling\nexperimental mode", "scroll to continue",
-                    gui_app.texture("icons_mici/setup/warning.png", 64, 64)),
-      GreyBigButton("", "TeslaPilot defaults to driving in chill mode."),
-      GreyBigButton("", "Experimental mode enables alpha-level features that aren't ready for chill mode."),
-      GreyBigButton("End-to-End Longitudinal Control"),
-      GreyBigButton("", "Let the driving model control the gas and brakes."),
-      GreyBigButton("", "TeslaPilot will drive as it thinks a human would, including stopping for red lights and stop signs."),
-      GreyBigButton("", "The set speed will only act as an upper bound."),
-      GreyBigButton("", "This is an alpha quality feature; mistakes should be expected."),
-      GreyBigButton("New Driving Visualization"),
-      GreyBigButton("", "The path will change colors to communicate acceleration intent."),
-      GreyBigButton("", "Red for braking, green for acceleration, and gray for coasting."),
-      accept,
+      _ParamCycle("onroad UI", onroad_ui_label, next_onroad_ui, set_onroad_ui),
+      _ParamCycle("compass size", compass_size_label, next_compass_size, lambda nxt, p: p.put("CompassSize", nxt, block=True)),
+      _ParamCycle("theme", lane_color_label, next_lane_color, lambda nxt, p: p.put("LaneColor", nxt, block=True)),
     ])
 
 
@@ -161,22 +96,17 @@ class TogglesLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
 
-    self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"],
+    self._personality_toggle = BigMultiParamToggle("following distance", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"],
                                                    description="Standard is recommended.\n" +
                                                                "Aggressive follows closer, with firmer gas and braking.\n" +
                                                                "Relaxed leaves more space.\n" +
                                                                "Use the steering wheel distance button on supported cars.")
-    self._experimental_btn = BigToggle("experimental mode", description_icon=gui_app.texture("icons_mici/experimental_mode.png", 64, 64),
-                                       initial_state=ui_state.params.get_bool("ExperimentalMode"), toggle_callback=self._on_experimental_mode,
-                                       description="Let the driving model control gas and brakes.\n" +
-                                                   "Includes stopping for red lights and stop signs.\n" +
-                                                   "Set speed is a maximum, not a target.\n" +
-                                                   "These are alpha features. Expect mistakes.\n" +
-                                                   "The path colors show acceleration and braking.")
     # Based on rav4kumar's implementation of Automatic Lane Change (sunnypilot).
     self._alc_btn = BigToggle("auto lane change", initial_state=ui_state.params.get_bool("AutoLaneChangeEnabled"),
                              toggle_callback=self._on_alc)
-    is_metric_toggle = BigParamControl("use metric units", "IsMetric")
+    self._initial_cruise_speed = InitialCruiseSpeedButton()
+    self._initial_cruise_speed.set_visible(lambda: ui_state.CP is not None and ui_state.has_longitudinal_control and not ui_state.CP.pcmCruise)
+    is_metric_toggle = BigToggle("use metric units", initial_state=ui_state.params.get_bool("IsMetric"), toggle_callback=self._on_metric_toggle)
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled",
                                  description="Warn when you drift across a detected lane line.\n" +
                                              "Only above 31 mph (50 km/h), with no turn signal.")
@@ -192,21 +122,36 @@ class TogglesLayoutMici(NavScroller):
                                        description="Enable to use TeslaPilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
 
+    # Tesla step-aside: default on. Tolerant params helpers, so a stale params library can't crash the UI.
+    self._step_aside_btn = BigToggle("step aside for tesla fsd", initial_state=tesla_step_aside.enabled(ui_state.params),
+                                     toggle_callback=self._on_step_aside,
+                                     description="When Tesla Autosteer or FSD is selected or driving (or Summon),\n" +
+                                                 "TeslaPilot steps aside: relay open, nothing sent,\n" +
+                                                 "screen off after a 5 s alert. Back when Tesla is on TACC.")
+    self._step_aside_btn.set_enabled(lambda: not ui_state.engaged)
+
+    # Park-offroad + drive summary: one toggle, confirmation first
+    self._park_offroad_btn = BigToggle("go offroad in park", initial_state=park_offroad.enabled(ui_state.params),
+                                       toggle_callback=self._on_park_offroad,
+                                       description="Offroad after Park is held 3 s, back onroad on D/R.\n" +
+                                                   "Adds the drive summary card.")
+
     self._scroller.add_widgets([
       self._alc_btn,
       self._personality_toggle,
-      self._experimental_btn,
+      self._initial_cruise_speed,
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
       record_front,
       record_mic,
+      self._step_aside_btn,
+      self._park_offroad_btn,
       enable_openpilot,
     ])
 
     # Toggle lists
     self._refresh_toggles = (
-      ("ExperimentalMode", self._experimental_btn),
       ("AutoLaneChangeEnabled", self._alc_btn),
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
@@ -239,24 +184,38 @@ class TogglesLayoutMici(NavScroller):
     super().show_event()
     self._update_toggles()
 
+  def _on_metric_toggle(self, state: bool):
+    ui_state.params.put_bool("IsMetric", state, block=True)
+    self._update_toggles()
+
   def _update_toggles(self):
     ui_state.update_params()
+    self._initial_cruise_speed.refresh()
 
-    # CP gating for experimental mode
     if ui_state.CP is not None:
-      if ui_state.has_longitudinal_control:
-        self._experimental_btn.set_visible(True)
-        self._personality_toggle.set_visible(True)
-      else:
-        # no long for now
-        self._experimental_btn.set_visible(False)
-        self._experimental_btn.set_checked(False)
-        self._personality_toggle.set_visible(False)
-        ui_state.params.remove("ExperimentalMode")
+      self._personality_toggle.set_visible(ui_state.has_longitudinal_control)
 
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+    self._step_aside_btn.set_checked(tesla_step_aside.enabled(ui_state.params))
+    self._park_offroad_btn.set_checked(park_offroad.enabled(ui_state.params))
+
+  def _on_step_aside(self, state: bool):
+    tesla_step_aside.put_bool(ui_state.params, tesla_step_aside.PARAM_ENABLED, state, block=True)
+    restart_needed_callback()
+
+  def _on_park_offroad(self, state: bool):
+    def apply(on: bool):
+      park_offroad.put_bool(ui_state.params, park_offroad.PARAM_ENABLED, on, block=True)
+      tripstats.set_enabled(ui_state.params, on)  # the summary rides on the same toggle
+      self._park_offroad_btn.set_checked(on)
+
+    if state:
+      self._park_offroad_btn.set_checked(False)
+      gui_app.push_widget(ParkOffroadConfirmPage(lambda: apply(True)))
+    else:
+      apply(False)
 
   def _on_alc(self, state: bool):
     if state:
@@ -269,17 +228,3 @@ class TogglesLayoutMici(NavScroller):
       gui_app.push_widget(AutoLaneChangeConfirmPage(on_confirm))
     else:
       ui_state.params.put_bool("AutoLaneChangeEnabled", False, block=True)
-
-  def _on_experimental_mode(self, state: bool):
-    if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):
-      # Don't show enabled state until confirm
-      self._experimental_btn.set_checked(False)
-
-      def on_confirm():
-        ui_state.params.put_bool("ExperimentalModeConfirmed", True)
-        ui_state.params.put_bool("ExperimentalMode", True)
-        self._experimental_btn.set_checked(True)
-
-      gui_app.push_widget(ExperimentalModeConfirmPage(on_confirm))
-    else:
-      ui_state.params.put_bool("ExperimentalMode", state)
