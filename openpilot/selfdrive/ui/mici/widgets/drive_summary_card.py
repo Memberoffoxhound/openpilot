@@ -4,16 +4,17 @@ begin() when a trip ends: it slides in over ENTER_S and stays the onroad page's 
 clear() (the next drive), so swiping back from home shows it again. update() returns True once,
 SHOW_S after begin, if it's still in view: time for the stock scroll to home.
 
-Optional hook: stats_fn() -> today_m/today_e/week_m/week_e/streak_days (else drive_summary's own totals).
+Numbers from tripstats.view(): Day / Week include this trip.
 """
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 
 import pyray as rl
 
-from openpilot.selfdrive.ui.lib import drive_summary as ds
+from openpilot.selfdrive.ui import tripstats as ts
+from openpilot.selfdrive.ui.tripstats import card as tc
+from openpilot.selfdrive.ui.tripstats.recorder import COLORS
 from openpilot.selfdrive.ui.mici.widgets.trip_row import draw_trip_block, fmt_trip
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -24,7 +25,9 @@ PAD = 18
 BADGE_GAP = 14
 UNIT_GAP = 2
 HEADLINE = "trip summary"
+LAST_HEADLINE = "last trip summary"        # at start, for a trip whose card never came up (power cut at ignition off)
 HEAD_SIZE, HEAD_Y = 62, 2          # alert text1 is 70-82 Inter Bold; 62 leaves room for the stats
+HEAD_MIN = 50                      # smallest a long headline shrinks to
 VAL_SIZE, UNIT_SIZE, LBL_SIZE = 46, 24, 22
 VAL_Y, LBL_Y = 80, 130
 TL_Y, TL_H = 161, 18        # 1.5x the first 12 px bar: readable on the small screen; 8 px under the labels
@@ -39,7 +42,7 @@ def _col(rgb, a: float) -> rl.Color:
 
 VALUE_COL, DIM_COL = _col(WHITE, 1.0), _col(WHITE, 0.8)
 TRACK_COL, SHADE_COL = _col(WHITE, 0.15), _col((0, 0, 0), 0.35)
-RUN_COLS = {st: _col(rgb, 1.0) for st, rgb in ds.COLORS.items()}
+RUN_COLS = {st: _col(rgb, 1.0) for st, rgb in COLORS.items()}
 
 
 def draw_check_badge(cx: float, cy: float, r: float, rgb) -> None:
@@ -60,9 +63,10 @@ def slide_y(t: float, h: float) -> float:
 
 
 class DriveSummaryCard:
-  def __init__(self, stats_fn: Callable[[], dict] | None = None):
-    self._stats_fn = stats_fn
+  def __init__(self):
     self.drive: dict | None = None
+    self.last = False
+    self._head = HEADLINE
     self._shown_at = 0.0
     self._holding = False
     self._cols: list[tuple[str, str, str]] = []
@@ -73,27 +77,29 @@ class DriveSummaryCard:
     self._today = ("Day", "")
     self._week = ("Week", "")
 
-  def begin(self) -> bool:
-    """The trip just ended: True if it's long enough for a card and the card is up."""
+  def begin(self, last: bool = False) -> bool:
+    """The trip just ended (last: the stored trip whose card never came up): True if the card is up."""
     try:
       params = ui_state.params
-      drive = ds.due_summary(params)
+      drive = ts.missed_trip(params) if last else ts.due_summary(params)
       if drive is None:
         return False
-      self._load_texts(drive, ds.add_drive(ds.get_json(params, ds.PARAM_LAST), drive))   # Day/Week incl. this trip
+      self._load_texts(drive, ts.view(params, drive if last else None))
+      ts.mark_shown(params, drive if last else None)
     except Exception:
       return False
-    self.drive, self._shown_at, self._holding = drive, time.monotonic(), True
+    self.drive, self.last, self._head = drive, last, LAST_HEADLINE if last else HEADLINE
+    self._shown_at, self._holding = time.monotonic(), True
     return True
 
   def clear(self) -> None:
-    self.drive, self._holding = None, False
+    self.drive, self.last, self._holding = None, False, False
 
   def update(self, in_view: bool) -> bool:
     if not self._holding:
       return False
     t = time.monotonic() - self._shown_at
-    if t >= ds.SHOW_S or (not in_view and t > ENTER_S):   # time's up, or tapped / swiped away
+    if t >= ts.SHOW_S or (not in_view and t > ENTER_S):   # time's up, or tapped / swiped away
       self._holding = False
       return in_view
     return False
@@ -104,22 +110,14 @@ class DriveSummaryCard:
     self.draw(rect.x, rect.y + slide_y(time.monotonic() - self._shown_at, rect.height), rect.width, rect.height)
     return True
 
-  def _load_texts(self, drive: dict, data: dict | None) -> None:
+  def _load_texts(self, drive: dict, st: dict) -> None:
     metric = bool(ui_state.is_metric)
-    st: dict = {}
-    if self._stats_fn is not None:
-      try:
-        st = self._stats_fn() or {}
-      except Exception:
-        st = {}
-    if "today_m" not in st:
-      st = {**ds.today_week(data), "streak_days": ds.day_streak(data)}
-    self._cols = ds.card_columns(drive, int(st.get("streak_days") or 0), metric)
+    self._cols = tc.card_columns(drive, st["streak_days"], metric)
     self._slots_w = -1.0
     tl = str(drive.get("tl") or "")
-    self._runs, self._n_buckets = ds.timeline_runs(tl), len(tl)
-    self._today = ("Day", fmt_trip(float(st.get("today_m") or 0), float(st.get("today_e") or 0), metric))
-    self._week = ("Week", fmt_trip(float(st.get("week_m") or 0), float(st.get("week_e") or 0), metric))
+    self._runs, self._n_buckets = tc.timeline_runs(tl), len(tl)
+    self._today = ("Day", fmt_trip(st["today_m"], st["today_e"], metric))
+    self._week = ("Week", fmt_trip(st["week_m"], st["week_e"], metric))
 
   def draw(self, x: float, y: float, w: float, h: float) -> None:
     rl.draw_rectangle(int(x), int(y), int(w), int(h), rl.BLACK)   # opaque, over the camera while parking
@@ -128,18 +126,22 @@ class DriveSummaryCard:
     roman = gui_app.font(FontWeight.ROMAN)
     cx = x + PAD
 
-    rl.draw_text_ex(bold, HEADLINE, rl.Vector2(cx, y + HEAD_Y), HEAD_SIZE, 0, VALUE_COL)
     br = HEAD_SIZE * 0.30
-    hw = measure_text_cached(bold, HEADLINE, HEAD_SIZE).x
+    hs, hw = HEAD_SIZE, measure_text_cached(bold, self._head, HEAD_SIZE).x
+    room = w - 2 * PAD - BADGE_GAP - 2 * br
+    while hw > room and hs > HEAD_MIN:   # a long headline ("last trip summary") shrinks to clear the badge
+      hs -= 2
+      hw = measure_text_cached(bold, self._head, hs).x
+    rl.draw_text_ex(bold, self._head, rl.Vector2(cx, y + HEAD_Y + (HEAD_SIZE - hs) * ASCENT * 1.16), hs, 0, VALUE_COL)  # same baseline
     bcx = min(cx + hw + BADGE_GAP + br, x + w - PAD - br)
-    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, ds.accent_rgb())
+    draw_check_badge(bcx, y + HEAD_Y + HEAD_SIZE * 1.16 * 0.56, br, tc.accent_rgb())
 
     # stats: evenly spaced columns, each value (+ unit on its baseline) centered over its label
     vs, us, ls = VAL_SIZE, UNIT_SIZE, LBL_SIZE
     vy, ly = y + VAL_Y, y + LBL_Y
     if self._slots_w != w:
       self._slots_w = w
-      self._slots = ds.column_slots(self._cols, w - 2 * PAD,
+      self._slots = tc.column_slots(self._cols, w - 2 * PAD,
                                     lambda v, u: measure_text_cached(bold, v, vs).x + (UNIT_GAP + measure_text_cached(bold, u, us).x if u else 0),
                                     lambda lbl: measure_text_cached(roman, lbl, ls).x)
     for (v, u, lbl), (center, vw, lw) in zip(self._cols, self._slots, strict=False):

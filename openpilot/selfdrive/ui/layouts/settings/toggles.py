@@ -13,7 +13,7 @@ from openpilot.system.ui.widgets import DialogResult
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.car import tesla_step_aside, park_offroad
-from openpilot.selfdrive.ui.lib import drive_summary
+from openpilot.selfdrive.ui import tripstats
 from openpilot.selfdrive.ui.layouts.settings.initial_cruise_speed import InitialCruiseSpeedControl
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -296,7 +296,7 @@ class TogglesLayout(Widget):
   def _handle_park_offroad_toggle(self, state: bool):
     def apply(on: bool):
       park_offroad.put_bool(self._params, park_offroad.PARAM_ENABLED, on, block=True)
-      drive_summary.put_bool(self._params, drive_summary.PARAM_ENABLED, on)  # the summary rides on the same toggle
+      tripstats.set_enabled(self._params, on)  # the summary rides on the same toggle
 
     if state:
       def confirm_callback(result: DialogResult):

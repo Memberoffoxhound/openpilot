@@ -9,14 +9,13 @@ from openpilot.selfdrive.ui.mici.layouts.onboarding import OnboardingWindow
 from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
-from openpilot.selfdrive.ui.layouts.settings.common import tick_trip
-from openpilot.selfdrive.ui.lib import drive_summary
-from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui import tripstats
 from openpilot.selfdrive.ui.mici.widgets.drive_summary_card import DriveSummaryCard
 from openpilot.system.ui.lib.application import gui_app
 
 
 ONROAD_DELAY = 2.5  # seconds
+LAST_TRIP_DELAY = 1.0  # seconds after the first frame: the last trip summary card never holds up boot
 
 
 class MiciMainLayout(Scroller):
@@ -29,13 +28,14 @@ class MiciMainLayout(Scroller):
     self._prev_standstill = False
     self._prev_parked = False
     self._onroad_time_delay: float | None = None
+    self._last_trip_at: float | None = None
     self._setup = False
 
     # Initialize widgets
     self._home_layout = MiciHomeLayout()
     self._alerts_layout = MiciOffroadAlerts()
     self._settings_layout = SettingsLayout()
-    self._summary = DriveSummaryCard(stats_fn=stats_view)
+    self._summary = DriveSummaryCard()
     self._car_onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked, summary=self._summary)
     self._body_onroad_layout = BodyLayout()
 
@@ -99,8 +99,7 @@ class MiciMainLayout(Scroller):
     super()._update_state()
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
-    tick_trip()
-    drive_summary.tick(ui_state)
+    tripstats.tick(ui_state)
 
   def _render(self, _):
     if not self._setup:
@@ -109,6 +108,7 @@ class MiciMainLayout(Scroller):
       else:
         self._scroller.scroll_to(self._rect.width)
       self._setup = True
+      self._last_trip_at = rl.get_time() + LAST_TRIP_DELAY
 
     # Render
     super()._render(self._rect)
@@ -120,11 +120,17 @@ class MiciMainLayout(Scroller):
 
     # trip summary: up from Park (or the offroad edge below) while the car is parked or off
     parked = ui_state.park.parked
-    if ui_state.ignition and not parked:
-      self._summary.clear()
+    if ui_state.ignition and not parked and (ui_state.started or not self._summary.last):
+      self._summary.clear()   # a last trip summary card holds while the car starts, until onroad
     elif parked and not self._prev_parked:
       self._summary.begin()
     self._prev_parked = parked
+
+    # last trip summary: once, after the UI is up, offroad, if that trip's card never came up
+    if self._last_trip_at is not None and rl.get_time() >= self._last_trip_at:
+      self._last_trip_at = None
+      if not ui_state.started and self._summary.drive is None and self._summary.begin(last=True):
+        self._scroll_to(self._onroad_layout)
 
     if ui_state.started != self._prev_onroad:
       self._prev_onroad = ui_state.started

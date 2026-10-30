@@ -10,11 +10,10 @@ from openpilot.selfdrive.ui.layouts.settings.common import (
   lane_color_label, next_lane_color,
   onroad_ui_label, next_onroad_ui, set_onroad_ui, restart_needed_callback,
   compass_size_label, next_compass_size,
-  delorean_on, set_delorean, request_delorean_play,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.car import tesla_step_aside, park_offroad
-from openpilot.selfdrive.ui.lib import drive_summary
+from openpilot.selfdrive.ui import tripstats
 from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
@@ -83,15 +82,6 @@ class _ParamCycle(BigButton):
     self.refresh()
 
 
-class DeloreanPreview(BigButton):
-  def __init__(self):
-    super().__init__("delorean preview", "tap")
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-    request_delorean_play()
-
-
 class ThemeLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -99,8 +89,6 @@ class ThemeLayoutMici(NavScroller):
       _ParamCycle("onroad UI", onroad_ui_label, next_onroad_ui, set_onroad_ui),
       _ParamCycle("compass size", compass_size_label, next_compass_size, lambda nxt, p: p.put("CompassSize", nxt, block=True)),
       _ParamCycle("theme", lane_color_label, next_lane_color, lambda nxt, p: p.put("LaneColor", nxt, block=True)),
-      _ParamCycle("delorean", lambda p: "on" if delorean_on() else "off", lambda p: not delorean_on(), lambda on, p: set_delorean(on)),
-      DeloreanPreview(),
     ])
 
 
@@ -220,7 +208,7 @@ class TogglesLayoutMici(NavScroller):
   def _on_park_offroad(self, state: bool):
     def apply(on: bool):
       park_offroad.put_bool(ui_state.params, park_offroad.PARAM_ENABLED, on, block=True)
-      drive_summary.put_bool(ui_state.params, drive_summary.PARAM_ENABLED, on)  # the summary rides on the same toggle
+      tripstats.set_enabled(ui_state.params, on)  # the summary rides on the same toggle
       self._park_offroad_btn.set_checked(on)
 
     if state:

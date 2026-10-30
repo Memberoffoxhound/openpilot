@@ -1,6 +1,5 @@
 import math
 import os
-import json
 import threading
 import numpy as np
 import time
@@ -28,15 +27,6 @@ SHOT_WAVS = (
   "/data/shutter.wav",
   BASEDIR + "/openpilot/selfdrive/assets/sounds/shutter.wav",
 )
-EIGHTY_WAVS = (
-  "/data/88mph.wav",
-  BASEDIR + "/openpilot/selfdrive/assets/sounds/88mph.wav",
-)
-DELOREAN_MODE = "/data/delorean_sound"
-DELOREAN_PLAY = "/data/delorean_play"
-DELOREAN_GATE = "/data/delorean_gate.json"
-DELOREAN_HOLD_S = 1.5
-DELOREAN_OFFROAD_RESET_S = 10.0
 
 
 def _resample_cubic(x: np.ndarray, src: int, dst: int) -> np.ndarray:
@@ -197,10 +187,6 @@ class Soundd:
     self.oneshots: list[list] = []  # [np.ndarray, index, tag]
     self._queue: list[list] = []
     self._lock = threading.Lock()
-    self._play_eighty = False
-    self._onroad_t0, self._eighty_played = self._load_gate()
-    self._started_since = 0.0
-    self._offroad_since = 0.0
 
     self.current_alert = AudibleAlert.none
     self.current_sound = AudibleAlert.none
@@ -215,23 +201,6 @@ class Soundd:
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
-  def _load_gate(self) -> tuple[float, bool]:
-    try:
-      j = json.loads(open(DELOREAN_GATE, encoding="utf-8").read())
-      return float(j.get("onroad_t0") or 0), bool(j.get("eighty_played", False))
-    except Exception:
-      return 0.0, False
-
-  def _save_gate(self) -> None:
-    try:
-      with open(DELOREAN_GATE, "w", encoding="utf-8") as f:
-        json.dump({
-          "onroad_t0": self._onroad_t0,
-          "eighty_played": self._eighty_played,
-        }, f)
-    except OSError:
-      pass
-
   def _push(self, tag: str, paths: tuple[str, ...], *, prep: bool = True) -> None:
     # Decode here (20 Hz thread), never in the PortAudio callback. Buffer dies with the oneshot.
     w = load_wav(*paths, prep=prep)
@@ -240,19 +209,10 @@ class Soundd:
     with self._lock:
       self._queue.append([w, 0, tag])
 
-  def _tag_busy(self, tag: str) -> bool:
-    with self._lock:
-      return any(t == tag for _, _, t in self.oneshots) or any(t == tag for _, _, t in self._queue)
-
   def _drain_flags(self) -> None:
     if _flag(SHOT_PLAY):
       self._push("shot", SHOT_WAVS)
       _clear(SHOT_PLAY)
-    if self._play_eighty or _flag(DELOREAN_PLAY):
-      if not self._tag_busy("eighty"):
-        self._push("eighty", EIGHTY_WAVS)
-        self._play_eighty = False
-        _clear(DELOREAN_PLAY)
 
   def load_sounds(self):
     self.loaded_sounds: dict[int, np.ndarray] = {}
@@ -393,32 +353,6 @@ class Soundd:
             self.current_volume = self.calculate_volume(float(self.spl_filter_weighted.x))
 
         self.get_audible_alert(sm)
-
-        now = time.time()  # noqa: TID251  wall clock: the 88mph gate is persisted across soundd restarts
-        started = bool(sm['deviceState'].started) if sm.recv_frame['deviceState'] > 0 else False
-
-        if started:
-          self._offroad_since = 0.0
-          if not self._started_since:
-            self._started_since = now
-          if not self._onroad_t0:
-            self._onroad_t0 = now
-            self._save_gate()
-          if (now - self._started_since) >= DELOREAN_HOLD_S and _flag(DELOREAN_MODE) and not self._eighty_played:
-            self._play_eighty = True
-            self._eighty_played = True
-            self._save_gate()
-        else:
-          self._started_since = 0.0
-          if self._onroad_t0:
-            if not self._offroad_since:
-              self._offroad_since = now
-            if (now - self._offroad_since) >= DELOREAN_OFFROAD_RESET_S:
-              self._onroad_t0 = 0.0
-              self._eighty_played = False
-              self._play_eighty = False
-              self._offroad_since = 0.0
-              self._save_gate()
 
         if self.current_alert not in (AudibleAlert.warningSoft, AudibleAlert.warningImmediate):
           self._drain_flags()

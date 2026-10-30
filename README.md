@@ -1,115 +1,145 @@
 # TeslaPilot
 
-Tesla-first fork. Stalkless Model 3 / Y. Hobby project. No support. Install at your own risk.
+TeslaPilot is a hobby fork of [comma.ai openpilot](https://github.com/commaai/openpilot) for **stalkless Tesla Model 3 Highland** cars. It adds Tesla-friendly controls, a Tesla-style theme, on-device drive stats, and a local web page for your comma.
 
-> **Disclaimer:** This branch is for **Highland Teslas only**. The car is always fingerprinted as a **2025 Tesla Model 3** (`TESLA_MODEL_3`) until we figure out the updated fingerprinting semantics. Do not install on pre-Highland cars or other makes.
+It is one person's project. There is no support, and you install it at your own risk.
 
-Driven on a **2026 Model 3 Highland**. Based on openpilot 0.11.2. This branch versions as **0.11.23**.
+![TeslaPilot: onroad Tesla theme, trip summary card, Home stats](docs/screenshots/teslapilot-demo.gif)
 
-Installer: [`installer.comma.ai/Memberoffoxhound/Highland`](https://installer.comma.ai/Memberoffoxhound/Highland)
+> **Highland Teslas only.** The car is always identified as a 2025 Tesla Model 3 (`TESLA_MODEL_3`). Don't install it on pre-Highland Teslas or other makes.
 
-## Branches
+## What you need
 
-- **`master`** — unmodified [comma.ai/openpilot](https://github.com/commaai/openpilot) mirror.
-- **`Highland`** — TeslaPilot. Install this.
+- A **comma 4**. TeslaPilot is built and tested only on a comma 4.
+- **AGNOS 19.7.** TeslaPilot stays on AGNOS 19, so installing it doesn't flash a new OS.
+- A **Tesla Model 3 Highland** with the Tesla B harness. It's driven daily on a 2026 Model 3 Highland.
 
-## Highland
-
-Stalkless Teslas have no cruise stalk. Engage / disengage is the **right scroll-wheel button**. Cooperative steering stays on.
-
-You are the driver. This fork does not change driver monitoring, actuation checks, or panda safety. See [SAFETY.md](SAFETY.md).
-
-comma 4 UI. comma 3X may boot; UI is not tailored to it.
-
-### Onroad
-
-Theme → onroad UI is **stock** or **custom**. Custom paints Tesla Autopilot-blue lanes, wheel, confidence, compass, and DM. Theme → Tesla or Openpilot. Compass is small-left or large top-right.
-
-Stock HUD is one tap away.
-
-- Auto Lane Change — off by default; Tesla stock BSM; warning + confirm; 25 mph min.
-- Cooperative steering — on.
-- Scroll-wheel disengage — stalkless cancel.
-
-### Home
-
-Home is the parked comma 4. Version, date, and branch sit under the wordmark. Under that: **engagement stats**.
-
-![Home with openpilot longitudinal](docs/screenshots/home-long.jpg)
-
-**Today** and **Week** are distance and percent of that distance spent engaged. Today resets at Chicago midnight. Week resets Sunday. Totals survive reboot and update. Tap the row to open statistics.
-
-The footer shows which longitudinal stack is live:
-
-| | |
-|:---:|:---|
-| <img src="docs/screenshots/icon-tacc.png" height="120" alt="TACC"> | **TACC** — Tesla Traffic-Aware Cruise Control. Openpilot steers. Tesla still does gas and brake. |
-| <img src="docs/screenshots/icon-long.png" height="120" alt="LONG"> | **LONG** — openpilot longitudinal. Alpha. Openpilot does gas and brake, not Tesla ACC. |
-| <img src="docs/screenshots/icon-experimental.png" height="120" alt="Experimental"> | **Experimental** — the atom. Tap to toggle when LONG is on. Hidden on TACC; Tesla is already the longitudinal stack. |
-
-Speaking of statistics…
-
-### Statistics
-
-Inspired by Tesla’s Self-Driving stats, miniaturized for the comma 4. Work in progress. Yes, it’s a 536×240 windshield display. Small, but interesting.
-
-Open it from the Home stats row, or Settings → **statistics** (the wheel).
-
-Three snap pages. Accents follow Theme (Tesla blue / Openpilot green).
-
-**Engaged** — lifetime ring, day-streak checks, total miles, engaged miles, longest stretch.
-
-![Statistics — engaged](docs/screenshots/stats-ring.jpg)
-
-**Weekly Engaged** — each day is engaged miles out of that day’s total.
-
-![Statistics — weekly](docs/screenshots/stats-weekly.jpg)
-
-**Monthly Engaged** — same idea, by month. Lifetime totals stay after old qlogs are deleted.
-
-![Statistics — monthly](docs/screenshots/stats-monthly.jpg)
-
-### Theme
-
-Theme extras, **off by default**: Delorean 88mph clip (on going onroad, after ignition settles).
-
-### Device web UI
-
-Hold the display 3s for a screenshot (`/data/media/0/screenshots`).
-
-Web GUI at `http://<comma-ip>:8089`, always running (onroad and offroad). Stats, device health, screenshots, UI screen recording. No auth — local network only.
-
-## Tesla compatibility
-
-Same Tesla platforms as stock comma. **2026 Model 3 Highland is not on comma’s list yet; this fork is driven on one and it works.**
-
-This branch **always fingerprints as a 2025 Tesla Model 3** (`TESLA_MODEL_3`) until Highland fingerprinting semantics are figured out.
-
-| Car | Years | Notes |
-|---|---|---|
-| Model 3 HW3 | 2019–23 | [comma official](https://docs.comma.ai/CARS/) |
-| Model 3 HW4 | 2024–26 | official through 2025; **2026 Highland confirmed on this fork** |
-| Model Y HW3 | 2020–23 | comma official |
-| Model Y HW4 | 2024–25 | comma official |
-
-HW3 uses Tesla A harness, HW4 uses Tesla B. Alpha longitudinal is TACC vs openpilot gas/brake.
-
-S / X / Cybertruck are not supported. 2026 Model Y is untested here.
+The version is **0.11.23**, based on comma openpilot 0.11.2 and synced with comma master.
 
 ## Install
+
+On the comma's setup screen, pick **Custom Software** and enter:
 
 ```
 installer.comma.ai/Memberoffoxhound/Highland
 ```
 
-Username `Memberoffoxhound`, branch `Highland`. Repo is named `openpilot` so that installer URL works.
+The branch name is case-sensitive. To go back to stock openpilot, use `openpilot.comma.ai`.
 
-Stock install: [`openpilot.comma.ai`](https://openpilot.comma.ai)
+`Highland` is the main install branch. New features are tested on `jetlink-sync-agnos19` first.
 
-## Special thanks
+## What's different from openpilot
 
-These are not original to this fork. Huge thanks.
+### Engage with the scroll wheel
 
-- **Automatic Lane Change** — based on [rav4kumar](https://github.com/rav4kumar)'s implementation of Automatic Lane Change in sunnypilot ([#653](https://github.com/sunnypilot/sunnypilot/pull/653)), with [Jason Wen / sunnyhaibin](https://github.com/sunnyhaibin).
-- **Cooperative steering** — based on [dzid26](https://github.com/dzid26)'s implementation of cooperative steering (virtual torque blending, `vtb` / `vtb-sla`). [AmyJeanes](https://github.com/AmyJeanes) landed Tesla Coop Steering in sunnypilot using native LKAS ([opendbc #287](https://github.com/sunnypilot/opendbc/pull/287)).
-- **Stalkless scroll-wheel disengage** — based on [dkiiv](https://github.com/dkiiv)'s implementation of stalkless cancel (`DAS_accState == 13` → `ButtonType.cancel`, [opendbc #3203](https://github.com/commaai/opendbc/pull/3203)). Pulled from [dzid26](https://github.com/dzid26)'s Tesla fork.
+Credit: stalkless cancel by [dkiiv](https://github.com/dkiiv) ([commaai/opendbc#3203](https://github.com/commaai/opendbc/pull/3203)), ported through [dzid26](https://github.com/dzid26)'s Tesla fork.
+
+Stalkless Teslas have no cruise stalk. Press the **right scroll wheel** to engage or disengage.
+
+### Cooperative steering
+
+Credit: [dzid26](https://github.com/dzid26)'s cooperative steering ([dzid26/sunnypilot](https://github.com/dzid26/sunnypilot), `vtb-sla`), and [AmyJeanes](https://github.com/AmyJeanes)' Tesla coop steering in sunnypilot ([sunnypilot/opendbc#287](https://github.com/sunnypilot/opendbc/pull/287)).
+
+You can nudge the wheel while engaged and openpilot steers with you instead of fighting you. A firm hand on the wheel still disengages.
+
+### Newer Tesla firmware fix
+
+Credit: [AmyJeanes](https://github.com/AmyJeanes) ([commaai/opendbc#3389](https://github.com/commaai/opendbc/pull/3389)).
+
+Reads Tesla's steering-control message correctly on newer firmware, so stock lane keeping isn't mistaken for FSD.
+
+### Auto lane change
+
+Credit: [rav4kumar](https://github.com/rav4kumar)'s automatic lane change in sunnypilot ([sunnypilot/sunnypilot#653](https://github.com/sunnypilot/sunnypilot/pull/653)), with [Jason Wen / sunnyhaibin](https://github.com/sunnyhaibin).
+
+Off by default (**Settings → toggles → auto lane change**). When it's on, the blinker starts a lane change without a wheel nudge, above 25 mph and once Tesla's blind-spot monitor says the lane is clear.
+
+### Step aside for Tesla FSD
+
+On by default. If Tesla Autosteer, FSD, or Summon is selected or active, TeslaPilot stays out of the way and sends nothing to the car. It comes back once you're on TACC again.
+
+### Tesla theme
+
+**Settings → theme**:
+
+- **onroad UI**: stock comma view or the custom view with a compass.
+- **compass size**: small or large.
+- **theme**: Tesla Autopilot blue (default) or openpilot green.
+
+![Onroad, Tesla theme with compass](docs/screenshots/onroad-tesla.jpg)
+
+### Drive stats, kept on your device
+
+Turn on **Settings → toggles → go offroad in park**. When you shift into Park, a **trip summary card** shows distance, percent engaged, day streak, best stretch, and a timeline of the drive. It stays up for 20 seconds or until you tap it, then the screen moves to Home. Swipe back to see it again until your next drive.
+
+![Trip summary card](docs/screenshots/trip-card.png)
+
+**Home** shows **Day** and **Week** distance and percent engaged. Day resets at midnight and Week resets on Sunday, in the comma's local time zone. The comma finds its time zone from GPS. To set it yourself, tap **Use this phone's time zone** on the web page below. Tap the row to open **Statistics**, which you can also find in **Settings → statistics**.
+
+![Home with Day and Week stats](docs/screenshots/home-stats.png)
+
+| Engaged | Weekly | Monthly |
+|:---:|:---:|:---:|
+| ![Engaged](docs/screenshots/stats-ring.jpg) | ![Weekly](docs/screenshots/stats-weekly.jpg) | ![Monthly](docs/screenshots/stats-monthly.jpg) |
+
+The badge in Home's footer shows which system controls gas and brake:
+
+| | |
+|:---:|:---|
+| <img src="docs/screenshots/icon-tacc.png" height="80" alt="TACC"> | **TACC**: Tesla controls gas and brake, and openpilot steers. |
+| <img src="docs/screenshots/icon-long.png" height="80" alt="LONG"> | **LONG**: openpilot controls gas and brake (alpha, **Settings → developer → alpha longitudinal**). |
+
+### Web page on your comma
+
+Open `http://<comma-ip>:8089` from a phone or computer on the **same Wi-Fi or hotspot**. It shows drive stats, device health, and screenshots, and it can record the screen. It runs all the time, onroad and offroad. **It has no login**, so anyone on that network can open it.
+
+To take a screenshot on the comma itself, hold your finger on the screen for 3 seconds. Screenshots are saved in `/data/media/0/screenshots`.
+
+### Jetlink big model (optional)
+
+Credit: [zoompilot/jetlink](https://github.com/zoompilot/jetlink), wired as in [zoompilot](https://github.com/zoompilot/zoompilot). The model picker is a cut-down port of [sunnypilot](https://github.com/sunnypilot/sunnypilot)'s model manager.
+
+Runs openpilot's big driving model on a phone or computer plugged into the comma's USB-C port. Set it up in **Settings → models**. While it's off, nothing changes.
+
+## Safety
+
+TeslaPilot doesn't change driver monitoring, the excessive-actuation checks, or panda safety. [SAFETY.md](SAFETY.md) has the details and the CI checks that enforce them.
+
+You are the driver. Keep your eyes on the road and your hands ready to take over.
+
+**THIS IS ALPHA QUALITY SOFTWARE FOR RESEARCH PURPOSES ONLY. THIS IS NOT A PRODUCT. YOU ARE RESPONSIBLE FOR COMPLYING WITH LOCAL LAWS AND REGULATIONS. NO WARRANTY EXPRESSED OR IMPLIED.**
+
+## Help and contributing
+
+- Found a bug? [Open an issue](https://github.com/Memberoffoxhound/openpilot/issues) with your route ID from [comma connect](https://connect.comma.ai).
+- Pull requests are welcome.
+- To reuse the drive summary card or the park logic in your own fork, see [PORTING.md](PORTING.md).
+- For general openpilot help, try the [comma Discord](https://discord.comma.ai) and the [openpilot docs](https://docs.comma.ai).
+
+## Credits
+
+TeslaPilot is built on the work of these people and projects. Thank you.
+
+| Feature | Source | Link |
+|---|---|---|
+| Everything else | comma.ai openpilot, opendbc, panda | [commaai/openpilot](https://github.com/commaai/openpilot) |
+| Scroll-wheel engage/cancel | dkiiv, via dzid26's Tesla fork | [commaai/opendbc#3203](https://github.com/commaai/opendbc/pull/3203) |
+| Cooperative steering | dzid26 (`vtb` / `vtb-sla`) | [dzid26/sunnypilot](https://github.com/dzid26/sunnypilot) |
+| Tesla coop steering in sunnypilot | AmyJeanes | [sunnypilot/opendbc#287](https://github.com/sunnypilot/opendbc/pull/287) |
+| Newer-firmware steering fix | AmyJeanes | [commaai/opendbc#3389](https://github.com/commaai/opendbc/pull/3389) |
+| Auto lane change | rav4kumar, with Jason Wen (sunnyhaibin), sunnypilot | [sunnypilot/sunnypilot#653](https://github.com/sunnypilot/sunnypilot/pull/653) |
+| Jetlink big model | zoompilot | [zoompilot/jetlink](https://github.com/zoompilot/jetlink) |
+| Model picker | sunnypilot model manager, as wired by zoompilot | [sunnypilot/sunnypilot](https://github.com/sunnypilot/sunnypilot) |
+| TESLA font (wordmark) | KAYOver, based on TeslaNikolaCaps by Shane Milburn | [dafont](https://www.dafont.com/tesla.font) |
+| Inter font | Rasmus Andersson | [rsms/inter](https://github.com/rsms/inter) |
+| Time zone table (`tzgrid.bin`) | timezone-boundary-builder by Evan Siroky, from OpenStreetMap data | [evansiroky/timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) |
+
+## License
+
+openpilot and TeslaPilot are released under the [MIT license](LICENSE). Some parts use other licenses:
+
+- **TESLA font**: [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/), non-commercial use only. See `openpilot/selfdrive/assets/fonts/TESLA-LICENSE.txt`.
+- **Inter font**: [SIL Open Font License 1.1](https://openfontlicense.org).
+- **Time zone table** (`openpilot/selfdrive/ui/tripstats/tzgrid.bin`): built from [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) data, © OpenStreetMap contributors, under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+
+TeslaPilot isn't affiliated with Tesla, Inc. or comma.ai. The wordmark isn't Tesla's official logo.

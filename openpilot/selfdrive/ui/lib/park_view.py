@@ -7,7 +7,7 @@ returned: this onroad session came back from PARKED.
 from __future__ import annotations
 
 from openpilot.selfdrive.car.park_offroad import NONE, PARKED
-from openpilot.selfdrive.ui.lib.drive_summary import SHOW_S
+from openpilot.selfdrive.ui.tripstats import SHOW_S
 
 RETURN_S = 2.0
 HOLD, JUMP = "hold", "jump"

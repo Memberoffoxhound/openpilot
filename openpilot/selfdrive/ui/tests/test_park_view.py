@@ -10,7 +10,8 @@ import pytest
 
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.car.park_offroad import NONE, PARKED, PARKING
-from openpilot.selfdrive.ui.lib import drive_summary as ds
+from openpilot.selfdrive.ui import tripstats as ts
+from openpilot.selfdrive.ui.tripstats import store
 from openpilot.selfdrive.ui.lib.park_view import HOLD, JUMP, RETURN_S, ParkView
 
 UI = Path(__file__).resolve().parents[1]
@@ -75,7 +76,7 @@ def test_brightness_hold_then_fade_then_jump():
   feed(pv, t, 1, True, True, PARKING)
   feed(pv, t, 2, False, True, PARKED)
   assert pv.brightness(t[0], False, False) == HOLD             # under the card
-  feed(pv, t, ds.SHOW_S, False, True, PARKED)
+  feed(pv, t, ts.SHOW_S, False, True, PARKED)
   assert pv.brightness(t[0], False, False) is None             # after SHOW_S: the normal offroad fade
   feed(pv, t, 1 / FPS, True, True, NONE)
   assert pv.brightness(t[0], True, False) is None              # no camera reading yet
@@ -107,7 +108,7 @@ def test_brightness_sim():
   back = len(out)
   for i in range(2 * FPS):
     step(True, NONE, i >= int(0.8 * FPS), 99)
-  assert min(out[:3 * FPS + int((ds.SHOW_S - 3.1) * FPS)]) >= 98     # readable while the card holds
+  assert min(out[:3 * FPS + int((ts.SHOW_S - 3.1) * FPS)]) >= 98     # readable while the card holds
   assert out[back - 1] < 80                                          # then the normal fade
   assert out[back + int(0.8 * FPS)] == 99                            # first camera reading: straight there
 
@@ -150,10 +151,12 @@ class World:
     monkeypatch.setattr(dsc, "ui_state", self.ui)
     monkeypatch.setattr(dsc, "time", self.clock)
     monkeypatch.setattr(dsc.DriveSummaryCard, "draw", lambda self, *a: setattr(self, "drawn_y", a[1]))
-    monkeypatch.setattr(ds, "enabled", lambda params: True)
-    rec = ds.DriveRecorder()
+    monkeypatch.setattr(ts, "enabled", lambda params: True)
+    rec = ts.DriveRecorder()
     rec.active, rec.m, rec.e, rec.dur, rec.last_v = True, 5000.0 if due else 50.0, 4000.0, 600.0, 0.0
-    monkeypatch.setattr(ds, "recorder", rec)
+    monkeypatch.setattr(ts, "live", rec)
+    monkeypatch.setattr(ts, "_data", store.load(None))
+    monkeypatch.setattr(ts, "_held", [])
     self.card = dsc.DriveSummaryCard()
     self.page, self.state = "onroad", NONE
     self.prev_onroad, self.prev_parked = True, False
@@ -168,7 +171,7 @@ class World:
     ui = self.ui
     ui.park.update(self.clock.t, ui.started, ui.ignition, self.state)
     parked = ui.park.parked                                   # main._handle_transitions
-    if ui.ignition and not parked:
+    if ui.ignition and not parked and (ui.started or not self.card.last):
       self.card.clear()
     elif parked and not self.prev_parked:
       self.card.begin()
@@ -217,7 +220,7 @@ def test_card_at_park_then_home_then_slide_back(dsc, monkeypatch):
   assert parking[0] == "card" and set(parking) == {"card"}
   offroad = w.run(0.5, state=PARKED, started=False)
   assert set(offroad) == {"card"}                   # never the "can't start" label behind it
-  w.run(ds.SHOW_S - 3.6)
+  w.run(ts.SHOW_S - 3.6)
   assert w.page == "onroad" and w.home_scrolls == 0
   w.run(0.2)
   assert w.page == "home" and w.home_scrolls == 1   # SHOW_S from Park: the stock scroll to home
@@ -236,7 +239,7 @@ def test_tap_or_swipe_releases_the_hold(dsc, monkeypatch):
   w = World(dsc, monkeypatch)
   park_offroad(w)
   w.page = "home"                                   # tap: the stock click callback scrolls home
-  w.run(ds.SHOW_S)
+  w.run(ts.SHOW_S)
   assert w.home_scrolls == 0 and w.page == "home"   # no second scroll later
 
 
@@ -270,7 +273,7 @@ def test_stock_ignition_off_card_then_home_then_slide_back(dsc, monkeypatch):
   """No park-offroad (toggle off, or a car with an ignition switch): the card at the offroad edge."""
   w = World(dsc, monkeypatch)
   w.run(1)
-  out = w.run(ds.SHOW_S - 0.1, started=False, ignition=False)
+  out = w.run(ts.SHOW_S - 0.1, started=False, ignition=False)
   assert set(out) == {"card"} and w.home_scrolls == 0
   w.run(0.2)
   assert w.page == "home" and w.home_scrolls == 1
@@ -288,6 +291,20 @@ def test_toggle_off_short_trip_is_stock(dsc, monkeypatch):
   assert w.home_scrolls == 1 and set(out) == {"home"}
 
 
+def test_last_trip_card_at_start_holds_until_onroad(dsc, monkeypatch):
+  """Powered only with ignition: the drive's card never came up. At the next start (key on, not started
+  yet) the last trip summary card holds the onroad page, then goes for the camera; the Tesla Park path never gets here."""
+  w = World(dsc, monkeypatch)
+  last = {**store.stamp({"id": "r", "m": 5000.0, "e": 4000.0, "best_m": 900.0, "dur": 600.0, "tl": "ee"}, 1.79e9), "shown": False}
+  monkeypatch.setattr(ts, "live", ts.DriveRecorder())
+  monkeypatch.setattr(ts, "_data", {**store.load(None), "last": last})
+  w.ui.started, w.prev_onroad = False, False
+  assert w.card.begin(last=True) and w.card.last and w.card._head == dsc.LAST_HEADLINE == "last trip summary"
+  assert ts.missed_trip(None) is None                       # shown once (marked in memory; params=None here)
+  assert set(w.run(2)) == {"card"}                           # ignition on, not started: holds
+  assert w.run(0.1, started=True)[-1] == "camera" and w.card.drive is None
+
+
 # -- hooks -------------------------------------------------------------------------------------
 
 def test_hooks():
@@ -298,7 +315,8 @@ def test_hooks():
   assert "self._brightness_filter = FirstOrderFilter(BACKLIGHT_OFFROAD, 10.00" in ui          # stock filter kept
   main = (UI / "mici/layouts/main.py").read_text()
   trans = main.split("def _handle_transitions(self)")[1].split("\n  def ")[0]
-  assert "if ui_state.ignition and not parked:\n      self._summary.clear()" in trans
+  assert "if ui_state.ignition and not parked and (ui_state.started or not self._summary.last):\n      self._summary.clear()" in trans
+  assert "self._summary.begin(last=True)" in trans and "self._last_trip_at = rl.get_time() + LAST_TRIP_DELAY" in main
   assert "elif parked and not self._prev_parked:\n      self._summary.begin()" in trans
   assert "elif self._summary.drive is None and not self._summary.begin():" in trans
   assert "if self._summary.update(abs(self._onroad_layout.rect.x - self._rect.x) < 1):" in trans

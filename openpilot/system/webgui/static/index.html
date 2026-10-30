@@ -88,7 +88,7 @@ nav button.act{color:var(--tx)} nav button.act svg{color:var(--g)}
 .sheet .pane{width:100%;max-width:560px;background:#121518;border-radius:28px 28px 0 0;border:1px solid var(--line);padding:18px 18px calc(20px + env(safe-area-inset-bottom));animation:up .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes up{from{transform:translateY(40px)}}
 .pane img,.pane video{width:100%;border-radius:14px;background:#000;display:block}
-.pane .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#22272d;border:1px solid var(--line);padding:10px 16px;border-radius:14px;font-size:14px;z-index:20;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
@@ -136,7 +136,9 @@ h2{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:6px 4px 14px}
       <div class="row"><em>Panda</em><span id="panda">—</span></div>
       <div class="row"><em>Network</em><span id="net">—</span></div>
       <div class="row"><em>Thermal</em><span id="therm">—</span></div>
-      <div class="src" data-src="device panda storage"></div>
+      <div class="row"><em>Time zone</em><span id="tz">—</span></div>
+      <div class="acts"><button class="btn ghost" id="tzSet">Use this phone's time zone</button><button class="btn ghost" id="tzClr">Use GPS</button></div>
+      <div class="src" data-src="device panda storage timezone"></div>
     </div>
     <div class="card">
       <div class="lbl">Software</div>
@@ -206,9 +208,9 @@ function renderStats(d){
   const p=$("pill");p.classList.toggle("on",!!st.engaged);$("pillt").textContent=st.engaged?"Engaged":st.onroad?"Onroad":"Parked";
   $("today").innerHTML=t.today_m!=null?`${fmtD(t.today_m)}<small>${U()}</small>`:"—";
   $("todaySub").innerHTML=t.today_m!=null?`<b>${t.today_pct}%</b> engaged · ${fmtD(t.today_e)} ${U()} on openpilot`:"trip stats unavailable";
-  const wd=t.week_days||[],mx=Math.max(1,...wd.map(x=>x.m)),today=new Date().toLocaleDateString("en-CA");
-  $("bars").innerHTML=wd.map(x=>{const h=Math.max(4,70*x.m/mx),e=x.m?100*x.e/x.m:0,dn="SMTWTFS"[new Date(x.id+"T12:00").getDay()];
-    return `<div class="bar${x.id===today?" today":""}"><i style="height:${h}px"><u style="height:${e}%"></u></i><span>${dn}</span></div>`}).join("");
+  const wd=t.week_days||[],mx=Math.max(1,...wd.map(x=>x.m));
+  $("bars").innerHTML=wd.map((x,i)=>{const h=Math.max(4,70*x.m/mx),e=x.m?100*x.e/x.m:0,dn="SMTWTFS"[new Date(x.id+"T12:00").getDay()];
+    return `<div class="bar${i===t.today_i?" today":""}"><i style="height:${h}px"><u style="height:${e}%"></u></i><span>${dn}</span></div>`}).join("");
   $("week").innerHTML=t.week_m!=null?`${fmtD(t.week_m)}<small>${U()}</small>`:"—";$("weekSub").innerHTML=t.week_pct!=null?`<b>${t.week_pct}%</b> engaged`:"";
   $("life").innerHTML=t.life_m!=null?`${fmtD(t.life_m,0)}<small>${U()}</small>`:"—";$("lifeSub").innerHTML=t.pct!=null?`<b>${t.pct}%</b> engaged`:"";
   $("streak").innerHTML=t.streak_days!=null?`${t.streak_days}<small>days</small>`:"—";$("longest").textContent=t.longest_m!=null?`${fmtD(t.longest_m)} ${U()}`:"—";
@@ -224,6 +226,7 @@ function renderStats(d){
   const s=d.storage;if(s){const used=100*(1-s.free/s.total);$("disk").textContent=`${mb(s.free)} free of ${mb(s.total)}`;$("diskBar").style.width=used+"%"}
   if(dev){$("mem").textContent=dev.mem_pct+"%";$("memBar").style.width=dev.mem_pct+"%";$("net").textContent=dev.network;$("therm").textContent=dev.thermal}
   $("panda").textContent=d.panda?(d.panda.connected?`${d.panda.type} · ignition ${d.panda.ignition?"on":"off"}`:"not connected"):"no data";
+  const z=d.timezone;$("tz").textContent=z?`${z.name||"—"} · ${{phone:"set from phone",gps:"from GPS",system:"system"}[z.source]||z.source}`:"—";
   const sw=d.sw||{};$("ver").textContent=sw.version||"—";$("br").textContent=sw.branch||"—";$("cm").textContent=sw.commit||"—";
   document.querySelectorAll("[data-src]").forEach(e=>e.textContent="Source: "+[...new Set(e.dataset.src.split(" ").map(k=>(d.src||{})[k]).filter(Boolean))].join(" · "));
 }
@@ -242,6 +245,8 @@ function openMedia(kind,name,f){
   $("del").onclick=async()=>{if(!confirm("Delete "+name+"?"))return;try{await api(`/api/${kind}/${encodeURIComponent(name)}`,{method:"DELETE"});$("view").classList.remove("open");toast("Deleted");refresh()}catch(e){toast(e.message)}};
 }
 $("view").onclick=e=>{if(e.target===$("view")){$("view").classList.remove("open");$("viewPane").innerHTML=""}};
+const setTz=async tz=>{try{await api("/api/timezone",{method:"POST",body:JSON.stringify({tz})});toast(tz?"Time zone "+tz:"Time zone from GPS");refresh()}catch(e){toast(e.message)}};
+$("tzSet").onclick=()=>setTz(Intl.DateTimeFormat().resolvedOptions().timeZone||"");$("tzClr").onclick=()=>setTz("");
 $("snap").onclick=async()=>{toast("Capturing…");try{const r=await api("/api/shots",{method:"POST"});toast(r.pending?"Requested — screen may be off":"Saved "+r.name);refresh()}catch(e){toast(e.message)}};
 
 const DURS=[[30,"30 s"],[60,"1 min"],[120,"2 min"],[300,"5 min"]];

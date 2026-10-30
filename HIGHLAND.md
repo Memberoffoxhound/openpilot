@@ -41,20 +41,21 @@ This branch **always fingerprints as `TESLA_MODEL_3`** (2025 Model 3 / HW4 docs)
 | `ParkOffroad` | off | "Go Offroad in Park" (warning confirm; also sets `DriveSummary`). After R/D this ignition cycle, Park held 3 s, not engaged → normal offroad. Only R/D returns onroad (new route); ignitionCan staying on never does. Ignition off ≥ 5 s clears it. No gear frames 2 s → stock until the next ignition cycle. Summon/Autopark stays offroad. `selfdrive/car/park_offroad.py` (parkd), hardwared `not_parked`. |
 | `ParkOffroadState` | 0 | parkd's output: 0 none, 1 parking, 2 parked. Cleared on manager start only, re-asserted every second. |
 | `DriveSummary` | off | Trip card as the onroad page when a trip ends (stopped, ≥ 0.1 mi / 30 s); stock scroll to home after 20 s (`SHOW_S`) or a tap; swipe back to see it until the next drive. With `ParkOffroad`: up at the first Park sample with brightness held, and R/D skips `ONROAD_DELAY` and the brightness ramp. Any car; see PORTING.md. |
-| `DriveSummaryLast` | — | JSON: last drive + 14 days of totals + `record_m`. |
-| Delorean (`/data/delorean_sound`) | off | 88mph on going onroad. 1.5s stable, ignore <10s ignition blips. |
+| `DriveSummaryLast` | — | The one trip-stats store (JSON): 400 days of totals, lifetime, best stretch, best streak, last drive, drives not stored yet. See `selfdrive/ui/tripstats/README.md`. |
+| `Timezone` | — | IANA zone at `LastGPSPosition`, from an offline 190 KB table, for trip-stats days. Written off the UI thread after the UI is up. |
+| `TimezoneOverride` | — | IANA zone set from the web GUI ("Use this phone's time zone"); wins over `Timezone`. Empty: GPS. |
 
-## Trip files
+## Trip stats
 
-| Path | Role |
-|---|---|
-| `/data/trip_meter.json` + `TripMeter` param | Live Today/Week. Boot reads this. |
-| `/data/trip_seed_cache.json` | Per-segment meters, filled parked after a drive. |
-| `/data/trip_stats.json` | Lifetime miles, all-time day streak, longest stretch, monthly totals. Survives qlog purge. |
+One store, the `DriveSummaryLast` param, fed by one recorder in the UI (`selfdrive/ui/tripstats`). Home's Day / Week,
+the card and Statistics all read `tripstats.view()`. No qlog scans, no `/data` files, no background jobs.
+Days are local days in the device zone (`TimezoneOverride`, else `Timezone` from GPS, else the system zone). Each
+drive stores its UTC end and the zone offset then, so a zone change never moves it; it is held until the clock is
+valid. The drive in progress is saved every 30 s; after a power cut it closes at that stamp, and its card comes up
+once at the next start as "last trip summary". Weeks start Sunday. Details: `selfdrive/ui/tripstats/README.md`.
 
-Chicago local for day/week. UI thread never LogReader.
-`live` and `pending` are stamped with a Chicago day. Home only adds them to Today when that stamp matches today.
-Offroad fold commits leftover overlay into `days[]` and clears `pending`/`live` immediately. The device often loses power a few minutes after park, so park cache does not wait `HOT_SEC` or scan 200 days of qlogs. Recent qlogs (3 days) are folded after the commit if power lasts. Boot / statistics still do the long scan when parked.
+Older builds left `/data/trip_stats.json`, `/data/trip_seed_cache.json`, `/data/trip_meter.json` and
+`/data/trip_*.lock` behind. Nothing reads them now, and they are safe to delete.
 
 ## Alpha longitudinal (stock)
 

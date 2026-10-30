@@ -1,6 +1,6 @@
 """Params that survive a params library older than the key.
 
-drive_summary, park_offroad and tesla_step_aside are meant to be copied to other
+tripstats, park_offroad and tesla_step_aside are meant to be copied to other
 forks, whose prebuilt params library may not know their keys yet: an unknown key
 reads and writes the raw params file, in params.cc's byte format, instead of
 raising. Standard library only, so tesla_step_aside stays light for card."""

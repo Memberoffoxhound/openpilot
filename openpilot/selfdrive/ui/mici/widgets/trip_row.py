@@ -4,7 +4,7 @@ from __future__ import annotations
 import pyray as rl
 
 from openpilot.system.ui.lib.text_measure import measure_text_cached
-from openpilot.selfdrive.ui.lib.drive_summary import engaged_pct
+from openpilot.selfdrive.ui.tripstats.store import engaged_pct
 
 GREY = rl.Color(200, 200, 200, 255)   # secondary text on home and the card: readable in daylight
 WHITE = rl.Color(255, 255, 255, 255)

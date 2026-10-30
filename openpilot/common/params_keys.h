@@ -143,14 +143,15 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UpdaterLastFetchTime", {PERSISTENT, TIME}},
     {"UptimeOffroad", {PERSISTENT, FLOAT, "0.0"}},
     {"UptimeOnroad", {PERSISTENT, FLOAT, "0.0"}},
-    {"TripMeter", {PERSISTENT, JSON}},  // home Today/Week miles; survives reboot and overlay
     {"TeslaStepAside", {PERSISTENT, BOOL, "1"}},  // step aside (noOutput, relay open) while Tesla Autosteer/FSD is selected or active
     {"TeslaSteppedAside", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},  // card: this drive is stepped aside
     // Park-offroad (Tesla) and the drive summary; see PORTING.md. The ParkOffroad toggle also sets DriveSummary.
     {"ParkOffroad", {PERSISTENT, BOOL, "0"}},  // go offroad after Park is held 3 s; back onroad on R/D
     {"ParkOffroadState", {CLEAR_ON_MANAGER_START, INT, "0"}},  // parkd: 0 none, 1 parking, 2 parked offroad (no ignition-on clear: parkd owns it)
     {"DriveSummary", {PERSISTENT, BOOL, "0"}},  // drive-summary "trip summary" card
-    {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui: last drive's summary + timeline, and 14 days of totals
+    {"DriveSummaryLast", {PERSISTENT, JSON}},  // ui tripstats store: 400 days of totals, lifetime, last drive; see selfdrive/ui/tripstats
+    {"Timezone", {PERSISTENT, STRING}},  // IANA zone at LastGPSPosition, for trip stats days; see selfdrive/ui/tripstats/tz.py
+    {"TimezoneOverride", {PERSISTENT, STRING}},  // IANA zone set from the web GUI (phone browser); wins over Timezone
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     // Jetlink (zoompilot/jetlink): an iPhone / Jetson / Mac runs the large model.

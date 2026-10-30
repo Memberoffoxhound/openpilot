@@ -15,7 +15,7 @@ from importlib.resources import as_file
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, FONT_DIR, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui import tripstats
 from openpilot.selfdrive.ui.mici.widgets.trip_row import GREY, WHITE, draw_trip_row, fmt_trip
 from openpilot.common.version import RELEASE_BRANCHES
 
@@ -215,7 +215,7 @@ class MiciHomeLayout(Widget):
     if now - self._trip_at < 1.0:
       return
     self._trip_at = now
-    t = stats_view()
+    t = tripstats.view(ui_state.params)
     self._day_txt = ("Day", fmt_trip(t["today_m"], t["today_e"], ui_state.is_metric))
     self._week_txt = ("Week", fmt_trip(t["week_m"], t["week_e"], ui_state.is_metric))
 

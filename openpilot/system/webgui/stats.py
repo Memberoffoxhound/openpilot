@@ -43,13 +43,15 @@ def _collect(data: str) -> dict:
   out: dict = {"mock": False}
 
   try:
-    from openpilot.selfdrive.ui.layouts.settings.trip_stats import load_stats, stats_view
-    v, live = stats_view(), (load_stats().get("live") or {})
-    out["trips"] = {k: v.get(k) for k in ("today_m", "today_e", "today_pct", "week_m", "week_e", "week_pct",
-                                          "life_m", "life_e", "pct", "streak_days", "longest_m", "week_days")}
-    out["current"] = {"route": live.get("route") or "", "m": live.get("m") or 0.0, "e": live.get("e") or 0.0}
+    from openpilot.selfdrive.ui.tripstats import store, tz
+    st, (zone, name, src) = store.load(p), tz.current(p)
+    v, cur = store.view(st, st["open"], tz=zone), (st["open"] or [{}])[-1]
+    out["timezone"] = {"name": name, "source": src}
+    out["trips"] = {k: v[k] for k in ("today_m", "today_e", "today_pct", "week_m", "week_e", "week_pct",
+                                      "life_m", "life_e", "pct", "streak_days", "longest_m", "week_days", "today_i")}
+    out["current"] = {"route": cur.get("id") or "", "m": cur.get("m") or 0.0, "e": cur.get("e") or 0.0}
   except Exception:
-    out["trips"], out["current"] = None, None
+    out["trips"], out["current"], out["timezone"] = None, None, None
 
   pers = p.get("LongitudinalPersonality")
   out["sw"] = {"version": _s(p, "Version"), "branch": _s(p, "GitBranch"), "commit": _s(p, "GitCommit")[:9]}
@@ -86,8 +88,9 @@ def _collect(data: str) -> dict:
   out["device"], out["panda"], out["car"] = dev, panda, car
 
   out["src"] = {
-    "trips": "trip_stats.json via stats_view() (same as Home/Statistics)",
-    "current": "trip_stats.json live bucket (last UI flush)",
+    "trips": "DriveSummaryLast via tripstats (same as Home/Statistics)",
+    "current": "DriveSummaryLast drive in progress (saved every 30 s)",
+    "timezone": "params TimezoneOverride (this page), else Timezone (GPS), else the system zone",
     "sw": "params Version/GitBranch/GitCommit",
     "state": "params IsOffroad/IsEngaged/LongitudinalPersonality/CurrentRoute",
     "drives_on_device": "route dirs in /data/media/0/realdata (rotates out)",
@@ -104,8 +107,9 @@ def mock() -> dict:
     "mock": True,
     "trips": {"today_m": 23800.0, "today_e": 21000.0, "today_pct": 88, "week_m": 179700.0, "week_e": 161800.0, "week_pct": 90,
               "life_m": 9654000.0, "life_e": 8303000.0, "pct": 86, "streak_days": 12, "longest_m": 182000.0,
-              "week_days": [{"id": d, "m": m, "e": e} for d, m, e in days]},
+              "week_days": [{"id": d, "m": m, "e": e} for d, m, e in days], "today_i": 4},
     "current": {"route": "0000012a--4f3c9e1d2b", "m": 8400.0, "e": 7900.0},
+    "timezone": {"name": "America/Denver", "source": "gps"},
     "sw": {"version": "0.11.23", "branch": "jetlink-sync-agnos19", "commit": "4c6ce3d32"},
     "state": {"onroad": True, "engaged": True, "metric": False, "route": "0000012a--4f3c9e1d2b", "personality": "Aggressive"},
     "drives_on_device": 37,
@@ -113,5 +117,5 @@ def mock() -> dict:
     "device": {"cpu_temp": 61.0, "cpu_pct": 34, "mem_pct": 48, "free_pct": 65.3, "thermal": "green", "network": "wifi", "fan_pct": 30},
     "panda": {"connected": True, "count": 1, "type": "redPanda", "ignition": True},
     "car": {"v_ego": 29.1, "set_speed": 31.29, "cruise_on": True},
-    "src": dict.fromkeys(("trips", "current", "sw", "state", "drives_on_device", "storage", "device", "panda", "car"), "MOCK"),
+    "src": dict.fromkeys(("trips", "current", "timezone", "sw", "state", "drives_on_device", "storage", "device", "panda", "car"), "MOCK"),
   }

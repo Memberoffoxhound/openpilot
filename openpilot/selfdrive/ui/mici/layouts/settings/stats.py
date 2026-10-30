@@ -6,9 +6,8 @@ import time
 
 import pyray as rl
 
-from openpilot.selfdrive.ui.layouts.settings.common import spawn_trip_job, theme_color
-from openpilot.selfdrive.ui.layouts.settings.trip_seed import chicago_now
-from openpilot.selfdrive.ui.layouts.settings.trip_stats import stats_view
+from openpilot.selfdrive.ui import tripstats
+from openpilot.selfdrive.ui.layouts.settings.common import theme_color
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -130,14 +129,14 @@ class _StatsPage(Widget):
     super().__init__()
     self.set_rect(rl.Rectangle(0, 0, float(gui_app.width), float(gui_app.height)))
     self._at = 0.0
-    self._view: dict = stats_view()
+    self._view: dict = tripstats.view(ui_state.params)
 
   def _update_state(self):
     now = time.monotonic()
     if now - self._at < 1.0:
       return
     self._at = now
-    self._view = stats_view()
+    self._view = tripstats.view(ui_state.params)
 
 
 class StatsEngageWidget(_StatsPage):
@@ -236,7 +235,7 @@ class StatsWeekHWidget(_StatsPage):
     week = v.get("week_days") or [{"m": 0.0, "e": 0.0}] * 7
     totals = [float(d.get("m") or 0) for d in week]
     engaged = [float(d.get("e") or 0) for d in week]
-    current = (chicago_now().weekday() + 1) % 7
+    current = int(v.get("today_i") or 0)
     chart = rl.Rectangle(r.x + pad, r.y + 46, r.width - pad - 18, r.height - 54)
     _draw_hbars(chart, totals, engaged, current, list(WEEKDAYS_H))
 
@@ -276,10 +275,3 @@ class StatsLayoutMici(NavScroller):
     self._scroller._pad = 0
     self._items = (StatsEngageWidget(), StatsWeekHWidget(), StatsHistoryHWidget())
     self._scroller.add_widgets(list(self._items))
-    self._folded = False
-
-  def show_event(self):
-    super().show_event()
-    if not self._folded:
-      self._folded = True
-      spawn_trip_job("stats")

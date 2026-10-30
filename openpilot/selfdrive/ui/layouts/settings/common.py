@@ -1,11 +1,7 @@
 import math
-import subprocess
-import sys
-import time
 
 import pyray as rl
 from openpilot.cereal import messaging, log
-from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -115,86 +111,6 @@ def heading_letter() -> str | None:
 def set_onroad_ui(mode: int, params: Params | None = None) -> None:
   mode = ONROAD_UI_CUSTOM if int(mode) == ONROAD_UI_CUSTOM else ONROAD_UI_STOCK
   (params or Params()).put("CustomOnroadUi", mode, block=True)
-
-
-_DELOREAN_MODE = "/data/delorean_sound"
-_DELOREAN_PLAY = "/data/delorean_play"
-
-
-def delorean_on() -> bool:
-  try:
-    return open(_DELOREAN_MODE, encoding="utf-8").read().strip() in ("1", "true")
-  except Exception:
-    return False
-
-
-def set_delorean(on: bool) -> None:
-  with open(_DELOREAN_MODE, "w", encoding="utf-8") as f:
-    f.write("1" if on else "0")
-
-
-def request_delorean_play() -> None:
-  with open(_DELOREAN_PLAY, "w", encoding="utf-8") as f:
-    f.write("1")
-
-
-_trip_t = 0.0
-_trip_flush = 0.0
-_seed_started = False
-_was_offroad = True
-
-
-def spawn_trip_job(kind: str) -> None:
-  try:
-    subprocess.Popen(
-      [sys.executable, "-m", "openpilot.selfdrive.ui.layouts.settings.trip_seed", kind],
-      cwd=BASEDIR,
-      stdout=subprocess.DEVNULL,
-      stderr=subprocess.DEVNULL,
-      start_new_session=True,
-    )
-  except Exception:
-    cloudlog.exception("trip job")
-
-
-def tick_trip() -> None:
-  """Live overlay = this drive only. Qlog cache owns completed miles."""
-  global _trip_t, _trip_flush, _seed_started, _was_offroad
-  now = time.monotonic()
-  if not _seed_started:
-    _seed_started = True
-    spawn_trip_job("seed")
-  try:
-    params = ui_state.params
-    offroad = params.get_bool("IsOffroad")
-    cs_ok = ui_state.sm.recv_frame["carState"] > 0
-  except Exception:
-    offroad, cs_ok = True, False
-  park_cache = bool(offroad and not _was_offroad)
-  _was_offroad = offroad
-
-  if (not offroad) and cs_ok:
-    dt = min(1.0, max(0.0, now - _trip_t)) if _trip_t else 0.0
-    _trip_t = now
-    v = max(0.0, ui_state.sm["carState"].vEgo)
-    engaged = ui_state.sm.recv_frame["selfdriveState"] > 0 and ui_state.sm["selfdriveState"].enabled
-    route = params.get("CurrentRoute") or ""
-    d = v * dt if v > 0.15 else 0.0
-    if d > 0:
-      from openpilot.selfdrive.ui.layouts.settings.trip_stats import add_live
-      add_live(d, d if engaged else 0.0, route)
-  else:
-    _trip_t = now
-
-  if now - _trip_flush > 1.0:
-    _trip_flush = now
-    try:
-      from openpilot.selfdrive.ui.layouts.settings.trip_stats import flush_live
-      flush_live()
-    except Exception:
-      pass
-  if park_cache:
-    spawn_trip_job("cache")
 
 
 def _rpy_lines(roll: float, pitch: float, yaw: float) -> tuple[str, str, str]:

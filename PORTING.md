@@ -4,22 +4,29 @@
 
 No Tesla, TeslaPilot or Jetlink code, no gear detection, no assets.
 
-**Copy:** `common/params_compat.py`, `selfdrive/ui/lib/drive_summary.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,trip_row}.py`, `selfdrive/ui/tests/test_drive_summary.py`.
+**Copy:** `selfdrive/ui/tripstats/` (recorder, store, card formatting, hook, tests, README), `common/params_compat.py`, `selfdrive/ui/mici/widgets/{drive_summary_card,trip_row}.py`, `selfdrive/ui/tests/test_drive_summary.py`. Optional: `mici/layouts/settings/stats.py` (Statistics) and the Day / Week row in `mici/layouts/home.py`.
 
 **Params** (`common/params_keys.h`; read and written through `common/params_compat.py`, so an older params library without these keys falls back to the raw params files instead of raising):
 ```
 {"DriveSummary", {PERSISTENT, BOOL, "0"}},
 {"DriveSummaryLast", {PERSISTENT, JSON}},
+{"Timezone", {PERSISTENT, STRING}},          // GPS zone (tripstats.tz); optional: without it, the system zone
+{"TimezoneOverride", {PERSISTENT, STRING}},  // optional: set from the web GUI
 ```
 Here the "Go Offroad in Park" toggle sets `DriveSummary`; elsewhere add a `BigParamControl("drive summary", "DriveSummary")`.
 
 **Hooks:**
-1. mici main `__init__`: `self._summary = DriveSummaryCard()` (optional `stats_fn` returning `today_m/today_e/week_m/week_e/streak_days`), passed as `AugmentedRoadView(..., summary=self._summary)`.
-2. main `_update_state`: `drive_summary.tick(ui_state)`.
+1. mici main `__init__`: `self._summary = DriveSummaryCard()`, passed as `AugmentedRoadView(..., summary=self._summary)`.
+2. main `_update_state`: `tripstats.tick(ui_state)`. Numbers for Home / Statistics: `tripstats.view(ui_state.params)`.
 3. main `_handle_transitions`:
    ```python
-   if ui_state.ignition:
+   if ui_state.ignition and (ui_state.started or not self._summary.last):
      self._summary.clear()                        # without park-offroad: next drive
+   ...
+   if self._last_trip_at is not None and rl.get_time() >= self._last_trip_at:   # set in _render's first frame + 1 s
+     self._last_trip_at = None
+     if not ui_state.started and self._summary.drive is None and self._summary.begin(last=True):
+       self._scroll_to(self._onroad_layout)       # last trip summary: a power cut at ignition off hid its card
    ...
    else:                                          # offroad edge
      if self._summary.drive is None and not self._summary.begin():
@@ -29,9 +36,9 @@ Here the "Go Offroad in Park" toggle sets `DriveSummary`; elsewhere add a `BigPa
    ```
 4. `AugmentedRoadView._render`, offroad branch: `if not (self._summary and self._summary.render(self._rect)):` before the stock label.
 
-**Theme:** `drive_summary.accent_rgb()` tries `layouts.settings.common.theme_rgb()`, else comma green.
+**Theme:** `tripstats.card.accent_rgb()` tries `layouts.settings.common.theme_rgb()`, else comma green.
 
-**Behavior:** at the offroad edge, if the trip is >= 0.1 mi and 30 s and the car stopped, the card is the onroad page's content: slides in over `ENTER_S` (0.28 s), holds the page `SHOW_S` (20 s) or until a tap or swipe, then the stock scroll to home. Swiping back from home shows it again until the next drive. Not due: stock.
+**Behavior:** at the offroad edge, if the trip is >= 0.1 mi and 30 s and the car stopped, the card is the onroad page's content: slides in over `ENTER_S` (0.28 s), holds the page `SHOW_S` (20 s) or until a tap or swipe, then the stock scroll to home. Swiping back from home shows it again until the next drive. Not due: stock. If the device lost power before the card came up, it comes up once at the next start as "last trip summary" (headline shrunk to 54 px to clear the badge; "trip summary" stays 62).
 
 ## Park-offroad (Tesla; another brand needs one decoder)
 

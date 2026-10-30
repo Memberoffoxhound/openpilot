@@ -115,6 +115,13 @@ class App:
     from openpilot.system.webgui import stats
     return stats.mock() if self.mock else stats.collect(str(self.data))
 
+  def set_timezone(self, name: str) -> tuple[int, dict]:
+    if self.mock:
+      return 200, {"ok": True, "mock": True}
+    from openpilot.common.params import Params
+    from openpilot.selfdrive.ui.tripstats import tz
+    return (200, {"ok": True, "tz": name}) if tz.set_override(Params(), name) else (400, {"error": "unknown zone"})
+
   def capture(self, wait_s: float = 3.0) -> dict:
     self.shots.mkdir(parents=True, exist_ok=True)
     before = {f["name"] for f in list_files(self.shots, ".png")}
@@ -229,6 +236,8 @@ class Handler(BaseHTTPRequestHandler):
       return self._json(*a.rec.start(body.get("max_s", 60), body.get("fps", 10)))
     if path == "/api/rec/stop":
       return self._json(200, a.rec.stop())
+    if path == "/api/timezone":
+      return self._json(*a.set_timezone(str(body.get("tz") or "")))
     self._json(404, {"error": "not found"})
 
   def do_DELETE(self):
