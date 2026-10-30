@@ -267,7 +267,7 @@ def run_startup(packets, tmp_path):
   CI = make_ci()
   p = FakeParams(tmp_path)
   r = Replay(packets)
-  sa = tsa.TeslaStepAside(CI, p, r.clock())
+  sa = tsa.TeslaStepAside(CI, p)
   stepped = sa.observe_startup(r.recv, r.clock)
   return sa, r, p, stepped
 
@@ -293,7 +293,7 @@ def test_replay_tacc_cancel_blip_never_enters(tmp_path):
   CI = make_ci()
   p = FakeParams(tmp_path)
   packets = packets_10ms(load_fixture("tesla_tacc_route02_cancel_blip.csv.gz"))
-  sa = tsa.TeslaStepAside(CI, p, packets[0][0] / 1e9)
+  sa = tsa.TeslaStepAside(CI, p)
   sa.start(packets[0][0] / 1e9)
   saw13 = False
   for t, frames in packets:
@@ -349,7 +349,7 @@ def test_card_path_against_real_tesla_interface():
   from opendbc.car.tesla.interface import CarInterface
   from openpilot.common.params import Params
   CP = CarInterface.get_non_essential_params("TESLA_MODEL_3")
-  sa = tsa.TeslaStepAside(CarInterface(CP), Params(), 0.0)
+  sa = tsa.TeslaStepAside(CarInterface(CP), Params())
   assert sa.observe(0.1) in (True, False)
   assert tsa.read_signals(sa.CI.can_parsers).steer_type == 0
 

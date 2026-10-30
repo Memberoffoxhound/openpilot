@@ -179,7 +179,7 @@ def is_park(gear) -> bool:
 class TeslaStepAside:
   """card's handle: startup detection, then the onroad-cycle requests."""
 
-  def __init__(self, CI, params, now: float) -> None:
+  def __init__(self, CI, params) -> None:
     self.CI = CI
     self.params = params
     self.detector = StockDetector()

@@ -121,7 +121,7 @@ class Car:
     # passive (noOutput) before CarParams is published, so the relay never closes
     self.tesla_step_aside: tesla_step_aside.TeslaStepAside | None = None
     if controller_available and self.CP.brand == "tesla" and tesla_step_aside.enabled(self.params):
-      self.tesla_step_aside = tesla_step_aside.TeslaStepAside(self.CI, self.params, time.monotonic())
+      self.tesla_step_aside = tesla_step_aside.TeslaStepAside(self.CI, self.params)
       if CI is None:
         self.tesla_step_aside.observe_startup(
           lambda: can_capnp_to_list(messaging.drain_sock_raw(self.can_sock, wait_for_one=True)), time.monotonic)
