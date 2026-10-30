@@ -62,6 +62,9 @@ def test_card_layout_rules():
   assert consts["LBL_Y"] + consts["LBL_SIZE"] * 1.16 + 4 <= consts["TL_Y"]
   assert consts["TL_Y"] + consts["TL_H"] + 6 <= consts["TRIP_Y"]
   assert "draw_rectangle_rounded(rl.Rectangle(x, y, w, h), 1.0" in src     # rounded ends kept
+  # connect's statusGradient stops: 4% clear, 10% white .025, 25% black .1, bottom black .4
+  assert "(0.04, _col((0, 0, 0), 0.0)), (0.10, _col(WHITE, 0.025))" in src
+  assert "(0.25, _col((0, 0, 0), 0.1)), (1.0, _col((0, 0, 0), 0.4))" in src and "SHADE_STOPS[1:]" in src
   assert "FontWeight.DISPLAY" in src and "draw_trip_block(" in src
   row = (UI / "mici/widgets/trip_row.py").read_text()
   assert "def draw_trip_block(" in row and "BLOCK_VALUE = 34" in row and "BLOCK_LABEL = 30" in row

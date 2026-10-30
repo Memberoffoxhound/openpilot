@@ -41,7 +41,10 @@ def _col(rgb, a: float) -> rl.Color:
 
 
 VALUE_COL, DIM_COL = _col(WHITE, 1.0), _col(WHITE, 0.8)
-TRACK_COL, SHADE_COL = _col(WHITE, 0.15), _col((0, 0, 0), 0.35)
+TRACK_COL = _col(WHITE, 0.15)
+# connect Timeline statusGradient: linear-gradient(rgba(0,0,0,0) 4%, rgba(255,255,255,.025) 10%, rgba(0,0,0,.1) 25%, rgba(0,0,0,.4))
+SHADE_STOPS = ((0.0, _col((0, 0, 0), 0.0)), (0.04, _col((0, 0, 0), 0.0)), (0.10, _col(WHITE, 0.025)),
+               (0.25, _col((0, 0, 0), 0.1)), (1.0, _col((0, 0, 0), 0.4)))
 RUN_COLS = {st: _col(rgb, 1.0) for st, rgb in COLORS.items()}
 
 
@@ -173,5 +176,8 @@ class DriveSummaryCard:
       x1 = min(hi, round(x + w * (start + length) / n))
       if x1 > x0:
         rl.draw_rectangle_rec(rl.Rectangle(x0, y, max(1, x1 - x0), h), RUN_COLS[st])
-    # connect's status gradient: a little darker toward the bottom
-    rl.draw_rectangle_gradient_v(int(x + r), int(y), int(w - 2 * r), int(h), rl.Color(0, 0, 0, 0), SHADE_COL)
+    # connect's status gradient over the runs, darker toward the bottom
+    for (f0, c0), (f1, c1) in zip(SHADE_STOPS[:-1], SHADE_STOPS[1:], strict=True):
+      y0, y1 = round(y + h * f0), round(y + h * f1)
+      if y1 > y0:
+        rl.draw_rectangle_gradient_v(int(x + r), y0, int(w - 2 * r), y1 - y0, c0, c1)

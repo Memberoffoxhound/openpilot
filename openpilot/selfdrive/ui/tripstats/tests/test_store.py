@@ -239,8 +239,9 @@ class World:
 
   def __getitem__(self, k):
     if k == "carState":
-      return types.SimpleNamespace(vEgo=self.v, gasPressed=False)
-    return types.SimpleNamespace(enabled=self.engaged, state="enabled" if self.engaged else "disabled", alertStatus="normal")
+      return types.SimpleNamespace(vEgo=self.v)
+    return types.SimpleNamespace(enabled=self.engaged, state="enabled" if self.engaged else "disabled", alertStatus="normal",
+                                 alertType="")
 
   def run(self, seconds, **kw):
     for k, val in kw.items():
